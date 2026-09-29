@@ -1,0 +1,37 @@
+{
+  "generatedAt": "2026-09-29T18:24:05Z",
+  "refreshedStreams": 17,
+  "failedStreams": [
+    {
+      "id": "reacher-s03e08-dniprofilm",
+      "error": "HTTP Error 404: Not Found"
+    }
+  ],
+  "sources": {
+    "uakino": {
+      "checkedAt": "2026-09-29T18:24:05Z",
+      "pages": [
+        {
+          "url": "https://uakino.best/filmy/genre-action/19975-bdzholyar.html",
+          "status": "blocked",
+          "error": "HTTP Error 403: Forbidden"
+        },
+        {
+          "url": "https://uakino.best/seriesss/detective_series/26631-dzhek-richer-3-sezon.html",
+          "status": "blocked",
+          "error": "HTTP Error 403: Forbidden"
+        }
+      ]
+    },
+    "kinoukr": {
+      "checkedAt": "2026-09-29T18:24:05Z",
+      "pages": [
+        {
+          "url": "https://kinoukr.tv/8136-profi.html",
+          "status": "ok",
+          "error": null
+        }
+      ]
+    }
+  }
+}

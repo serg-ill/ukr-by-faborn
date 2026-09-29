@@ -1,0 +1,56 @@
+name: Build and publish Faborn beta
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '23 */6 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: faborn-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Check the committed beta
+        run: |
+          python -m unittest discover -s tests -p 'test_*.py' -v
+          node --test tests/test_plugin.js
+          node --check ukr-by-faborn.js
+      - name: Refresh reviewed sources and HLS manifests
+        run: python scripts/build_catalog.py
+      - name: Validate refreshed catalog
+        run: python scripts/validate.py
+      - name: Assemble static Pages artifact
+        run: |
+          mkdir -p _site/assets _site/data
+          cp ukr-by-faborn.js index.html .nojekyll _site/
+          cp assets/icon.svg _site/assets/
+          cp data/catalog.json data/status.json _site/data/
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

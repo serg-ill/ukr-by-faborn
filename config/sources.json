@@ -1,0 +1,209 @@
+{
+  "schema": 1,
+  "version": "0.1.0-beta.1",
+  "coverage": "curated-beta",
+  "titles": [
+    {
+      "id": "the-beekeeper-2024",
+      "title": "Бджоляр",
+      "originalTitle": "The Beekeeper",
+      "aliases": [
+        "Бджоляр 2024"
+      ],
+      "year": 2024,
+      "type": "movie",
+      "releases": [
+        {
+          "id": "uakino-beekeeper-uk",
+          "source": "uakino",
+          "sourcePage": "https://uakino.best/filmy/genre-action/19975-bdzholyar.html",
+          "voice": "Український дубляж",
+          "audioLanguage": "uk",
+          "audioEvidence": "Український дубляж у картці UAKino; перевірено 2026-09-29.",
+          "episodes": [
+            {
+              "id": "beekeeper-uk",
+              "season": 0,
+              "episode": 0,
+              "title": "Бджоляр",
+              "embed": "https://ashdi.vip/vod/116855"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "a-working-man-2025",
+      "title": "Профі",
+      "originalTitle": "A Working Man",
+      "aliases": [],
+      "year": 2025,
+      "type": "movie",
+      "releases": [
+        {
+          "id": "kinoukr-working-man-uk",
+          "source": "kinoukr",
+          "sourcePage": "https://kinoukr.tv/8136-profi.html",
+          "voice": "Український дубляж",
+          "audioLanguage": "uk",
+          "audioEvidence": "Звук: Дубляж; онлайн українською в картці KinoUkr; перевірено 2026-09-29.",
+          "episodes": [
+            {
+              "id": "working-man-uk",
+              "season": 0,
+              "episode": 0,
+              "title": "Профі",
+              "embed": "https://ashdi.vip/vod/189384"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "reacher-2022",
+      "title": "Джек Річер",
+      "originalTitle": "Reacher",
+      "aliases": [
+        "Річер",
+        "Джек Річер 3 сезон",
+        "Reacher 3 season"
+      ],
+      "year": 2022,
+      "type": "tv",
+      "releases": [
+        {
+          "id": "uakino-reacher-dniprofilm",
+          "source": "uakino",
+          "sourcePage": "https://uakino.best/seriesss/detective_series/26631-dzhek-richer-3-sezon.html",
+          "voice": "DniproFilm",
+          "audioLanguage": "uk",
+          "audioEvidence": "Опис озвучення та data-voice у публічному списку серій UAKino; перевірено 2026-09-29.",
+          "episodes": [
+            {
+              "id": "reacher-s03e01-dniprofilm",
+              "season": 3,
+              "episode": 1,
+              "title": "Серія 1",
+              "embed": "https://ashdi.vip/vod/165929"
+            },
+            {
+              "id": "reacher-s03e02-dniprofilm",
+              "season": 3,
+              "episode": 2,
+              "title": "Серія 2",
+              "embed": "https://ashdi.vip/vod/166247"
+            },
+            {
+              "id": "reacher-s03e03-dniprofilm",
+              "season": 3,
+              "episode": 3,
+              "title": "Серія 3",
+              "embed": "https://ashdi.vip/vod/166248"
+            },
+            {
+              "id": "reacher-s03e04-dniprofilm",
+              "season": 3,
+              "episode": 4,
+              "title": "Серія 4",
+              "embed": "https://ashdi.vip/vod/167129"
+            },
+            {
+              "id": "reacher-s03e05-dniprofilm",
+              "season": 3,
+              "episode": 5,
+              "title": "Серія 5",
+              "embed": "https://ashdi.vip/vod/167898"
+            },
+            {
+              "id": "reacher-s03e06-dniprofilm",
+              "season": 3,
+              "episode": 6,
+              "title": "Серія 6",
+              "embed": "https://ashdi.vip/vod/168734"
+            },
+            {
+              "id": "reacher-s03e07-dniprofilm",
+              "season": 3,
+              "episode": 7,
+              "title": "Серія 7",
+              "embed": "https://ashdi.vip/vod/169731"
+            },
+            {
+              "id": "reacher-s03e08-dniprofilm",
+              "season": 3,
+              "episode": 8,
+              "title": "Серія 8",
+              "embed": "https://ashdi.vip/vod/278532"
+            }
+          ]
+        },
+        {
+          "id": "uakino-reacher-uaflix",
+          "source": "uakino",
+          "sourcePage": "https://uakino.best/seriesss/detective_series/26631-dzhek-richer-3-sezon.html",
+          "voice": "Uaflix",
+          "audioLanguage": "uk",
+          "audioEvidence": "Опис озвучення та data-voice у публічному списку серій UAKino; перевірено 2026-09-29.",
+          "episodes": [
+            {
+              "id": "reacher-s03e01-uaflix",
+              "season": 3,
+              "episode": 1,
+              "title": "Серія 1",
+              "embed": "https://ashdi.vip/vod/165949"
+            },
+            {
+              "id": "reacher-s03e02-uaflix",
+              "season": 3,
+              "episode": 2,
+              "title": "Серія 2",
+              "embed": "https://ashdi.vip/vod/165950"
+            },
+            {
+              "id": "reacher-s03e03-uaflix",
+              "season": 3,
+              "episode": 3,
+              "title": "Серія 3",
+              "embed": "https://ashdi.vip/vod/165951"
+            },
+            {
+              "id": "reacher-s03e04-uaflix",
+              "season": 3,
+              "episode": 4,
+              "title": "Серія 4",
+              "embed": "https://ashdi.vip/vod/167226"
+            },
+            {
+              "id": "reacher-s03e05-uaflix",
+              "season": 3,
+              "episode": 5,
+              "title": "Серія 5",
+              "embed": "https://ashdi.vip/vod/168020"
+            },
+            {
+              "id": "reacher-s03e06-uaflix",
+              "season": 3,
+              "episode": 6,
+              "title": "Серія 6",
+              "embed": "https://ashdi.vip/vod/168993"
+            },
+            {
+              "id": "reacher-s03e07-uaflix",
+              "season": 3,
+              "episode": 7,
+              "title": "Серія 7",
+              "embed": "https://ashdi.vip/vod/169795"
+            },
+            {
+              "id": "reacher-s03e08-uaflix",
+              "season": 3,
+              "episode": 8,
+              "title": "Серія 8",
+              "embed": "https://ashdi.vip/vod/170865"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
