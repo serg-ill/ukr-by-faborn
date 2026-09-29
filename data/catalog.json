@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "coverage": "curated-beta",
-  "generatedAt": "2026-09-29T18:24:05Z",
+  "generatedAt": "2026-09-29T21:41:18Z",
   "titles": [
     {
       "id": "the-beekeeper-2024",
@@ -28,45 +28,45 @@
               "episode": 0,
               "title": "Бджоляр",
               "embed": "https://ashdi.vip/vod/116855",
-              "master": "https://ashdi.vip/video29/1/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/3/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "2160p": "https://ashdi.vip/video29/1/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/2160/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "1080p": "https://ashdi.vip/video29/1/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/1/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/1/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "2160p": "https://ashdi.vip/video30/3/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/2160/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "1080p": "https://ashdi.vip/video30/3/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/3/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/3/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "2160p",
-                  "url": "https://ashdi.vip/video29/1/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/2160/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/3/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/2160/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 3840,
                   "height": 1600,
                   "bandwidth": 5128000
                 },
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/1/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/3/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 800,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/1/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/3/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 532,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/1/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/3/films/the_beekeeper_2024_webdl_2160p_ukr_eng_hurtom_116855/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 354,
                   "bandwidth": 714000
                 }
               ],
               "subtitles": [],
-              "updatedAt": "2026-09-29T18:24:05Z",
+              "updatedAt": "2026-09-29T21:41:18Z",
               "state": "verified",
               "cors": "*",
               "segmentProbe": {
@@ -102,38 +102,38 @@
               "episode": 0,
               "title": "Профі",
               "embed": "https://ashdi.vip/vod/189384",
-              "master": "https://ashdi.vip/video29/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "2160p": "https://ashdi.vip/video29/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/2160/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "1080p": "https://ashdi.vip/video29/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "2160p": "https://ashdi.vip/video30/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/2160/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "1080p": "https://ashdi.vip/video30/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "2160p",
-                  "url": "https://ashdi.vip/video29/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/2160/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/2160/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 3840,
                   "height": 1600,
                   "bandwidth": 5128000
                 },
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 800,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 532,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/3/films/a.working.man.2025.2160p.amzn.webdl.dd5.1.h.265_189384/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 354,
                   "bandwidth": 714000
@@ -149,7 +149,7 @@
                   "url": "https://ashdi.vip/player/subtitle/189384_en.vtt"
                 }
               ],
-              "updatedAt": "2026-09-29T18:24:05Z",
+              "updatedAt": "2026-09-29T21:41:18Z",
               "state": "verified",
               "cors": "*",
               "segmentProbe": {
@@ -189,37 +189,37 @@
               "episode": 1,
               "title": "Серія 1",
               "embed": "https://ashdi.vip/vod/165929",
-              "master": "https://ashdi.vip/video29/2/new/reacher.s03e01.ua.mvo.dniprofilm_165929/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/2/new/reacher.s03e01.ua.mvo.dniprofilm_165929/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "1080p": "https://ashdi.vip/video29/2/new/reacher.s03e01.ua.mvo.dniprofilm_165929/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/2/new/reacher.s03e01.ua.mvo.dniprofilm_165929/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/2/new/reacher.s03e01.ua.mvo.dniprofilm_165929/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "1080p": "https://ashdi.vip/video30/2/new/reacher.s03e01.ua.mvo.dniprofilm_165929/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/2/new/reacher.s03e01.ua.mvo.dniprofilm_165929/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/2/new/reacher.s03e01.ua.mvo.dniprofilm_165929/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e01.ua.mvo.dniprofilm_165929/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e01.ua.mvo.dniprofilm_165929/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 960,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e01.ua.mvo.dniprofilm_165929/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e01.ua.mvo.dniprofilm_165929/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 640,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e01.ua.mvo.dniprofilm_165929/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e01.ua.mvo.dniprofilm_165929/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 426,
                   "bandwidth": 714000
                 }
               ],
               "subtitles": [],
-              "updatedAt": "2026-09-29T18:24:05Z",
+              "updatedAt": "2026-09-29T21:41:18Z",
               "state": "verified",
               "cors": "*",
               "segmentProbe": {
@@ -235,37 +235,37 @@
               "episode": 2,
               "title": "Серія 2",
               "embed": "https://ashdi.vip/vod/166247",
-              "master": "https://ashdi.vip/video29/2/new/reacher.s03e02.ua.mvo.dniprofilm_166247/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/2/new/reacher.s03e02.ua.mvo.dniprofilm_166247/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "1080p": "https://ashdi.vip/video29/2/new/reacher.s03e02.ua.mvo.dniprofilm_166247/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/2/new/reacher.s03e02.ua.mvo.dniprofilm_166247/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/2/new/reacher.s03e02.ua.mvo.dniprofilm_166247/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "1080p": "https://ashdi.vip/video30/2/new/reacher.s03e02.ua.mvo.dniprofilm_166247/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/2/new/reacher.s03e02.ua.mvo.dniprofilm_166247/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/2/new/reacher.s03e02.ua.mvo.dniprofilm_166247/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e02.ua.mvo.dniprofilm_166247/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e02.ua.mvo.dniprofilm_166247/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 960,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e02.ua.mvo.dniprofilm_166247/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e02.ua.mvo.dniprofilm_166247/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 640,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e02.ua.mvo.dniprofilm_166247/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e02.ua.mvo.dniprofilm_166247/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 426,
                   "bandwidth": 714000
                 }
               ],
               "subtitles": [],
-              "updatedAt": "2026-09-29T18:24:05Z",
+              "updatedAt": "2026-09-29T21:41:18Z",
               "state": "verified",
               "cors": "*",
               "segmentProbe": {
@@ -281,37 +281,37 @@
               "episode": 3,
               "title": "Серія 3",
               "embed": "https://ashdi.vip/vod/166248",
-              "master": "https://ashdi.vip/video29/2/new/reacher.s03e03.ua.mvo.dniprofilm_166248/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/2/new/reacher.s03e03.ua.mvo.dniprofilm_166248/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "1080p": "https://ashdi.vip/video29/2/new/reacher.s03e03.ua.mvo.dniprofilm_166248/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/2/new/reacher.s03e03.ua.mvo.dniprofilm_166248/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/2/new/reacher.s03e03.ua.mvo.dniprofilm_166248/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "1080p": "https://ashdi.vip/video30/2/new/reacher.s03e03.ua.mvo.dniprofilm_166248/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/2/new/reacher.s03e03.ua.mvo.dniprofilm_166248/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/2/new/reacher.s03e03.ua.mvo.dniprofilm_166248/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e03.ua.mvo.dniprofilm_166248/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e03.ua.mvo.dniprofilm_166248/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 960,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e03.ua.mvo.dniprofilm_166248/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e03.ua.mvo.dniprofilm_166248/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 640,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e03.ua.mvo.dniprofilm_166248/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e03.ua.mvo.dniprofilm_166248/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 426,
                   "bandwidth": 714000
                 }
               ],
               "subtitles": [],
-              "updatedAt": "2026-09-29T18:24:05Z",
+              "updatedAt": "2026-09-29T21:41:18Z",
               "state": "verified",
               "cors": "*",
               "segmentProbe": {
@@ -327,37 +327,37 @@
               "episode": 4,
               "title": "Серія 4",
               "embed": "https://ashdi.vip/vod/167129",
-              "master": "https://ashdi.vip/video29/2/new/s_3_ep_4_167129/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/2/new/s_3_ep_4_167129/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "1080p": "https://ashdi.vip/video29/2/new/s_3_ep_4_167129/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/2/new/s_3_ep_4_167129/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/2/new/s_3_ep_4_167129/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "1080p": "https://ashdi.vip/video30/2/new/s_3_ep_4_167129/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/2/new/s_3_ep_4_167129/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/2/new/s_3_ep_4_167129/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/2/new/s_3_ep_4_167129/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/s_3_ep_4_167129/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 960,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/2/new/s_3_ep_4_167129/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/s_3_ep_4_167129/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 640,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/2/new/s_3_ep_4_167129/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/s_3_ep_4_167129/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 426,
                   "bandwidth": 714000
                 }
               ],
               "subtitles": [],
-              "updatedAt": "2026-09-29T18:24:05Z",
+              "updatedAt": "2026-09-29T21:41:18Z",
               "state": "verified",
               "cors": "*",
               "segmentProbe": {
@@ -373,37 +373,37 @@
               "episode": 5,
               "title": "Серія 5",
               "embed": "https://ashdi.vip/vod/167898",
-              "master": "https://ashdi.vip/video29/2/new/s_3_ep_5_167898/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/2/new/s_3_ep_5_167898/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "1080p": "https://ashdi.vip/video29/2/new/s_3_ep_5_167898/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/2/new/s_3_ep_5_167898/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/2/new/s_3_ep_5_167898/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "1080p": "https://ashdi.vip/video30/2/new/s_3_ep_5_167898/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/2/new/s_3_ep_5_167898/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/2/new/s_3_ep_5_167898/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/2/new/s_3_ep_5_167898/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/s_3_ep_5_167898/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 960,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/2/new/s_3_ep_5_167898/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/s_3_ep_5_167898/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 640,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/2/new/s_3_ep_5_167898/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/s_3_ep_5_167898/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 426,
                   "bandwidth": 714000
                 }
               ],
               "subtitles": [],
-              "updatedAt": "2026-09-29T18:24:05Z",
+              "updatedAt": "2026-09-29T21:41:18Z",
               "state": "verified",
               "cors": "*",
               "segmentProbe": {
@@ -419,37 +419,37 @@
               "episode": 6,
               "title": "Серія 6",
               "embed": "https://ashdi.vip/vod/168734",
-              "master": "https://ashdi.vip/video29/2/new/s_3_ep_6_168734/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/2/new/s_3_ep_6_168734/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "1080p": "https://ashdi.vip/video29/2/new/s_3_ep_6_168734/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/2/new/s_3_ep_6_168734/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/2/new/s_3_ep_6_168734/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "1080p": "https://ashdi.vip/video30/2/new/s_3_ep_6_168734/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/2/new/s_3_ep_6_168734/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/2/new/s_3_ep_6_168734/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/2/new/s_3_ep_6_168734/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/s_3_ep_6_168734/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 960,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/2/new/s_3_ep_6_168734/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/s_3_ep_6_168734/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 640,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/2/new/s_3_ep_6_168734/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/s_3_ep_6_168734/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 426,
                   "bandwidth": 714000
                 }
               ],
               "subtitles": [],
-              "updatedAt": "2026-09-29T18:24:05Z",
+              "updatedAt": "2026-09-29T21:41:18Z",
               "state": "verified",
               "cors": "*",
               "segmentProbe": {
@@ -465,37 +465,37 @@
               "episode": 7,
               "title": "Серія 7",
               "embed": "https://ashdi.vip/vod/169731",
-              "master": "https://ashdi.vip/video29/2/new/s_3_ep_7_169731/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/2/new/s_3_ep_7_169731/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "1080p": "https://ashdi.vip/video29/2/new/s_3_ep_7_169731/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/2/new/s_3_ep_7_169731/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/2/new/s_3_ep_7_169731/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "1080p": "https://ashdi.vip/video30/2/new/s_3_ep_7_169731/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/2/new/s_3_ep_7_169731/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/2/new/s_3_ep_7_169731/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/2/new/s_3_ep_7_169731/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/s_3_ep_7_169731/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 960,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/2/new/s_3_ep_7_169731/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/s_3_ep_7_169731/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 640,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/2/new/s_3_ep_7_169731/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/s_3_ep_7_169731/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 426,
                   "bandwidth": 714000
                 }
               ],
               "subtitles": [],
-              "updatedAt": "2026-09-29T18:24:05Z",
+              "updatedAt": "2026-09-29T21:41:18Z",
               "state": "verified",
               "cors": "*",
               "segmentProbe": {
@@ -511,30 +511,30 @@
               "episode": 8,
               "title": "Серія 8",
               "embed": "https://ashdi.vip/vod/278532",
-              "master": "https://ashdi.vip/video29/1/new/dzhek_richer/s03/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_278532/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/3/new/dzhek_richer/s03/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_278532/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "1080p": "https://ashdi.vip/video29/1/new/dzhek_richer/s03/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_278532/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/1/new/dzhek_richer/s03/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_278532/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/1/new/dzhek_richer/s03/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_278532/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "1080p": "https://ashdi.vip/video30/3/new/dzhek_richer/s03/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_278532/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/3/new/dzhek_richer/s03/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_278532/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/3/new/dzhek_richer/s03/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_278532/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/1/new/dzhek_richer/s03/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_278532/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/3/new/dzhek_richer/s03/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_278532/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 960,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/1/new/dzhek_richer/s03/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_278532/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/3/new/dzhek_richer/s03/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_278532/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 640,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/1/new/dzhek_richer/s03/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_278532/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/3/new/dzhek_richer/s03/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_278532/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 426,
                   "bandwidth": 714000
@@ -546,11 +546,15 @@
                   "url": "https://ashdi.vip/player/subtitle/278532_ua.vtt"
                 }
               ],
-              "updatedAt": "2026-09-29T18:09:02Z",
-              "state": "unavailable",
+              "updatedAt": "2026-09-29T21:41:18Z",
+              "state": "verified",
               "cors": "*",
-              "lastError": "HTTP Error 404: Not Found",
-              "lastCheckedAt": "2026-09-29T18:24:05Z"
+              "segmentProbe": {
+                "status": 206,
+                "cors": "https://ashdi.vip",
+                "browserCompatible": false
+              },
+              "playbackMode": "tizen-avplay"
             }
           ]
         },
@@ -568,37 +572,37 @@
               "episode": 1,
               "title": "Серія 1",
               "embed": "https://ashdi.vip/vod/165949",
-              "master": "https://ashdi.vip/video29/2/new/reacher.s03e01.1080p.webdlrip.x264.aac.uaflix_165949/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/2/new/reacher.s03e01.1080p.webdlrip.x264.aac.uaflix_165949/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "1080p": "https://ashdi.vip/video29/2/new/reacher.s03e01.1080p.webdlrip.x264.aac.uaflix_165949/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/2/new/reacher.s03e01.1080p.webdlrip.x264.aac.uaflix_165949/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/2/new/reacher.s03e01.1080p.webdlrip.x264.aac.uaflix_165949/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "1080p": "https://ashdi.vip/video30/2/new/reacher.s03e01.1080p.webdlrip.x264.aac.uaflix_165949/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/2/new/reacher.s03e01.1080p.webdlrip.x264.aac.uaflix_165949/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/2/new/reacher.s03e01.1080p.webdlrip.x264.aac.uaflix_165949/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e01.1080p.webdlrip.x264.aac.uaflix_165949/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e01.1080p.webdlrip.x264.aac.uaflix_165949/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 960,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e01.1080p.webdlrip.x264.aac.uaflix_165949/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e01.1080p.webdlrip.x264.aac.uaflix_165949/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 640,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e01.1080p.webdlrip.x264.aac.uaflix_165949/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e01.1080p.webdlrip.x264.aac.uaflix_165949/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 426,
                   "bandwidth": 714000
                 }
               ],
               "subtitles": [],
-              "updatedAt": "2026-09-29T18:24:05Z",
+              "updatedAt": "2026-09-29T21:41:18Z",
               "state": "verified",
               "cors": "*",
               "segmentProbe": {
@@ -614,37 +618,37 @@
               "episode": 2,
               "title": "Серія 2",
               "embed": "https://ashdi.vip/vod/165950",
-              "master": "https://ashdi.vip/video29/2/new/reacher.s03e02.1080p.webdlrip.x264.aac.uaflix_165950/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/2/new/reacher.s03e02.1080p.webdlrip.x264.aac.uaflix_165950/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "1080p": "https://ashdi.vip/video29/2/new/reacher.s03e02.1080p.webdlrip.x264.aac.uaflix_165950/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/2/new/reacher.s03e02.1080p.webdlrip.x264.aac.uaflix_165950/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/2/new/reacher.s03e02.1080p.webdlrip.x264.aac.uaflix_165950/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "1080p": "https://ashdi.vip/video30/2/new/reacher.s03e02.1080p.webdlrip.x264.aac.uaflix_165950/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/2/new/reacher.s03e02.1080p.webdlrip.x264.aac.uaflix_165950/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/2/new/reacher.s03e02.1080p.webdlrip.x264.aac.uaflix_165950/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e02.1080p.webdlrip.x264.aac.uaflix_165950/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e02.1080p.webdlrip.x264.aac.uaflix_165950/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 960,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e02.1080p.webdlrip.x264.aac.uaflix_165950/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e02.1080p.webdlrip.x264.aac.uaflix_165950/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 640,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e02.1080p.webdlrip.x264.aac.uaflix_165950/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e02.1080p.webdlrip.x264.aac.uaflix_165950/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 426,
                   "bandwidth": 714000
                 }
               ],
               "subtitles": [],
-              "updatedAt": "2026-09-29T18:24:05Z",
+              "updatedAt": "2026-09-29T21:41:18Z",
               "state": "verified",
               "cors": "*",
               "segmentProbe": {
@@ -660,37 +664,37 @@
               "episode": 3,
               "title": "Серія 3",
               "embed": "https://ashdi.vip/vod/165951",
-              "master": "https://ashdi.vip/video29/2/new/reacher.s03e03.1080p.webdlrip.x264.aac.uaflix_165951/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/2/new/reacher.s03e03.1080p.webdlrip.x264.aac.uaflix_165951/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "1080p": "https://ashdi.vip/video29/2/new/reacher.s03e03.1080p.webdlrip.x264.aac.uaflix_165951/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/2/new/reacher.s03e03.1080p.webdlrip.x264.aac.uaflix_165951/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/2/new/reacher.s03e03.1080p.webdlrip.x264.aac.uaflix_165951/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "1080p": "https://ashdi.vip/video30/2/new/reacher.s03e03.1080p.webdlrip.x264.aac.uaflix_165951/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/2/new/reacher.s03e03.1080p.webdlrip.x264.aac.uaflix_165951/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/2/new/reacher.s03e03.1080p.webdlrip.x264.aac.uaflix_165951/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e03.1080p.webdlrip.x264.aac.uaflix_165951/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e03.1080p.webdlrip.x264.aac.uaflix_165951/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 960,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e03.1080p.webdlrip.x264.aac.uaflix_165951/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e03.1080p.webdlrip.x264.aac.uaflix_165951/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 640,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e03.1080p.webdlrip.x264.aac.uaflix_165951/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e03.1080p.webdlrip.x264.aac.uaflix_165951/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 426,
                   "bandwidth": 714000
                 }
               ],
               "subtitles": [],
-              "updatedAt": "2026-09-29T18:24:05Z",
+              "updatedAt": "2026-09-29T21:41:18Z",
               "state": "verified",
               "cors": "*",
               "segmentProbe": {
@@ -706,37 +710,37 @@
               "episode": 4,
               "title": "Серія 4",
               "embed": "https://ashdi.vip/vod/167226",
-              "master": "https://ashdi.vip/video29/2/new/reacher.s03e04.1080p.amzn.webdl.h.264.ukr.eng_167226/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/2/new/reacher.s03e04.1080p.amzn.webdl.h.264.ukr.eng_167226/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "1080p": "https://ashdi.vip/video29/2/new/reacher.s03e04.1080p.amzn.webdl.h.264.ukr.eng_167226/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/2/new/reacher.s03e04.1080p.amzn.webdl.h.264.ukr.eng_167226/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/2/new/reacher.s03e04.1080p.amzn.webdl.h.264.ukr.eng_167226/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "1080p": "https://ashdi.vip/video30/2/new/reacher.s03e04.1080p.amzn.webdl.h.264.ukr.eng_167226/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/2/new/reacher.s03e04.1080p.amzn.webdl.h.264.ukr.eng_167226/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/2/new/reacher.s03e04.1080p.amzn.webdl.h.264.ukr.eng_167226/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e04.1080p.amzn.webdl.h.264.ukr.eng_167226/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e04.1080p.amzn.webdl.h.264.ukr.eng_167226/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 960,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e04.1080p.amzn.webdl.h.264.ukr.eng_167226/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e04.1080p.amzn.webdl.h.264.ukr.eng_167226/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 640,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e04.1080p.amzn.webdl.h.264.ukr.eng_167226/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e04.1080p.amzn.webdl.h.264.ukr.eng_167226/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 426,
                   "bandwidth": 714000
                 }
               ],
               "subtitles": [],
-              "updatedAt": "2026-09-29T18:24:05Z",
+              "updatedAt": "2026-09-29T21:41:18Z",
               "state": "verified",
               "cors": "*",
               "segmentProbe": {
@@ -752,37 +756,37 @@
               "episode": 5,
               "title": "Серія 5",
               "embed": "https://ashdi.vip/vod/168020",
-              "master": "https://ashdi.vip/video29/2/new/reacher.s03e05.1080p.amzn.webdl.h.264.ukr.eng_168020/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/2/new/reacher.s03e05.1080p.amzn.webdl.h.264.ukr.eng_168020/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "1080p": "https://ashdi.vip/video29/2/new/reacher.s03e05.1080p.amzn.webdl.h.264.ukr.eng_168020/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/2/new/reacher.s03e05.1080p.amzn.webdl.h.264.ukr.eng_168020/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/2/new/reacher.s03e05.1080p.amzn.webdl.h.264.ukr.eng_168020/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "1080p": "https://ashdi.vip/video30/2/new/reacher.s03e05.1080p.amzn.webdl.h.264.ukr.eng_168020/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/2/new/reacher.s03e05.1080p.amzn.webdl.h.264.ukr.eng_168020/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/2/new/reacher.s03e05.1080p.amzn.webdl.h.264.ukr.eng_168020/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e05.1080p.amzn.webdl.h.264.ukr.eng_168020/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e05.1080p.amzn.webdl.h.264.ukr.eng_168020/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 960,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e05.1080p.amzn.webdl.h.264.ukr.eng_168020/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e05.1080p.amzn.webdl.h.264.ukr.eng_168020/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 640,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e05.1080p.amzn.webdl.h.264.ukr.eng_168020/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e05.1080p.amzn.webdl.h.264.ukr.eng_168020/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 426,
                   "bandwidth": 714000
                 }
               ],
               "subtitles": [],
-              "updatedAt": "2026-09-29T18:24:05Z",
+              "updatedAt": "2026-09-29T21:41:18Z",
               "state": "verified",
               "cors": "*",
               "segmentProbe": {
@@ -798,37 +802,37 @@
               "episode": 6,
               "title": "Серія 6",
               "embed": "https://ashdi.vip/vod/168993",
-              "master": "https://ashdi.vip/video29/2/new/reacher.s03e06.1080p.amzn.webdl.h.264.ukr.eng_168993/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/2/new/reacher.s03e06.1080p.amzn.webdl.h.264.ukr.eng_168993/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "1080p": "https://ashdi.vip/video29/2/new/reacher.s03e06.1080p.amzn.webdl.h.264.ukr.eng_168993/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/2/new/reacher.s03e06.1080p.amzn.webdl.h.264.ukr.eng_168993/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/2/new/reacher.s03e06.1080p.amzn.webdl.h.264.ukr.eng_168993/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "1080p": "https://ashdi.vip/video30/2/new/reacher.s03e06.1080p.amzn.webdl.h.264.ukr.eng_168993/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/2/new/reacher.s03e06.1080p.amzn.webdl.h.264.ukr.eng_168993/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/2/new/reacher.s03e06.1080p.amzn.webdl.h.264.ukr.eng_168993/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e06.1080p.amzn.webdl.h.264.ukr.eng_168993/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e06.1080p.amzn.webdl.h.264.ukr.eng_168993/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 960,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e06.1080p.amzn.webdl.h.264.ukr.eng_168993/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e06.1080p.amzn.webdl.h.264.ukr.eng_168993/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 640,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e06.1080p.amzn.webdl.h.264.ukr.eng_168993/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e06.1080p.amzn.webdl.h.264.ukr.eng_168993/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 426,
                   "bandwidth": 714000
                 }
               ],
               "subtitles": [],
-              "updatedAt": "2026-09-29T18:24:05Z",
+              "updatedAt": "2026-09-29T21:41:18Z",
               "state": "verified",
               "cors": "*",
               "segmentProbe": {
@@ -844,37 +848,37 @@
               "episode": 7,
               "title": "Серія 7",
               "embed": "https://ashdi.vip/vod/169795",
-              "master": "https://ashdi.vip/video29/2/new/reacher.s03e07.1080p.amzn.webdl.h.264.ukr.eng_169795/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/2/new/reacher.s03e07.1080p.amzn.webdl.h.264.ukr.eng_169795/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "1080p": "https://ashdi.vip/video29/2/new/reacher.s03e07.1080p.amzn.webdl.h.264.ukr.eng_169795/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/2/new/reacher.s03e07.1080p.amzn.webdl.h.264.ukr.eng_169795/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/2/new/reacher.s03e07.1080p.amzn.webdl.h.264.ukr.eng_169795/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "1080p": "https://ashdi.vip/video30/2/new/reacher.s03e07.1080p.amzn.webdl.h.264.ukr.eng_169795/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/2/new/reacher.s03e07.1080p.amzn.webdl.h.264.ukr.eng_169795/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/2/new/reacher.s03e07.1080p.amzn.webdl.h.264.ukr.eng_169795/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e07.1080p.amzn.webdl.h.264.ukr.eng_169795/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e07.1080p.amzn.webdl.h.264.ukr.eng_169795/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 960,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e07.1080p.amzn.webdl.h.264.ukr.eng_169795/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e07.1080p.amzn.webdl.h.264.ukr.eng_169795/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 640,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/2/new/reacher.s03e07.1080p.amzn.webdl.h.264.ukr.eng_169795/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/2/new/reacher.s03e07.1080p.amzn.webdl.h.264.ukr.eng_169795/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 426,
                   "bandwidth": 714000
                 }
               ],
               "subtitles": [],
-              "updatedAt": "2026-09-29T18:24:05Z",
+              "updatedAt": "2026-09-29T21:41:18Z",
               "state": "verified",
               "cors": "*",
               "segmentProbe": {
@@ -890,37 +894,37 @@
               "episode": 8,
               "title": "Серія 8",
               "embed": "https://ashdi.vip/vod/170865",
-              "master": "https://ashdi.vip/video29/1/new/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_170865/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+              "master": "https://ashdi.vip/video30/1/new/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_170865/hls/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
               "qualities": {
-                "1080p": "https://ashdi.vip/video29/1/new/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_170865/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "720p": "https://ashdi.vip/video29/1/new/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_170865/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
-                "480p": "https://ashdi.vip/video29/1/new/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_170865/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
+                "1080p": "https://ashdi.vip/video30/1/new/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_170865/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "720p": "https://ashdi.vip/video30/1/new/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_170865/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                "480p": "https://ashdi.vip/video30/1/new/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_170865/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8"
               },
               "variants": [
                 {
                   "label": "1080p",
-                  "url": "https://ashdi.vip/video29/1/new/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_170865/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/1/new/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_170865/hls/1080/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1920,
                   "height": 960,
                   "bandwidth": 2128000
                 },
                 {
                   "label": "720p",
-                  "url": "https://ashdi.vip/video29/1/new/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_170865/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/1/new/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_170865/hls/720/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 1280,
                   "height": 640,
                   "bandwidth": 1096000
                 },
                 {
                   "label": "480p",
-                  "url": "https://ashdi.vip/video29/1/new/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_170865/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
+                  "url": "https://ashdi.vip/video30/1/new/reacher.s03e08.1080p.amzn.webdl.h.264.ukr.eng_170865/hls/480/BKqAlHWNlPtVnRH9Boo=/index.m3u8",
                   "width": 854,
                   "height": 426,
                   "bandwidth": 714000
                 }
               ],
               "subtitles": [],
-              "updatedAt": "2026-09-29T18:24:05Z",
+              "updatedAt": "2026-09-29T21:41:18Z",
               "state": "verified",
               "cors": "*",
               "segmentProbe": {
@@ -938,12 +942,11 @@
   "warnings": [
     "Бета-індекс містить лише назви з config/sources.json; це не повні каталоги UAKino та KinoUkr.",
     "Для відтворення потрібна перевірка штатного плеєра Tizen/AVPlay. Вебплеєр Lampa блокується CORS відеосегментів Ashdi; успішне читання маніфесту не доводить відтворення.",
-    "uakino: частина сторінок заблокована. Використано попередньо перевірені посилання Ashdi; нові серії автоматично не виявляються.",
-    "Не оновлено потоків: 1. Старі записи позначено stale; HTTP 404 — unavailable, такі серії пропускаються у плейлисті."
+    "uakino: частина сторінок заблокована. Використано попередньо перевірені посилання Ashdi; нові серії автоматично не виявляються."
   ],
   "sources": {
     "uakino": {
-      "checkedAt": "2026-09-29T18:24:05Z",
+      "checkedAt": "2026-09-29T21:41:18Z",
       "pages": [
         {
           "url": "https://uakino.best/filmy/genre-action/19975-bdzholyar.html",
@@ -958,7 +961,7 @@
       ]
     },
     "kinoukr": {
-      "checkedAt": "2026-09-29T18:24:05Z",
+      "checkedAt": "2026-09-29T21:41:18Z",
       "pages": [
         {
           "url": "https://kinoukr.tv/8136-profi.html",

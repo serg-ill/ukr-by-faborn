@@ -1,15 +1,10 @@
 {
-  "generatedAt": "2026-09-29T18:24:05Z",
-  "refreshedStreams": 17,
-  "failedStreams": [
-    {
-      "id": "reacher-s03e08-dniprofilm",
-      "error": "HTTP Error 404: Not Found"
-    }
-  ],
+  "generatedAt": "2026-09-29T21:41:18Z",
+  "refreshedStreams": 18,
+  "failedStreams": [],
   "sources": {
     "uakino": {
-      "checkedAt": "2026-09-29T18:24:05Z",
+      "checkedAt": "2026-09-29T21:41:18Z",
       "pages": [
         {
           "url": "https://uakino.best/filmy/genre-action/19975-bdzholyar.html",
@@ -24,7 +19,7 @@
       ]
     },
     "kinoukr": {
-      "checkedAt": "2026-09-29T18:24:05Z",
+      "checkedAt": "2026-09-29T21:41:18Z",
       "pages": [
         {
           "url": "https://kinoukr.tv/8136-profi.html",

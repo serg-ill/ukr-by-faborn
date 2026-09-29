@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.1 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.2 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,10 +8,11 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.1';
+    var VERSION = '0.1.0-beta.2';
     var NAME = 'ukr by Faborn';
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
-    var L, $, installed = false, currentCatalog, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
+    var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
+    var pendingRequest, playbackTimer, watchedPlayback, playbackContext;
     var capturedBase = detectBase();
 
     function text(value) { return value === undefined || value === null ? '' : String(value); }
@@ -117,9 +118,9 @@
     }
     function loadCatalog(force, callback) {
         var base = baseURL();
-        if (currentCatalog && !force) return callback(null, currentCatalog);
+        if (currentCatalog && !force && Date.now() - catalogLoadedAt < 60000) return callback(null, currentCatalog);
         if (!base) return callback(new Error('Не визначено адресу GitHub Pages. Перевірте URL розширення або вкажіть його в налаштуваннях ukr by Faborn.'));
-        xhr(base + 'data/catalog.json?t=' + Math.floor(Date.now() / 60000), function (error, body) {
+        return xhr(base + 'data/catalog.json?t=' + Date.now(), function (error, body) {
             var parsed;
             if (!error) {
                 try {
@@ -129,6 +130,7 @@
             }
             if (error) { lastDiagnostic = error.message; return callback(error); }
             currentCatalog = parsed;
+            catalogLoadedAt = Date.now();
             lastDiagnostic = '';
             callback(null, parsed);
         });
@@ -170,10 +172,10 @@
     }
     function showMatches(movie, catalog, matches, query) {
         var rows = titleRows(matches);
-        if (!matches.length) rows.push({title: 'У бета-індексі немає цієї назви', subtitle: 'Це обмежений індекс, а не весь каталог сайтів.', action: 'browse'});
+        if (!matches.length) rows.push({title: 'Не знайдено: ' + (query || movie.title || movie.name || movie.original_title || movie.original_name || 'назва картки не передана'), subtitle: 'У тестовому індексі ' + catalog.titles.length + ' назви. Натисни, щоб відкрити їхній список.', action: 'browse'});
         rows.push({title: 'Змінити пошукову назву', action: 'search'});
         rows.push({title: 'Усі назви бета-індексу', action: 'browse'});
-        select(NAME + (query ? ' · ' + query : ''), rows, function (row) {
+        select(NAME + ' · ' + VERSION + (query ? ' · ' + query : ''), rows, function (row) {
             if (row.action === 'search') search(movie, catalog);
             else if (row.action === 'browse') browse(movie, catalog);
             else releases(movie, catalog, row.value);
@@ -259,7 +261,7 @@
     }
     function playData(movie, title, release, episode, preference) {
         var url = pickURL(episode, preference), result = {
-            url: url, faborn_url: url, faborn_episode: episode.id, faborn_title: title.id,
+            url: url, faborn_url: url, faborn_episode: episode.id, faborn_title: title.id, faborn_release: release.id, faborn_quality: preference,
             quality: episode.qualities,
             title: title.title + (title.type === 'tv' ? ' · S' + episode.season + 'E' + episode.episode : '') + ' · ' + release.voice,
             subtitles: (episode.subtitles || []).filter(function (s) { return mediaURL(s.url); }),
@@ -274,6 +276,57 @@
         if (cardNames.some(function (n) { return indexedNames.indexOf(n) >= 0; }) && (!cardYear || title.year === cardYear)) result.card = movie;
         return result;
     }
+    function locate(catalog, titleId, releaseId, episodeId) {
+        var found;
+        catalog.titles.forEach(function (title) {
+            if (title.id !== titleId) return;
+            title.releases.forEach(function (release) {
+                if (release.id !== releaseId) return;
+                release.episodes.forEach(function (episode) {
+                    if (episode.id === episodeId) found = {title: title, release: release, episode: episode};
+                });
+            });
+        });
+        return found;
+    }
+    function cancelPending() {
+        requestSerial++;
+        if (pendingRequest && pendingRequest.abort) pendingRequest.abort();
+        pendingRequest = null;
+    }
+    function clearPlaybackWatch() {
+        if (playbackTimer) root.clearTimeout(playbackTimer);
+        playbackTimer = null;
+        watchedPlayback = null;
+    }
+    function playbackProblem(message, data) {
+        if (!data || watchedPlayback !== data) return;
+        if (L.Player.playdata && L.Player.playdata() !== data) { clearPlaybackWatch(); return; }
+        var context = playbackContext;
+        var found = currentCatalog && locate(currentCatalog, data.faborn_title, data.faborn_release, data.faborn_episode);
+        clearPlaybackWatch();
+        lastDiagnostic = message;
+        save('last_error', message);
+        if (L.Player.close) L.Player.close();
+        if (!context || !found) { restore(); notify(message); return; }
+        select('Відео не запустилося', [
+            {title: 'Оновити посилання й повторити', subtitle: message, action: 'retry'},
+            {title: 'Обрати іншу якість', subtitle: 'Для перевірки спробуй 1080p або 720p.', action: 'quality'},
+            {title: 'Обрати інше озвучення або джерело', action: 'release'}
+        ], function (row) {
+            if (row.action === 'retry') launch(context.movie, currentCatalog, found.title, found.release, found.episode, data.faborn_quality);
+            else if (row.action === 'quality') quality(context.movie, currentCatalog, found.title, found.release, found.episode);
+            else releases(context.movie, currentCatalog, found.title);
+        }, restore);
+    }
+    function watchPlayback(data) {
+        clearPlaybackWatch();
+        if (!data || !data.faborn_title || !mediaURL(data.faborn_url)) return;
+        watchedPlayback = data;
+        playbackTimer = root.setTimeout(function () {
+            playbackProblem('Плеєр не почав відтворення за 45 секунд. Посилання могло змінитися або телевізор не зміг відкрити цей потік.', data);
+        }, 45000);
+    }
     function launch(movie, catalog, title, release, episode, preference) {
         var isTizen = L.Platform && L.Platform.is && L.Platform.is('tizen');
         if (L.Platform && !isTizen) {
@@ -284,30 +337,46 @@
         if (isTizen && L.Storage.field && L.Storage.field('player') !== 'tizen') {
             return select('Обери штатний плеєр Tizen', [{title: 'Lampa → Налаштування → Плеєр → Tizen', subtitle: 'Після зміни налаштування повтори запуск. Сумісність AVPlay перевіряється цією бетою на телевізорі.'}], function () { restore(); }, restore);
         }
-        var url = pickURL(episode, preference);
-        notify('Перевіряю доступність потоку…');
-        xhr(url, function (error, body) {
-            if (error || text(body).indexOf('#EXTM3U') < 0) {
-                lastDiagnostic = 'Потік: ' + (error ? error.message : 'Некоректний HLS');
-                return select('Потік зараз недоступний', [
-                    {title: 'Оновити індекс із GitHub', action: 'refresh'},
-                    {title: 'Обрати інший реліз', action: 'release'}
-                ], function (row) {
-                    if (row.action === 'release') releases(movie, catalog, title);
-                    else loadCatalog(true, function (err, fresh) {
-                        if (err) notify(err.message);
-                        else showMatches(movie, fresh, matchTitles(fresh, movie));
-                    });
-                }, function () { quality(movie, catalog, title, release, episode); });
+        cancelPending();
+        var serial = requestSerial;
+        select('Оновлюю посилання перед переглядом…', [{title: 'Назад — скасувати', subtitle: title.title}], function () { cancelPending(); restore(); }, function () { cancelPending(); quality(movie, catalog, title, release, episode); });
+        pendingRequest = loadCatalog(true, function (catalogError, fresh) {
+            if (serial !== requestSerial) return;
+            var found = !catalogError && locate(fresh, title.id, release.id, episode.id);
+            if (catalogError || !found) {
+                lastDiagnostic = catalogError ? catalogError.message : 'Цього релізу більше немає в індексі.';
+                L.Select.hide(); restore(); notify(lastDiagnostic); return;
             }
-            var data = playData(movie, title, release, episode, preference);
-            var playlist = title.type === 'tv' ? availablePlaylist(release, episode).map(function (e) {
-                return playData(movie, title, release, e, preference);
-            }) : [];
-            data.playlist = playlist;
-            save('last_' + title.id, episode.id);
-            if (L.Player.playlist) L.Player.playlist(playlist);
-            L.Player.play(data);
+            title = found.title; release = found.release; episode = found.episode; catalog = fresh;
+            if (episode.state === 'unavailable') { L.Select.hide(); quality(movie, fresh, title, release, episode); return; }
+            var url = pickURL(episode, preference);
+            pendingRequest = xhr(url, function (error, body) {
+                if (serial !== requestSerial) return;
+                pendingRequest = null;
+                L.Select.hide();
+                if (error || text(body).indexOf('#EXTM3U') < 0) {
+                    lastDiagnostic = 'Потік: ' + (error ? error.message : 'Некоректний HLS');
+                    return select('Потік зараз недоступний', [
+                        {title: 'Оновити індекс із GitHub', action: 'refresh'},
+                        {title: 'Обрати інший реліз', action: 'release'}
+                    ], function (row) {
+                        if (row.action === 'release') releases(movie, catalog, title);
+                        else loadCatalog(true, function (err, fresh) {
+                            if (err) notify(err.message);
+                            else showMatches(movie, fresh, matchTitles(fresh, movie));
+                        });
+                    }, function () { quality(movie, catalog, title, release, episode); });
+                }
+                var data = playData(movie, title, release, episode, preference);
+                var playlist = title.type === 'tv' ? availablePlaylist(release, episode).map(function (e) {
+                    return playData(movie, title, release, e, preference);
+                }) : [];
+                data.playlist = playlist;
+                playbackContext = {movie: movie};
+                save('last_' + title.id, episode.id);
+                if (L.Player.playlist) L.Player.playlist(playlist);
+                L.Player.play(data);
+            });
         });
     }
     function diagnostics() {
@@ -318,6 +387,7 @@
                 (catalog.warnings || []).forEach(function (warning) { lines.push(warning); });
             }
             if (error || lastDiagnostic) lines.push(error ? error.message : lastDiagnostic);
+            if (storage('last_error', '')) lines.push('Остання помилка плеєра: ' + storage('last_error', ''));
             if (L.Storage.field) lines.push('Плеєр Lampa: ' + L.Storage.field('player') + ' · для бети потрібен Tizen / AVPlay');
             select('Діагностика', lines.map(function (line) { return {title: line}; }), function () { diagnostics(); }, restore);
         });
@@ -362,12 +432,30 @@
         installed = true;
         if (!$('#faborn-ukr-style').length) $('body').append('<style id="faborn-ukr-style">.view--faborn-ukr svg{width:1.65em;height:1.65em;flex-shrink:0}.full-start-new__buttons .full-start__button.view--faborn-ukr span{display:inline-block}.view--faborn-ukr.focus{box-shadow:0 0 0 .12em #FFD54A}</style>');
         L.Listener.follow('full', attach);
-        if (L.Player.listener) L.Player.listener.follow('start', function (data) {
-            // Lampa applies its global quality preference before this event. Preserve the explicit selection only for our streams.
-            if (!data || !data.faborn_title || !mediaURL(data.faborn_url)) return;
-            data.url = data.faborn_url;
-            save('last_' + data.faborn_title, data.faborn_episode);
-        });
+        if (L.Player.listener) {
+            L.Player.listener.follow('start', function (data) {
+                // Lampa applies its global quality preference before this event. Preserve the explicit selection only for our streams.
+                clearPlaybackWatch();
+                if (!data || !data.faborn_title || !mediaURL(data.faborn_url)) return;
+                data.url = data.faborn_url;
+                save('last_' + data.faborn_title, data.faborn_episode);
+                watchPlayback(data);
+            });
+            L.Player.listener.follow('destroy', clearPlaybackWatch);
+        }
+        if (L.PlayerVideo && L.PlayerVideo.listener) {
+            L.PlayerVideo.listener.follow('loadeddata', clearPlaybackWatch);
+            L.PlayerVideo.listener.follow('timeupdate', function (event) {
+                if (watchedPlayback && event && event.current > 0) clearPlaybackWatch();
+            });
+            L.PlayerVideo.listener.follow('error', function (event) {
+                var data = watchedPlayback;
+                if (!data || !event) return;
+                var detail = event.error;
+                if (detail && typeof detail === 'object') detail = detail.message || detail.code;
+                root.setTimeout(function () { playbackProblem('Помилка плеєра: ' + text(detail || 'невідома помилка'), data); }, 0);
+            });
+        }
         settings();
     }
     function boot() {

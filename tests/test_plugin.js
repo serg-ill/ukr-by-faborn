@@ -57,17 +57,21 @@ test('escapes source labels before Lampa templates', () => {
 });
 
 function environment(options = {}) {
-    const state = {storage: {}, follows: {}, playerEvents: {}, params: [], notices: [], menu: null, played: null, requests: []};
+    const state = {storage: {}, follows: {}, playerEvents: {}, videoEvents: {}, timers: {}, timerId: 0, params: [], notices: [], menu: null, played: null, requests: [], catalog: catalog};
     const jq = () => ({length: 0, append() { return this; }});
     function XHR() { state.requests.push(this); }
     XHR.prototype.open = function (_, url) { this.url = url; };
     XHR.prototype.send = function () {
         if (options.delayed) return;
         this.status = options.failure ? 403 : 200;
-        this.responseText = this.url.includes('catalog.json') ? JSON.stringify(catalog) : '#EXTM3U\n#EXTINF:6,\nvideo.ts';
+        this.responseText = this.url.includes('catalog.json') ? JSON.stringify(state.catalog) : '#EXTM3U\n#EXTINF:6,\nvideo.ts';
         this.onload();
     };
-    const root = {jQuery: jq, XMLHttpRequest: XHR, document: {currentScript: {src: 'https://faborn.github.io/lampa/ukr-by-faborn.js'}, getElementsByTagName() { return []; }}, setTimeout() {}};
+    XHR.prototype.abort = function () { this.aborted = true; };
+    const root = {jQuery: jq, XMLHttpRequest: XHR, document: {currentScript: {src: 'https://faborn.github.io/lampa/ukr-by-faborn.js'}, getElementsByTagName() { return []; }},
+        setTimeout(fn, ms) { const id = ++state.timerId; state.timers[id] = {fn, ms}; return id; },
+        clearTimeout(id) { delete state.timers[id]; }
+    };
     root.Lampa = {
         Storage: {get(k, d) { return Object.hasOwn(state.storage, k) ? state.storage[k] : d; }, set(k, v) { state.storage[k] = v; }, field(k) { return k === 'player' ? (options.player || 'tizen') : undefined; }},
         Platform: {is(name) { return name === (options.platform || 'tizen'); }},
@@ -81,8 +85,11 @@ function environment(options = {}) {
         Player: {
             listener: {follow(k, fn) { state.playerEvents[k] = fn; }},
             playlist(p) { state.playlist = p; },
-            play(data) { state.playerEvents.start(data); state.played = data; }
-        }
+            play(data) { state.playerEvents.start(data); state.played = data; },
+            playdata() { return state.played; },
+            close() { state.closed = true; state.played = null; state.playerEvents.destroy(); }
+        },
+        PlayerVideo: {listener: {follow(k, fn) { state.videoEvents[k] = fn; }}}
     };
     const instance = factory(root); instance.boot();
     state.choose = function (predicate) {
@@ -90,6 +97,11 @@ function environment(options = {}) {
         const item = menu.items.find(predicate);
         assert.ok(item, 'Expected menu item: ' + menu.title);
         menu.onSelect(item);
+    };
+    state.fireTimer = function (ms) {
+        const id = Object.keys(state.timers).find(id => state.timers[id].ms === ms);
+        assert.ok(id, 'Expected timer: ' + ms);
+        const callback = state.timers[id].fn; delete state.timers[id]; callback();
     };
     return {state, root, instance};
 }
@@ -161,4 +173,85 @@ test('Tizen browser mode requires AVPlay without altering global player settings
     assert.equal(state.played, null);
     assert.equal(state.menu.title, 'Обери штатний плеєр Tizen');
     assert.equal(state.storage.player, undefined);
+});
+
+function filmQualityMenu(env) {
+    env.instance.open({title: 'Бджоляр', original_title: 'The Beekeeper', release_date: '2024-01-10'});
+    env.state.choose(i => i.value && i.value.id === 'the-beekeeper-2024');
+    env.state.choose(i => i.value && i.value.source === 'uakino');
+}
+
+test('launch replaces a cached URL with the latest Pages entry before opening AVPlay', () => {
+    const env = environment(); filmQualityMenu(env);
+    const updated = JSON.parse(JSON.stringify(catalog));
+    const ep = updated.titles[0].releases[0].episodes[0];
+    ep.qualities['1080p'] = 'https://ashdi.vip/new-location/hls/1080/fresh/index.m3u8';
+    env.state.catalog = updated;
+    env.state.choose(i => i.value === '1080p');
+    assert.equal(env.state.played.url, ep.qualities['1080p']);
+    assert.equal(env.state.requests.filter(r => r.url.includes('catalog.json')).length, 2);
+});
+
+test('a newly unavailable entry never opens the stale cached stream', () => {
+    const env = environment(); filmQualityMenu(env);
+    const updated = JSON.parse(JSON.stringify(catalog));
+    updated.titles[0].releases[0].episodes[0].state = 'unavailable';
+    env.state.catalog = updated;
+    env.state.choose(i => i.value === '1080p');
+    assert.equal(env.state.played, null);
+    assert.equal(env.state.menu.title, 'Ця версія зараз недоступна');
+});
+
+test('canceling link refresh prevents late replies from starting video', () => {
+    const options = {}; const env = environment(options); filmQualityMenu(env);
+    options.delayed = true;
+    env.state.choose(i => i.value === '1080p');
+    const req = env.state.requests.at(-1);
+    env.state.menu.onBack();
+    req.status = 200; req.responseText = JSON.stringify(catalog); req.onload();
+    assert.equal(req.aborted, true);
+    assert.equal(env.state.played, null);
+    assert.ok(env.state.menu.title.includes('Якість'));
+});
+
+test('a stuck native startup closes after 45 seconds and exposes a retry menu', () => {
+    const env = environment(); filmQualityMenu(env);
+    env.state.choose(i => i.value === '1080p');
+    env.state.fireTimer(45000);
+    assert.equal(env.state.closed, true);
+    assert.equal(env.state.menu.title, 'Відео не запустилося');
+    assert.ok(env.state.storage.faborn_ukr_last_error.includes('45 секунд'));
+});
+
+test('actual playback progress cancels the startup watchdog', () => {
+    const env = environment(); filmQualityMenu(env);
+    env.state.choose(i => i.value === '1080p');
+    env.state.videoEvents.timeupdate({current: 1});
+    assert.equal(Object.keys(env.state.timers).length, 0);
+    assert.equal(env.state.closed, undefined);
+});
+
+test('a prepared player awaiting a resume choice is not closed by the startup watchdog', () => {
+    const env = environment(); filmQualityMenu(env);
+    env.state.choose(i => i.value === '1080p');
+    env.state.videoEvents.loadeddata({duration: 6000, current: 0});
+    assert.equal(Object.keys(env.state.timers).length, 0);
+    assert.equal(env.state.closed, undefined);
+});
+
+test('native AVPlay error is shown and a foreign player is never closed by old timers', () => {
+    const env = environment(); filmQualityMenu(env);
+    env.state.choose(i => i.value === '1080p');
+    env.state.videoEvents.error({error: {message: 'PLAYER_ERROR_CONNECTION_FAILED'}});
+    env.state.fireTimer(0);
+    assert.ok(env.state.menu.items[0].subtitle.includes('PLAYER_ERROR_CONNECTION_FAILED'));
+    assert.equal(env.state.closed, true);
+
+    const other = environment(); filmQualityMenu(other);
+    other.state.choose(i => i.value === '1080p');
+    const oldTimer = Object.values(other.state.timers)[0].fn;
+    other.root.Lampa.Player.play({url: 'https://other.example/movie.mp4'});
+    oldTimer();
+    assert.equal(other.state.closed, undefined);
+    assert.equal(other.state.played.url, 'https://other.example/movie.mp4');
 });
