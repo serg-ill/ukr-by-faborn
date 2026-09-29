@@ -57,7 +57,7 @@ test('escapes source labels before Lampa templates', () => {
 });
 
 function environment(options = {}) {
-    const state = {storage: {}, follows: {}, playerEvents: {}, videoEvents: {}, timers: {}, timerId: 0, params: [], notices: [], menu: null, played: null, requests: [], catalog: catalog};
+    const state = {storage: {}, follows: {}, playerEvents: {}, videoEvents: {}, nativeEvents: {}, timers: {}, timerId: 0, params: [], notices: [], menu: null, played: null, requests: [], catalog: catalog};
     const jq = () => ({length: 0, append() { return this; }});
     function XHR() { state.requests.push(this); }
     XHR.prototype.open = function (_, url) { this.url = url; };
@@ -85,11 +85,11 @@ function environment(options = {}) {
         Player: {
             listener: {follow(k, fn) { state.playerEvents[k] = fn; }},
             playlist(p) { state.playlist = p; },
-            play(data) { state.playerEvents.start(data); state.played = data; },
+            play(data) { state.playerEvents.start(data); state.played = data; if (state.playerEvents.ready) state.playerEvents.ready(data); },
             playdata() { return state.played; },
             close() { state.closed = true; state.played = null; state.playerEvents.destroy(); }
         },
-        PlayerVideo: {listener: {follow(k, fn) { state.videoEvents[k] = fn; }}}
+        PlayerVideo: {listener: {follow(k, fn) { state.videoEvents[k] = fn; }}, video() { return {addEventListener(k, fn) { state.nativeEvents[k] = fn; }}; }}
     };
     const instance = factory(root); instance.boot();
     state.choose = function (predicate) {
@@ -154,6 +154,25 @@ test('install is idempotent and does not modify another plugin playback', () => 
     const foreign = {url: 'https://other.example/movie.m3u8'};
     state.playerEvents.start(foreign);
     assert.equal(foreign.url, 'https://other.example/movie.m3u8');
+});
+test('input settings supply the string values required by Lampa Params.bind', () => {
+    const {state} = environment();
+    const inputs = state.params.filter(p => p.param.type === 'input');
+    assert.ok(inputs.length > 0);
+    for (const {param} of inputs) {
+        assert.equal(typeof param.values, 'string', 'Lampa dereferences undefined values when opening settings: ' + param.name);
+        assert.equal(typeof param.default, 'string');
+        assert.ok(param.placeholder);
+    }
+});
+test('diagnostics can be opened directly from the movie menu', () => {
+    const {instance, state} = environment();
+    instance.open({title: 'Бджоляр'});
+    state.choose(i => i.action === 'diagnostics');
+    assert.equal(state.menu.title, 'Діагностика');
+    assert.ok(state.menu.items.some(i => i.title.includes(instance.version)));
+    assert.ok(state.menu.items.some(i => i.title.includes('Плеєр Lampa: tizen')));
+    assert.ok(state.menu.items.some(i => i.title === 'AVPlay API: недоступний'));
 });
 test('browser playback is explicitly blocked after known segment CORS failure', () => {
     const {instance, state} = environment({platform: 'browser'});
@@ -254,4 +273,24 @@ test('native AVPlay error is shown and a foreign player is never closed by old t
     oldTimer();
     assert.equal(other.state.closed, undefined);
     assert.equal(other.state.played.url, 'https://other.example/movie.mp4');
+});
+test('Tizen event.error is captured even when Lampa does not forward it', () => {
+    for (const detail of [{code: 'tizen', message: 'PLAYER_ERROR_CONNECTION_FAILED'}, 'code [0] prepare failed']) {
+        const env = environment(); filmQualityMenu(env);
+        env.state.choose(i => i.value === '1080p');
+        env.state.nativeEvents.error({error: detail});
+        env.state.fireTimer(0);
+        assert.equal(env.state.closed, true);
+        assert.ok(env.state.storage.faborn_ukr_last_error.includes(typeof detail === 'string' ? detail : detail.message));
+        assert.ok(env.state.storage.faborn_ukr_last_launch.includes('Бджоляр'));
+    }
+});
+test('a delayed error from a previous native video cannot close another plugin', () => {
+    const env = environment(); filmQualityMenu(env);
+    env.state.choose(i => i.value === '1080p');
+    const oldNativeError = env.state.nativeEvents.error;
+    env.root.Lampa.Player.play({url: 'https://other.example/movie.mp4'});
+    oldNativeError({error: 'late native error'});
+    assert.equal(env.state.closed, undefined);
+    assert.equal(Object.keys(env.state.timers).length, 0);
 });

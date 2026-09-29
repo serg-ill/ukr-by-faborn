@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.2 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.3 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.2';
+    var VERSION = '0.1.0-beta.3';
     var NAME = 'ukr by Faborn';
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
@@ -175,9 +175,11 @@
         if (!matches.length) rows.push({title: 'Не знайдено: ' + (query || movie.title || movie.name || movie.original_title || movie.original_name || 'назва картки не передана'), subtitle: 'У тестовому індексі ' + catalog.titles.length + ' назви. Натисни, щоб відкрити їхній список.', action: 'browse'});
         rows.push({title: 'Змінити пошукову назву', action: 'search'});
         rows.push({title: 'Усі назви бета-індексу', action: 'browse'});
+        rows.push({title: 'Версія та діагностика', subtitle: VERSION, action: 'diagnostics'});
         select(NAME + ' · ' + VERSION + (query ? ' · ' + query : ''), rows, function (row) {
             if (row.action === 'search') search(movie, catalog);
             else if (row.action === 'browse') browse(movie, catalog);
+            else if (row.action === 'diagnostics') diagnostics();
             else releases(movie, catalog, row.value);
         });
     }
@@ -327,6 +329,21 @@
             playbackProblem('Плеєр не почав відтворення за 45 секунд. Посилання могло змінитися або телевізор не зміг відкрити цей потік.', data);
         }, 45000);
     }
+    function playbackError(event, data) {
+        if (!data || watchedPlayback !== data || !event) return;
+        var detail = event.error || event;
+        if (typeof detail === 'object') detail = detail.message || detail.code;
+        root.setTimeout(function () { playbackProblem('Помилка плеєра: ' + text(detail || 'невідома помилка'), data); }, 0);
+    }
+    function watchNativeError(data) {
+        if (!data || watchedPlayback !== data || !L.PlayerVideo || !L.PlayerVideo.video) return;
+        try {
+            var video = L.PlayerVideo.video();
+            // Lampa's Tizen adapter puts the native error in event.error, not video.error.
+            // Its own listener is destroyed together with this video object.
+            if (video && video.addEventListener) video.addEventListener('error', function (event) { playbackError(event, data); });
+        } catch (ignore) { /* The startup timeout still covers an unavailable adapter. */ }
+    }
     function launch(movie, catalog, title, release, episode, preference) {
         var isTizen = L.Platform && L.Platform.is && L.Platform.is('tizen');
         if (L.Platform && !isTizen) {
@@ -373,6 +390,7 @@
                 }) : [];
                 data.playlist = playlist;
                 playbackContext = {movie: movie};
+                save('last_launch', title.title + ' · ' + preference + ' · передано плеєру');
                 save('last_' + title.id, episode.id);
                 if (L.Player.playlist) L.Player.playlist(playlist);
                 L.Player.play(data);
@@ -381,14 +399,17 @@
     }
     function diagnostics() {
         loadCatalog(false, function (error, catalog) {
-            var lines = [NAME + ' ' + VERSION, 'GitHub Pages: ' + (baseURL() || 'не визначено')];
+            var lines = [NAME + ' ' + VERSION];
+            if (L.Storage.field) lines.push('Плеєр Lampa: ' + L.Storage.field('player') + ' · для бети потрібен Tizen / AVPlay');
+            lines.push('AVPlay API: ' + (root.webapis && root.webapis.avplay ? 'доступний' : 'недоступний'));
+            if (storage('last_error', '')) lines.push('Остання помилка плеєра: ' + storage('last_error', ''));
+            if (storage('last_launch', '')) lines.push('Останній запуск: ' + storage('last_launch', ''));
+            if (error || lastDiagnostic) lines.push(error ? error.message : lastDiagnostic);
+            lines.push('GitHub Pages: ' + (baseURL() || 'не визначено'));
             if (catalog) {
                 lines.push('Індекс: ' + catalog.generatedAt + ' · назв: ' + catalog.titles.length);
                 (catalog.warnings || []).forEach(function (warning) { lines.push(warning); });
             }
-            if (error || lastDiagnostic) lines.push(error ? error.message : lastDiagnostic);
-            if (storage('last_error', '')) lines.push('Остання помилка плеєра: ' + storage('last_error', ''));
-            if (L.Storage.field) lines.push('Плеєр Lampa: ' + L.Storage.field('player') + ' · для бети потрібен Tizen / AVPlay');
             select('Діагностика', lines.map(function (line) { return {title: line}; }), function () { diagnostics(); }, restore);
         });
     }
@@ -403,7 +424,7 @@
         }});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_browse', type: 'button'}, field: {name: 'Відкрити бета-індекс'}, onChange: function () { rememberController(); loadCatalog(false, function (error, catalog) { if (error) notify(error.message); else browse({}, catalog); }); }});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_diagnostic', type: 'button'}, field: {name: 'Версія та діагностика', description: VERSION}, onChange: function () { rememberController(); diagnostics(); }});
-        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_pages', type: 'input', default: ''}, field: {name: 'Адреса GitHub Pages', description: 'Зазвичай визначається автоматично. Резерв: https://USERNAME.github.io/REPOSITORY/'}});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_pages', type: 'input', values: '', default: '', placeholder: 'Визначається автоматично'}, field: {name: 'Адреса GitHub Pages', description: 'Зазвичай визначається автоматично. Резерв: https://USERNAME.github.io/REPOSITORY/'}});
     }
     function attach(event) {
         if (!event || event.type !== 'complite' || !event.object || !event.object.activity || !event.data || !event.data.movie) return;
@@ -441,6 +462,7 @@
                 save('last_' + data.faborn_title, data.faborn_episode);
                 watchPlayback(data);
             });
+            L.Player.listener.follow('ready', watchNativeError);
             L.Player.listener.follow('destroy', clearPlaybackWatch);
         }
         if (L.PlayerVideo && L.PlayerVideo.listener) {
@@ -449,11 +471,7 @@
                 if (watchedPlayback && event && event.current > 0) clearPlaybackWatch();
             });
             L.PlayerVideo.listener.follow('error', function (event) {
-                var data = watchedPlayback;
-                if (!data || !event) return;
-                var detail = event.error;
-                if (detail && typeof detail === 'object') detail = detail.message || detail.code;
-                root.setTimeout(function () { playbackProblem('Помилка плеєра: ' + text(detail || 'невідома помилка'), data); }, 0);
+                playbackError(event, watchedPlayback);
             });
         }
         settings();

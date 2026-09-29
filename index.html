@@ -2,16 +2,17 @@
 <html lang="uk">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ukr by Faborn · beta 2</title>
+<title>ukr by Faborn · beta 3</title>
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 <style>
 body{margin:0;background:#111722;color:#f3f6fc;font:18px/1.55 system-ui,sans-serif}main{max-width:780px;margin:9vh auto;padding:28px}header{display:flex;align-items:center;gap:22px}header img{width:72px}h1{font-size:36px;margin:0}small{color:#b7c4d8}code{display:block;padding:18px;background:#202a3a;border-radius:12px;overflow-wrap:anywhere;color:#a9d6ff}a{color:#a9d6ff}.note{border-left:4px solid #ffd54a;padding-left:18px;margin:28px 0}li{margin-bottom:8px}
 </style>
 <main>
-<header><img src="assets/icon.svg" alt=""><div><h1>ukr by Faborn</h1><small>0.1.0-beta.2 · Lampa / Tizen · GitHub Pages</small></div></header>
+<header><img src="assets/icon.svg" alt=""><div><h1>ukr by Faborn</h1><small>0.1.0-beta.3 · Lampa / Tizen · GitHub Pages</small></div></header>
 <p>Додай цю адресу в Lampa: <strong>Налаштування → Розширення → Додати</strong>.</p>
 <code id="install">ukr-by-faborn.js</code>
-<p>Для оновлення заміни адресу наявного розширення й повністю перезапусти Lampa. У картці фільму або серіалу з’явиться окрема синьо-жовта іконка <strong>ukr by Faborn</strong>.</p>
+<p>Якщо розширення вже встановлене, залиш його адресу й повністю перезапусти Lampa. Вводити посилання заново не потрібно. У картці фільму або серіалу є окрема синьо-жовта іконка <strong>ukr by Faborn</strong>; у її меню — «Версія та діагностика».</p>
+<p>Beta.3 виправляє падіння налаштувань. Успішний запуск відео на Samsung ще потрібно підтвердити.</p>
 <div class="note"><strong>Тестовий індекс першої бети</strong><br>«Бджоляр» (2024), «Профі» (2025), «Джек Річер» — сезон 3, серії 1–8 у DniproFilm та Uaflix. Це не повні каталоги сайтів.</div>
 <p><strong>Для перевірки на Samsung обери плеєр Tizen / AVPlay у Lampa.</strong> Сегменти Ashdi блокуються CORS у браузерному плеєрі. Відтворення цієї бети на фізичному телевізорі ще не підтверджене.</p>
 <ul><li>Фільми: 4K / 1080p / 720p / 480p, якщо потік доступний.</li><li>Серіал: сезони, серії, озвучення та плейлист для наступної серії.</li><li>Відео надходить з Ashdi. GitHub розміщує розширення й індекс.</li></ul>
@@ -21,7 +22,7 @@ body{margin:0;background:#111722;color:#f3f6fc;font:18px/1.55 system-ui,sans-ser
 <script>
 (function(){
 var base=location.href.split(/[?#]/)[0].replace(/index\.html$/,'');if(base.charAt(base.length-1)!=='/')base+='/';
-document.getElementById('install').textContent=base+'ukr-by-faborn.js?v=0.1.0-beta.2';
+document.getElementById('install').textContent=base+'ukr-by-faborn.js';
 var r=new XMLHttpRequest();r.open('GET','data/catalog.json',true);r.onload=function(){try{var d=JSON.parse(r.responseText);document.getElementById('status').textContent='Індекс сформовано: '+d.generatedAt+' · назв: '+d.titles.length;}catch(e){document.getElementById('status').textContent='Індекс ще не опубліковано. Перевір GitHub Actions.';}};r.onerror=function(){document.getElementById('status').textContent='Не вдалося завантажити індекс.';};r.send();
 }());
 </script>
