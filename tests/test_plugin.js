@@ -101,6 +101,15 @@ function environment(options = {}) {
         assert.ok(item, 'Expected menu item: ' + menu.title);
         menu.onSelect(item);
     };
+    state.play = function (quality, predicate = () => true) {
+        if (state.menu.items.some(i=>i.action==='quality')) {
+            state.choose(i=>i.action==='quality'); state.choose(i=>i.value===quality);
+        }
+        const row=state.menu.items.find(i=>i.group && i.value===quality && i.group.entries.some(predicate));
+        assert.ok(row,'Expected translation and quality');
+        state.choose(i=>i===row);
+        if(row.action==='sources') state.choose(i=>i.action==='play' && predicate(i));
+    };
     state.fireTimer = function (ms) {
         const id = Object.keys(state.timers).find(id => state.timers[id].ms === ms);
         assert.ok(id, 'Expected timer: ' + ms);
@@ -112,7 +121,7 @@ function environment(options = {}) {
 test('full film flow hands 4K, quality map, subtitles and stable timeline to Lampa', () => {
     const {instance, state} = environment();
     instance.open({title: 'Профі', original_title: 'A Working Man', release_date: '2025-03-26'});
-    state.choose(i => i.value === '2160p');
+    state.play('2160p');
     assert.ok(state.played.url.includes('/hls/2160/'));
     assert.equal(Object.keys(state.played.quality).length, 4);
     assert.equal(state.played.timeline.hash, 'faborn|tmdb-movie-a working man|0|0');
@@ -123,7 +132,7 @@ test('series uses one episode selector and one source/quality list', () => {
     const {instance,state} = environment();
     instance.open({name:'Річер',original_name:'Reacher',first_air_date:'2022-02-03'});
     state.choose(i=>i.action==='episode'); state.choose(i=>i.value===3); state.choose(i=>i.value===2);
-    state.choose(i=>i.action==='play' && i.release.voice==='Uaflix' && i.value==='1080p');
+    state.play('1080p',i=>i.release.voice==='Uaflix');
     assert.equal(state.played.episode,2); assert.equal(state.played.season,3);
     assert.equal(state.played.voice_name,'Uaflix'); assert.deepEqual(state.playlist,[]);
     assert.equal(state.playerReturn,'full_start');
@@ -172,14 +181,14 @@ test('diagnostics remain in settings rather than the playback menu', () => {
 test('browser playback is explicitly blocked after known segment CORS failure', () => {
     const {instance, state} = environment({platform: 'browser'});
     instance.open({title: 'Профі'});
-    state.choose(i => i.value === '2160p');
+    state.play('2160p');
     assert.equal(state.played, null);
     assert.ok(state.menu.title.includes('Tizen'));
 });
 test('Tizen browser mode requires AVPlay without altering global player settings', () => {
     const {instance, state} = environment({player: 'inner'});
     instance.open({title: 'Профі'});
-    state.choose(i => i.value === '2160p');
+    state.play('2160p');
     assert.equal(state.played, null);
     assert.equal(state.menu.title, 'Потрібен плеєр Tizen');
     assert.equal(state.storage.player, undefined);
@@ -191,13 +200,13 @@ function filmQualityMenu(env) {
 
 test('selected manifest is checked immediately before AVPlay, and a 404 is not played', () => {
     const options = {}; const env = environment(options); filmQualityMenu(env);
-    options.failure = true; env.state.choose(i=>i.value==='1080p');
+    options.failure = true; env.state.play('1080p');
     assert.equal(env.state.played,null); assert.ok(env.state.notices.some(n=>n.includes('404') || n.includes('403')));
 });
 test('canceling link refresh prevents late replies from starting video', () => {
     const options = {}; const env = environment(options); filmQualityMenu(env);
     options.delayed = true;
-    env.state.choose(i => i.value === '1080p');
+    env.state.play('1080p');
     const req = env.state.requests.at(-1);
     env.state.menu.onBack();
     req.status = 200; req.responseText = JSON.stringify(catalog); req.onload();
@@ -208,7 +217,7 @@ test('canceling link refresh prevents late replies from starting video', () => {
 
 test('a stuck native startup closes after 45 seconds and exposes a retry menu', () => {
     const env = environment(); filmQualityMenu(env);
-    env.state.choose(i => i.value === '1080p');
+    env.state.play('1080p');
     env.state.fireTimer(45000);
     assert.equal(env.state.closed, true);
     assert.equal(env.state.menu.title, 'Відео не запустилося');
@@ -217,7 +226,7 @@ test('a stuck native startup closes after 45 seconds and exposes a retry menu', 
 
 test('actual playback progress cancels the startup watchdog', () => {
     const env = environment(); filmQualityMenu(env);
-    env.state.choose(i => i.value === '1080p');
+    env.state.play('1080p');
     env.state.videoEvents.timeupdate({current: 1});
     assert.equal(Object.keys(env.state.timers).length, 0);
     assert.equal(env.state.closed, undefined);
@@ -225,7 +234,7 @@ test('actual playback progress cancels the startup watchdog', () => {
 
 test('a prepared player awaiting a resume choice is not closed by the startup watchdog', () => {
     const env = environment(); filmQualityMenu(env);
-    env.state.choose(i => i.value === '1080p');
+    env.state.play('1080p');
     env.state.videoEvents.loadeddata({duration: 6000, current: 0});
     assert.equal(Object.keys(env.state.timers).length, 0);
     assert.equal(env.state.closed, undefined);
@@ -233,14 +242,14 @@ test('a prepared player awaiting a resume choice is not closed by the startup wa
 
 test('native AVPlay error is shown and a foreign player is never closed by old timers', () => {
     const env = environment(); filmQualityMenu(env);
-    env.state.choose(i => i.value === '1080p');
+    env.state.play('1080p');
     env.state.videoEvents.error({error: {message: 'PLAYER_ERROR_CONNECTION_FAILED'}});
     env.state.fireTimer(0);
     assert.ok(env.state.menu.items[0].subtitle.includes('PLAYER_ERROR_CONNECTION_FAILED'));
     assert.equal(env.state.closed, true);
 
     const other = environment(); filmQualityMenu(other);
-    other.state.choose(i => i.value === '1080p');
+    other.state.play('1080p');
     const oldTimer = Object.values(other.state.timers)[0].fn;
     other.root.Lampa.Player.play({url: 'https://other.example/movie.mp4'});
     oldTimer();
@@ -250,7 +259,7 @@ test('native AVPlay error is shown and a foreign player is never closed by old t
 test('Tizen event.error is captured even when Lampa does not forward it', () => {
     for (const detail of [{code: 'tizen', message: 'PLAYER_ERROR_CONNECTION_FAILED'}, 'code [0] prepare failed']) {
         const env = environment(); filmQualityMenu(env);
-        env.state.choose(i => i.value === '1080p');
+        env.state.play('1080p');
         env.state.nativeEvents.error({error: detail});
         env.state.fireTimer(0);
         assert.equal(env.state.closed, true);
@@ -260,7 +269,7 @@ test('Tizen event.error is captured even when Lampa does not forward it', () => 
 });
 test('a delayed error from a previous native video cannot close another plugin', () => {
     const env = environment(); filmQualityMenu(env);
-    env.state.choose(i => i.value === '1080p');
+    env.state.play('1080p');
     const oldNativeError = env.state.nativeEvents.error;
     env.root.Lampa.Player.play({url: 'https://other.example/movie.mp4'});
     oldNativeError({error: 'late native error'});
@@ -340,7 +349,7 @@ test('direct HLS derives actual cropped 4K and relative variants, never fabricat
 });
 test('new film outside catalog flows through source, embed, HLS and AVPlay without Pages refresh', () => {
     const env = directEnvironment(); chooseDirect(env);
-    env.state.choose(i=>i.value==='2160p');
+    env.state.play('2160p');
     assert.equal(env.state.played.url,'https://ashdi.vip/fixture/hls/2160/index.m3u8');
     assert.equal(env.state.played.card.id,68718);
     assert.equal(env.state.requests.filter(r=>r.url.includes('catalog.json')).length,1);
@@ -350,7 +359,7 @@ test('new film outside catalog flows through source, embed, HLS and AVPlay witho
 });
 test('one unavailable provider and failed Pages index do not block another source', () => {
     const env=directEnvironment({intercept(req) {if(req.url.includes('catalog.json')){req.status=503;req.onload();return true;}}});
-    chooseDirect(env); env.state.choose(i=>i.value==='1080p'); assert.ok(env.state.played);
+    chooseDirect(env); env.state.play('1080p'); assert.ok(env.state.played);
     assert.ok(env.state.requests.some(r=>r.url==='https://uaserials.my/'));
     assert.ok(env.state.requests.some(r=>r.url==='https://uafix.net/search.html'));
 });
@@ -400,10 +409,10 @@ test('an unavailable UAKino AJAX playlist does not discard its direct player', (
         }
         if(req.url.includes('/engine/ajax/playlists.php')) { req.status=503;req.onload();return true; }
     }});
-    chooseDirect(env);env.state.choose(i=>i.value==='1080p');assert.ok(env.state.played);
+    chooseDirect(env);env.state.play('1080p');assert.ok(env.state.played);
 });
 test('direct playback watchdog refreshes the player without a static catalog entry', () => {
-    const env=directEnvironment();chooseDirect(env);env.state.choose(i=>i.value==='1080p');
+    const env=directEnvironment();chooseDirect(env);env.state.play('1080p');
     env.state.fireTimer(45000);env.state.choose(i=>i.action==='retry');
     assert.equal(env.state.requests.filter(r=>r.url==='https://ashdi.vip/vod/3306').length,2);
     assert.equal(env.state.requests.filter(r=>r.url.includes('catalog.json')).length,1);assert.ok(env.state.played);
@@ -481,15 +490,16 @@ function multiSourceEnvironment(series=false, intercept) {
 test('Hail Mary: card to actual UASerials source/quality to player, without intermediate menus',()=>{
     const env=multiSourceEnvironment(); env.instance.open(hailCard);
     const rows=env.state.menu.items.filter(i=>i.action==='play');
-    assert.equal(rows.length,2); assert.ok(rows.every(i=>i.title.includes('UASerials')));
+    assert.equal(rows.length,1); assert.ok(rows.every(i=>i.subtitle.includes('UASerials')));
+    assert.ok(env.state.menu.items.some(i=>i.action==='quality' && i.title.includes('1080p')));
     assert.ok(!env.state.menu.items.some(i=>/Знайти|індекс|діагностика/i.test(i.title)));
-    env.state.choose(i=>i.value==='1080p'); assert.equal(env.state.played.card.id,hailCard.id);
+    env.state.play('1080p'); assert.equal(env.state.played.card.id,hailCard.id);
     assert.ok(env.state.played.url.includes('hdvbua.pro')); assert.equal(env.state.playerReturn,'full_start');
 });
 test('From: changing season/episode selects the matching stream and voice',()=>{
     const env=multiSourceEnvironment(true);env.instance.open(fromCard);
     env.state.choose(i=>i.action==='episode');env.state.choose(i=>i.value===2);env.state.choose(i=>i.value===3);
-    env.state.choose(i=>i.action==='play' && i.release.voice==='BaibaKoTV' && i.value==='1080p');
+    env.state.play('1080p',i=>i.release.voice==='BaibaKoTV');
     assert.equal(env.state.played.season,2);assert.equal(env.state.played.episode,3);
     assert.ok(env.state.played.url.includes('from.s02e03.baibako'));assert.equal(env.state.played.voice_name,'BaibaKoTV');
     assert.deepEqual(env.state.playlist,[]);
@@ -511,8 +521,57 @@ test('refresh keeps the chosen voice when a title offers multiple embedded playe
         else return false;
         req.status=200;req.onload();return true;
     });
-    env.instance.open(hailCard);env.state.choose(i=>i.action==='play' && i.release.voice==='Багатоголосий · плеєр 2' && i.value==='1080p');
+    env.instance.open(hailCard);env.state.play('1080p',i=>i.release.voice==='Багатоголосий · плеєр 2');
     env.state.fireTimer(45000);env.state.choose(i=>i.action==='retry');
     assert.equal(env.state.played.voice_name,'Багатоголосий · плеєр 2');
     assert.equal(env.state.requests.filter(r=>r.url==='https://hdvbua.pro/embed/1011709/b0c42c552').length,2);
+});
+
+function groupedEnvironment() {
+    const env=environment(), title=JSON.parse(JSON.stringify(catalog.titles[0])), seed=title.releases[0];
+    title.releases=['HDrezka Studio','BaibaKoTV','Український дубляж'].flatMap((voice,index)=>['uakino','kinoukr'].map(source=>{
+        const r=JSON.parse(JSON.stringify(seed));r.id=source+'-'+index;r.source=source;r.voice=voice;
+        r.episodes.forEach((e,n)=>{e.id=r.id+'-'+n;});return r;
+    }));
+    env.state.catalog={schema:1,titles:[title]};
+    env.instance.open({title:title.title,original_title:title.originalTitle,release_date:title.year+'-01-01'});
+    return env;
+}
+test('24 stream variants become three translations and an independent quality selector',()=>{
+    const {state}=groupedEnvironment();
+    assert.equal(state.menu.items.length,5);
+    assert.equal(state.menu.items.filter(i=>i.action==='sources').length,3);
+    state.choose(i=>i.action==='quality');
+    assert.deepEqual(state.menu.items.map(i=>i.value),['2160p','1080p','720p','480p']);
+    state.choose(i=>i.value==='720p');
+    assert.equal(state.menu.items.filter(i=>i.group).length,3);
+    state.choose(i=>i.title==='BaibaKoTV');
+    assert.deepEqual(state.menu.items.map(i=>i.title),['UAKino','KinoUkr']);
+    assert.ok(state.menu.items.every(i=>i.value==='720p' && i.release.voice==='BaibaKoTV'));
+    state.choose(i=>i.release.source==='kinoukr');
+    assert.equal(state.played.voice_name,'BaibaKoTV');assert.ok(state.played.url.includes('/720/'));
+});
+test('quality and source submenus return to their translation and finally restore the card',()=>{
+    const {state}=groupedEnvironment(); const requests=state.requests.length;
+    state.choose(i=>i.action==='quality');state.menu.onBack();
+    state.choose(i=>i.title==='BaibaKoTV');state.menu.onBack();
+    assert.equal(state.menu.items.find(i=>i.selected).title,'BaibaKoTV');
+    assert.equal(state.requests.length,requests,'Grouping must not repeat the source search');
+    state.menu.onBack();assert.equal(state.controller,'full_start');assert.equal(state.menu,null);
+});
+test('quality choice persists across cards and single-source translations launch directly',()=>{
+    const env=multiSourceEnvironment();env.instance.open(hailCard);
+    env.state.choose(i=>i.action==='quality');env.state.choose(i=>i.value==='720p');env.state.menu.onBack();
+    env.instance.open(hailCard);
+    const row=env.state.menu.items.find(i=>i.group);
+    assert.equal(row.action,'play');assert.equal(row.value,'720p');
+    env.state.choose(i=>i===row);assert.ok(env.state.played.url.includes('/720/'));
+    assert.equal(env.state.playerReturn,'full_start');
+});
+test('a quality missing from a new title falls back without inventing streams',()=>{
+    const env=multiSourceEnvironment();env.state.storage.faborn_ukr_quality='2160p';env.instance.open(hailCard);
+    assert.equal(env.state.menu.items.find(i=>i.group).value,'1080p');
+    env.state.choose(i=>i.action==='quality');assert.ok(!env.state.menu.items.some(i=>i.value==='2160p'));
+    env.state.menu.onBack();env.state.menu.onBack();env.state.storage.faborn_ukr_quality='360p';env.instance.open(hailCard);
+    assert.equal(env.state.menu.items.find(i=>i.group).value,'720p');
 });

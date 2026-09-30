@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.5 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.6 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.5';
+    var VERSION = '0.1.0-beta.6';
     var NAME = 'ukr by Faborn';
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
@@ -669,9 +669,61 @@
         var p = PROVIDERS.filter(function (v) { return v.id === id; })[0];
         return p ? p.name : id === 'kinoukr' ? 'KinoUkr' : id;
     }
+    function qualityLabel(value) { return value === '2160p' ? '4K · 2160p' : value === 'auto' ? 'Авто' : value; }
+    function voiceLabel(release, episode) {
+        // The player number distinguishes mirrors, not translations. Keep the original release for playback.
+        return plain(episode.voice || release.voice).replace(/\s*·\s*плеєр\s+\d+$/i,'').trim() || 'Українське озвучення';
+    }
+    function sourceGroups(session) {
+        var entries = [], values = [], preferredSource = storage('source','uakino');
+        session.title.releases.forEach(function (r) {
+            r.episodes.forEach(function (e) {
+                if (e.season !== session.season || e.episode !== session.episode || !e.resolvedAt || e.error) return;
+                var qualities = qualityNames(e); if (!qualities.length) qualities = ['auto'];
+                values = values.concat(qualities);
+                entries.push({release:r,episode:e,qualities:qualities});
+            });
+        });
+        values = unique(values).sort(function (a,b) { return (parseInt(b,10) || 0)-(parseInt(a,10) || 0); });
+        var preference = session.qualityPreference || storage('quality','best'), selected = values[0], limit = parseInt(preference,10);
+        if (values.indexOf(preference) >= 0) selected = preference;
+        else if (limit) {
+            var lower = values.filter(function (q) { return parseInt(q,10) <= limit; });
+            var numeric = values.filter(function (q) { return q !== 'auto'; });
+            selected = lower[0] || numeric[numeric.length-1] || selected;
+        }
+        var groups = [], byVoice = Object.create(null);
+        entries.sort(function (a,b) { return (b.release.source === preferredSource ? 1 : 0)-(a.release.source === preferredSource ? 1 : 0); }).forEach(function (entry) {
+            if (entry.qualities.indexOf(selected) < 0) return;
+            var voice = voiceLabel(entry.release,entry.episode), key = normalize(voice) || voice;
+            var group = byVoice[key];
+            if (!group) { group = {key:key,voice:voice,quality:selected,entries:[]}; byVoice[key] = group; groups.push(group); }
+            group.entries.push({release:entry.release,episode:entry.episode,value:selected});
+        });
+        return {qualities:values,quality:selected,groups:groups};
+    }
+    function selectStream(session, row) {
+        if (activeSession !== session) return;
+        save('source',row.release.source); save('quality',row.value);
+        launch(session.movie,session.catalog,session.title,row.release,row.episode,row.value);
+    }
+    function chooseSource(session, group) {
+        var totals = {}, seen = {}, preferredSource = storage('source','uakino');
+        group.entries.forEach(function (entry) { var id = entry.release.source; totals[id] = (totals[id] || 0)+1; });
+        var preferred = group.entries.filter(function (entry) { return entry.release.source === preferredSource; })[0] || group.entries[0];
+        select(group.voice+' · '+qualityLabel(group.quality),group.entries.map(function (entry) {
+            var id = entry.release.source; seen[id] = (seen[id] || 0)+1;
+            return {title:sourceName(id)+(totals[id] > 1 ? ' · варіант '+seen[id] : ''),subtitle:group.voice+' · '+qualityLabel(group.quality),action:'play',release:entry.release,episode:entry.episode,value:entry.value,selected:entry === preferred};
+        }),function (row) { selectStream(session,row); },function () { renderSources(session); });
+    }
+    function chooseQuality(session, view) {
+        select('Якість',view.qualities.map(function (q) { return {title:qualityLabel(q),value:q,selected:q === view.quality}; }),function (row) {
+            session.qualityPreference = row.value; save('quality',row.value); renderSources(session);
+        },function () { renderSources(session); });
+    }
     function renderSources(session) {
         if (activeSession !== session) return;
-        var rows = [], count = 0, preferred = storage('quality','best'), preferredSource = storage('source','uakino');
+        var rows = [], view = sourceGroups(session);
         var status = Object.keys(session.status).map(function (id) {
             var errors = [];
             session.title.releases.filter(function (r) { return r.source === id; }).forEach(function (r) {
@@ -680,24 +732,23 @@
             return sourceName(id)+': '+(unique(errors).join('; ') || session.status[id]);
         });
         save('source_status',status);
+        if (view.qualities.length > 1) rows.push({title:'Якість: '+qualityLabel(view.quality),subtitle:'Змінити якість',action:'quality'});
         if (session.title.type === 'tv') rows.push({title:'Сезон '+session.season+' · Серія '+session.episode,subtitle:'Змінити сезон або серію',action:'episode'});
-        session.title.releases.slice().sort(function (a,b) { return (b.source === preferredSource ? 1 : 0)-(a.source === preferredSource ? 1 : 0); }).forEach(function (r) {
-            r.episodes.forEach(function (e) {
-                if (e.season !== session.season || e.episode !== session.episode || !e.resolvedAt || e.error) return;
-                var qualities = qualityNames(e); if (!qualities.length) qualities = ['auto'];
-                qualities.forEach(function (q,i) {
-                    rows.push({title:sourceName(r.source)+' · '+(q === '2160p' ? '4K · 2160p' : q === 'auto' ? 'Авто' : q),subtitle:'Українська · '+r.voice,action:'play',release:r,episode:e,value:q,selected:!count && (preferred === q || preferred === 'best' && i === 0)});
-                });
-                count++;
-            });
+        var focused = view.groups.filter(function (group) { return group.key === session.focusVoice; })[0] || view.groups[0];
+        view.groups.forEach(function (group) {
+            var entry = group.entries[0], many = group.entries.length > 1;
+            var names = unique(group.entries.map(function (item) { return sourceName(item.release.source); }));
+            rows.push({title:group.voice,subtitle:qualityLabel(view.quality)+' · '+(many ? 'Джерела: ' : '')+names.join(', '),action:many ? 'sources' : 'play',group:group,release:entry.release,episode:entry.episode,value:entry.value,selected:group === focused});
         });
-        if (!count) rows.push({title:'Для цієї назви немає доступного потоку',subtitle:'Можна повторити пошук. Причини: Налаштування → ukr by Faborn → Версія та діагностика.',action:'retry'});
+        if (!view.groups.length) rows.push({title:'Для цієї назви немає доступного потоку',subtitle:'Можна повторити пошук. Причини: Налаштування → ukr by Faborn → Версія та діагностика.',action:'retry'});
         rows.push({title:'Оновити джерела',action:'retry'});
         select(NAME+(session.title.type === 'tv' ? ' · S'+session.season+'E'+session.episode : ' · '+session.title.title),rows,function (row) {
+            if (row.action === 'quality') return chooseQuality(session,view);
             if (row.action === 'episode') return chooseSeason(session);
             if (row.action === 'retry') return startDiscovery(session.movie);
-            save('source',row.release.source); save('quality',row.value);
-            launch(session.movie,session.catalog,session.title,row.release,row.episode,row.value);
+            session.focusVoice = row.group.key;
+            if (row.action === 'sources') return chooseSource(session,row.group);
+            selectStream(session,row);
         },restore);
     }
     function chooseSeason(session) {
