@@ -23,6 +23,10 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
+      - name: Install native transport test headers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libcurl4-openssl-dev
       - name: Check the committed beta
         run: |
           python -m unittest discover -s tests -p 'test_*.py' -v
@@ -41,6 +45,7 @@ jobs:
           cp assets/icon.svg _site/assets/
           cp data/catalog.json data/status.json _site/data/
           cp lib/kinobase.js lib/ACORN-LICENSE _site/lib/
+          cp -R lib/4klab _site/lib/
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site

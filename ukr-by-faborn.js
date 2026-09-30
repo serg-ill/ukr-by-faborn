@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.11 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.12 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.11';
+    var VERSION = '0.1.0-beta.12';
     var NAME = 'ukr by Faborn';
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
@@ -16,6 +16,7 @@
     var seasonMetadata = {}, seasonMetadataOrder = [];
     var directTrace = [], presentation = null;
     var capturedBase = detectBase();
+    var lab4k = null, labScript = null, labLoadTimer = null, labLoadSerial = 0;
 
     function text(value) { return value === undefined || value === null ? '' : String(value); }
     function escapeHTML(value) {
@@ -1515,6 +1516,8 @@
             var lines = [NAME + ' ' + VERSION];
             if (L.Storage.field) lines.push('Плеєр Lampa: ' + L.Storage.field('player') + ' · для бети потрібен Tizen / AVPlay');
             lines.push('AVPlay API: ' + (root.webapis && root.webapis.avplay ? 'доступний' : 'недоступний'));
+            lines.push('4K-експеримент: ' + (storage('lab4k','off') === 'on' ? 'увімкнено' : 'вимкнено'));
+            if (storage('lab4k_status','')) lines.push('4K · ' + storage('lab4k_status',''));
             if (storage('last_error', '')) lines.push('Остання помилка плеєра: ' + storage('last_error', ''));
             if (storage('last_launch', '')) lines.push('Останній запуск: ' + storage('last_launch', ''));
             if (lastDiagnostic) lines.push(lastDiagnostic);
@@ -1528,6 +1531,47 @@
             }
             select('Діагностика', lines.map(function (line) { return {title: line}; }), function () { diagnostics(); }, restore);
     }
+    function cancelLabLoad() {
+        labLoadSerial++;
+        if (labLoadTimer !== null) root.clearTimeout(labLoadTimer);
+        labLoadTimer = null;
+        if (labScript) { labScript.onload = labScript.onerror = null; if (labScript.parentNode) labScript.parentNode.removeChild(labScript); labScript = null; }
+    }
+    function labChanged() {
+        if (storage('lab4k','off') !== 'on') {
+            cancelLabLoad();
+            if (lab4k) lab4k.disable();
+        }
+    }
+    function openLab() {
+        if (storage('lab4k','off') !== 'on') { notify('Спочатку увімкни «Експериментальне 4K»'); return; }
+        rememberController();
+        if (lab4k) { lab4k.open(returnController); return; }
+        var base = baseURL();
+        if (!base || !root.document || !root.document.createElement) { notify('Не визначено адресу GitHub Pages'); return; }
+        cancelLabLoad();
+        var run = labLoadSerial;
+        select('4K · Завантаження тесту',[{title:'Скасувати',subtitle:'Завантажується тест із GitHub Pages…',cancel:true}],function (row) {
+            if (row.cancel) { cancelLabLoad(); restore(); }
+        },function () { cancelLabLoad(); restore(); });
+        function error() {
+            if (run !== labLoadSerial) return;
+            cancelLabLoad(); save('lab4k_status','LOAD: не завантажено тест із GitHub Pages');
+            restore(); notify('Не вдалося завантажити 4K-тест. Деталі у діагностиці.');
+        }
+        labScript = root.document.createElement('script');
+        labScript.src = base+'lib/4klab/ui.js?v='+VERSION;
+        labScript.onerror = error;
+        labScript.onload = function () {
+            if (run !== labLoadSerial || storage('lab4k','off') !== 'on') return;
+            if (typeof root.Faborn4KLab !== 'function') { error(); return; }
+            cancelLabLoad(); L.Select.hide();
+            lab4k = root.Faborn4KLab(root,L,base+'lib/4klab/',VERSION);
+            lab4k.open(returnController);
+        };
+        labLoadTimer = root.setTimeout(error,15000);
+        root.document.head.appendChild(labScript);
+    }
     function settings() {
         var api = L.SettingsApi;
         if (!api || !api.addComponent || !api.addParam) return;
@@ -1537,6 +1581,8 @@
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_accent', type: 'select', values: {blue:'Синій', amber:'Бурштиновий', mint:'М’ятний', violet:'Фіолетовий', aurora:'Синій → фіолетовий', lagoon:'Бірюзовий → синій'}, default: 'blue'}, field: {name: 'Колір акценту', description: 'Колір або градієнт для «Панелі» та «Кінозалу». У стандартному оформленні не застосовується.'}, onChange: applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinobase:'KinoBase', kinoukr:'KinoUkr'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найвища доступна', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: 'Підсвічує варіант у списку джерел.'}});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_lab4k', type: 'select', values: {off:'Вимкнено',on:'Увімкнено'}, default: 'off'}, field: {name: 'Експериментальне 4K', description: 'Окремий тест UAKinogo / Alloha. Адаптер працює на телевізорі; після ввімкнення натисни «Перевірити 4K».'}, onChange:labChanged});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_lab4k_test', type: 'button'}, field: {name: 'Перевірити 4K', description: '«Оппенгеймер» · UA / EN / RU · 2160p AV1. Потрібен Tizen / AVPlay; сумісність визначить тест.'}, onChange:openLab});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_refresh', type: 'button'}, field: {name: 'Оновити індекс із GitHub'}, onChange: function () {
             loadCatalog(true, function (error, catalog) { notify(error ? error.message : 'Індекс оновлено: ' + catalog.titles.length + ' назв'); });
         }});

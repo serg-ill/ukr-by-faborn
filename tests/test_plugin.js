@@ -164,6 +164,26 @@ test('install is idempotent and does not modify another plugin playback', () => 
     state.playerEvents.start(foreign);
     assert.equal(foreign.url, 'https://other.example/movie.m3u8');
 });
+test('4K laboratory is off by default and cannot load from its test button while disabled', () => {
+    const {state}=environment();
+    const setting=state.params.find(p=>p.param.name==='faborn_ukr_lab4k');
+    assert.equal(setting.param.default,'off');
+    state.params.find(p=>p.param.name==='faborn_ukr_lab4k_test').onChange();
+    assert.equal(state.requests.length,0);assert.equal(state.menu,null);assert.equal(state.played,null);
+    assert.match(state.notices.at(-1),/Спочатку увімкни/);
+});
+test('canceling the optional script load ignores its late onload and returns navigation', () => {
+    const {state,root}=environment();
+    let script,opened=0;
+    root.document.createElement=()=>({});
+    root.document.head={appendChild(node){script=node;node.parentNode={removeChild(){}};}};
+    root.Faborn4KLab=()=>({open(){opened++;},disable(){}});
+    state.storage.faborn_ukr_lab4k='on';
+    state.params.find(p=>p.param.name==='faborn_ukr_lab4k_test').onChange();
+    const late=script.onload;
+    assert.match(script.src,/lib\/4klab\/ui.js/);state.menu.onBack();late();
+    assert.equal(opened,0);assert.equal(state.menu,null);assert.equal(state.controller,'full_start');
+});
 test('input settings supply the string values required by Lampa Params.bind', () => {
     const {state} = environment();
     const inputs = state.params.filter(p => p.param.type === 'input');
