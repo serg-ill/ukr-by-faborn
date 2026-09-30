@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.13.1 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.13.2 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.13.1';
+    var VERSION = '0.1.0-beta.13.2';
     var NAME = 'ukr by Faborn';
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
@@ -169,6 +169,14 @@
     }
     function glassCSS(accent,tint,fill,ink) {
         var base = 'body.faborn-glass', css = '';
+        var levels = {
+            solid:{surface:1,chrome:1,button:1,legacy:1,legacyButton:1,player:1,veil:.48},
+            low:{surface:.9,chrome:.88,button:.7,legacy:1,legacyButton:.96,player:.97,veil:.4},
+            standard:{surface:.74,chrome:.72,button:.46,legacy:1,legacyButton:.9,player:.94,veil:.32},
+            high:{surface:.54,chrome:.52,button:.3,legacy:.9,legacyButton:.8,player:.84,veil:.24},
+            max:{surface:.34,chrome:.32,button:.18,legacy:.78,legacyButton:.68,player:.74,veil:.16}
+        };
+        var glass = levels[storage('glass_transparency','standard')] || levels.standard;
         var edge = 'inset 0 1px 0 rgba(255,255,255,.28),inset 0 -1px 0 rgba(255,255,255,.06),0 1.2em 3em rgba(0,0,0,.32)';
         var sheen = 'linear-gradient(145deg,rgba(255,255,255,.15),rgba(255,255,255,.025) 45%,rgba(255,255,255,.07))';
         var surfaces = '.settings__content,.selectbox__content,.modal__content,.settings-input__content,.fbr-window';
@@ -180,9 +188,9 @@
         }
         // No filter or compositing layer on body, the player root, or the native Tizen video plane.
         css += base+':not(.player--viewing){background:#101522!important;color:#f7f8fc}';
-        rule(surfaces,'background-color:#242b38!important;background-image:'+sheen+'!important;color:#f7f8fc;border:0;border-radius:1.65em;box-shadow:'+edge);
+        rule(surfaces,'background-color:rgba(36,43,56,'+glass.legacy+')!important;background-image:'+sheen+'!important;color:#f7f8fc;border:0;border-radius:1.65em;box-shadow:'+edge);
         rule('.settings__content,.selectbox__content','border-radius:1.65em 0 0 1.65em');
-        rule(chrome,'background-color:#262e3b;background-image:'+sheen+';color:#f7f8fc;box-shadow:'+edge);
+        rule(chrome,'background-color:rgba(38,46,59,'+glass.legacy+');background-image:'+sheen+';color:#f7f8fc;box-shadow:'+edge);
         rule('.head__actions','border-radius:3em;padding:.22em .4em');
         rule('.head__action','border-radius:50%;margin-left:.4em');
         rule('.head__action:first-child','margin-left:0');
@@ -197,26 +205,26 @@
         rule('.navigation-tabs','padding:.3em;border-radius:2em;background:rgba(255,255,255,.06)');
         rule('.navigation-tabs__button,.filter__item,.simple-button,.modal__button,.search-source','border-radius:2em');
         rule('.navigation-tabs__button.active,.search-source.active','background:rgba(255,255,255,.16);color:#fff');
-        rule('.settings__layer,.selectbox__layer','background:rgba(4,8,16,.32)');
-        rule('.modal','background-color:rgba(4,8,16,.4)');
+        rule('.settings__layer,.selectbox__layer','background:rgba(4,8,16,'+glass.veil+')');
+        rule('.modal','background-color:rgba(4,8,16,'+(glass.veil+.08).toFixed(2)+')');
         rule('.settings__title,.selectbox__title,.modal__title','font-weight:600;letter-spacing:-.025em');
         rule('.settings-folder,.settings-param,.selectbox-item','border-radius:1.05em;margin:0 .65em .25em;padding:1em 1.2em');
         rule('.settings-param__value,.settings-param__descr,.selectbox-item__subtitle','color:#c9d3e3;opacity:1');
         rule('.settings-param-title > span,.selectbox-item.selected:not(.nomark)','color:'+accent);
         rule('.selectbox-item.selected:not(.nomark)::after','border-color:'+accent);
         rule('.full-start__button,.modal__button,.simple-button,.filter__item','background-color:rgba(255,255,255,.12);background-image:'+sheen+';color:#f7f8fc;border:0!important;outline:0!important;box-shadow:none!important');
-        rule('.full-start__button','border-radius:2em;background-color:rgba(35,44,58,.9)');
+        rule('.full-start__button','border-radius:2em;background-color:rgba(35,44,58,'+glass.legacyButton+')');
         rule('.card__img,.card__view,.full-episode','border-radius:1.1em');
         rule('.card.focus .card__view::after,.card-episode.focus .full-episode::after','border-color:#e7f2ff;border-radius:1.35em;box-shadow:0 0 1.5em '+tint);
         rule('.timeline__line,.player-panel__position,.fbr-progress-track i','background:'+accent+';background-image:'+fill);
-        rule('.player-panel__body','background-color:rgba(24,31,43,.94);background-image:'+sheen+';border-radius:1.6em 1.6em 0 0;box-shadow:'+edge);
+        rule('.player-panel__body','background-color:rgba(24,31,43,'+glass.player+');background-image:'+sheen+';border-radius:1.6em 1.6em 0 0;box-shadow:'+edge);
         rule('.player-panel .button','border-radius:1.2em');
         rule('.noty','left:12%;right:12%;bottom:1em;border-radius:1.4em');
         rule('.noty:not(.noty--visible)','visibility:hidden');
         rule('.simple-keyboard.hg-theme-default','background:transparent');
         rule('.hg-button','border:0;border-radius:.8em;background:rgba(255,255,255,.12);color:#fff;box-shadow:none');
         rule('.settings-input__input,.simple-keyboard-input','background:rgba(0,0,0,.18);border:0;border-radius:.8em;color:#fff');
-        rule('.fbr-overlay','background:rgba(4,8,16,.32)');
+        rule('.fbr-overlay','background:rgba(4,8,16,'+glass.veil+')');
         rule('.fbr-window','border-radius:1.8em');
         rule('.fbr-header','border:0;border-image:none;padding:1.2em 1.55em;box-shadow:0 1px 0 rgba(255,255,255,.09)');
         rule('.fbr-brand','letter-spacing:-.02em');
@@ -241,17 +249,18 @@
         rule('.fbr-progress-track','background:rgba(255,255,255,.13)');
         rule('.fbr-loading i','background:rgba(255,255,255,.13)');
         // White glass marks remote focus; the saved accent marks selection, so they remain distinct.
-        rule(focus,'background:#eff6ff!important;background-image:linear-gradient(145deg,#ffffff,#d3e6fc)!important;color:#132236!important;border:0!important;outline:0!important;box-shadow:0 .35em 1em rgba(0,0,0,.2)!important');
+        if (glass.surface < .6) rule(surfaces+','+chrome,'text-shadow:0 1px 3px rgba(0,0,0,.75)');
+        rule(focus,'background:#eff6ff!important;background-image:linear-gradient(145deg,#ffffff,#d3e6fc)!important;color:#132236!important;border:0!important;outline:0!important;box-shadow:0 .35em 1em rgba(0,0,0,.2)!important;text-shadow:none');
         rule('.fbr-btn.focus','filter:none;transform:scale(1.018)');
         rule('.settings-param.focus .settings-param__value,.settings-param.focus .settings-param__descr,.selectbox-item.focus .selectbox-item__subtitle,.fbr-btn.focus .fbr-small,.fbr-btn.focus .fbr-language,.fbr-episode.focus .fbr-episode-overview,.fbr-episode.focus .fbr-episode-status','color:#243d59');
         rule('.selectbox-item.selected.focus::after','border-color:#243d59');
         rule('.menu__item.focus .menu__ico [stroke],.menu__item.hover .menu__ico [stroke]','stroke:#132236');
         rule('.menu__item.focus .menu__ico [fill]:not([fill="none"]),.menu__item.hover .menu__ico [fill]:not([fill="none"])','fill:#132236');
-        // Older Tizen keeps the opaque material above. Only supporting engines blur bounded UI surfaces.
+        // Without blur, retain denser glass for readability. Only backgrounds change, never container opacity.
         css += '@supports ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){';
-        rule(surfaces,'background-color:rgba(29,38,54,.74)!important;-webkit-backdrop-filter:blur(28px) saturate(155%);backdrop-filter:blur(28px) saturate(155%)');
-        rule(chrome,'background-color:rgba(29,38,54,.72);-webkit-backdrop-filter:blur(20px) saturate(145%);backdrop-filter:blur(20px) saturate(145%)');
-        rule('.full-start__button','background-color:rgba(29,38,54,.46);-webkit-backdrop-filter:blur(14px) saturate(130%);backdrop-filter:blur(14px) saturate(130%)');
+        rule(surfaces,'background-color:rgba(29,38,54,'+glass.surface+')!important;-webkit-backdrop-filter:blur(28px) saturate(155%);backdrop-filter:blur(28px) saturate(155%)');
+        rule(chrome,'background-color:rgba(29,38,54,'+glass.chrome+');-webkit-backdrop-filter:blur(20px) saturate(145%);backdrop-filter:blur(20px) saturate(145%)');
+        rule('.full-start__button','background-color:rgba(29,38,54,'+glass.button+');-webkit-backdrop-filter:blur(14px) saturate(130%);backdrop-filter:blur(14px) saturate(130%)');
         css += '}@media(prefers-reduced-motion:no-preference){';
         rule(buttons,'transition:background-color .16s,color .16s,box-shadow .16s');
         css += '}';
@@ -1878,6 +1887,7 @@
         api.addComponent({component: 'faborn_ukr', name: NAME, icon: ICON});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_layout', type: 'select', values: {panel:'Панель', cinema:'Кінозал', classic:'Стандартне Lampa'}, default: 'panel'}, field: {name: 'Оформлення модуля', description: '«Стандартне Lampa» — штатні вікна та фокус, без кольорових акцентів Faborn у всій системі.'}, onChange: applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_theme', type: 'select', values: {on:'Faborn', ios:'iOS · Liquid Glass', off:'Стандартна Lampa'}, default: 'on'}, field: {name: 'Тема всієї Lampa', description: 'iOS — скляні меню, картки та вікна. Застосовується одразу; зі стандартного оформлення переходить у «Панель».'}, onChange: changeTheme});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_glass_transparency',type:'select',values:{solid:'Непрозоре',low:'Низька',standard:'Стандартна',high:'Висока',max:'Максимальна'},default:'standard'},field:{name:'Прозорість скла iOS',description:'Для теми iOS · Liquid Glass. Вища прозорість — краще видно фон крізь меню, кнопки й вікна. Застосовується одразу.'},onChange:applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_accent', type: 'select', values: {blue:'Синій', amber:'Бурштиновий', mint:'М’ятний', violet:'Фіолетовий', aurora:'Синій → фіолетовий', lagoon:'Бірюзовий → синій'}, default: 'blue'}, field: {name: 'Колір акценту', description: 'Колір або градієнт для «Панелі» та «Кінозалу». У стандартному оформленні не застосовується.'}, onChange: applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinobase:'KinoBase', kinoukr:'KinoUkr', uakinogo:'UAKinogo / Alloha (експеримент)'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом. UAKinogo потребує ввімкненого «Експериментальне 4K».'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найвища доступна', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: 'Підсвічує варіант у списку джерел.'}});
