@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.13 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.13.1 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.13';
+    var VERSION = '0.1.0-beta.13.1';
     var NAME = 'ukr by Faborn';
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
@@ -17,6 +17,7 @@
     var directTrace = [], presentation = null;
     var capturedBase = detectBase();
     var lab4k = null, labScript = null, labLoadTimer = null, labLoadSerial = 0, labPlaybackData = null;
+    var kinoSession = null, kinoSessionQueue = null, kinoSessionScript = null, kinoSessionTimer = null;
 
     function text(value) { return value === undefined || value === null ? '' : String(value); }
     function escapeHTML(value) {
@@ -81,6 +82,7 @@
     }
     function restore() {
         cancelCardLab();
+        stopKinoSession();
         cancelPending(); activeSession = null;
         closePresentation();
         if (L && L.Select) L.Select.hide();
@@ -347,6 +349,8 @@
                 content += '</div>';
             });
             if (!selected) content += '<div class="fbr-empty"><strong>Потоку поки немає</strong>Спробуй іншу серію або повтори пошук. Стан джерел доступний у діагностиці модуля.</div>';
+            var issue = kinoIssue(session,view);
+            if (issue) content += btn('kinostatus',escapeHTML(issue.title)+'<span class="fbr-small">'+escapeHTML(issue.message)+'</span>','fbr-last',false,function () { kinoDetails(session); });
             content += btn('refresh','Оновити джерела','fbr-refresh',false,function () { startDiscovery(session.movie); });
         }
         var play = '', resume = +progress.time > 10 && +progress.percent > 0 && +progress.percent < 90 && L.Storage.field && L.Storage.field('player_timecode') === 'continue';
@@ -379,7 +383,7 @@
         L.Controller.add('faborn_ukr_view',{
             toggle:function () { if (!presentation || presentation.html !== html) return; var wanted = focusKey; L.Controller.collectionSet(html); var target = html.find('[data-fbr]').filter(function () { return $(this).attr('data-fbr') === wanted; }); L.Controller.collectionFocus(target.length ? target[0] : false,html); },
             up:function () { root.Navigator.move('up'); },down:function () { root.Navigator.move('down'); },left:function () { root.Navigator.move('left'); },right:function () { root.Navigator.move('right'); },back:onBack,
-            gone:function () { if (presentation && presentation.html === html) { closePresentation(); cancelCardLab(); cancelPending(); activeSession = null; } }
+            gone:function () { if (presentation && presentation.html === html) { closePresentation(); cancelCardLab(); stopKinoSession(); cancelPending(); activeSession = null; } }
         });
         L.Controller.toggle('faborn_ukr_view');
     }
@@ -791,6 +795,52 @@
         if (!out.length) throw new Error('KinoBase не віддав підтримуваних потоків UA, EN або RU.');
         return out;
     }
+    function stopKinoSession() {
+        if (kinoSession) kinoSession.cancel();
+        root.clearTimeout(kinoSessionTimer); kinoSessionTimer = null;
+        if (kinoSessionScript) {
+            kinoSessionScript.onload = kinoSessionScript.onerror = null;
+            if (kinoSessionScript.parentNode) kinoSessionScript.parentNode.removeChild(kinoSessionScript);
+            kinoSessionScript = null;
+        }
+        kinoSessionQueue = null;
+    }
+    function ensureKinoSession(done) {
+        var base = baseURL();
+        if (kinoSession) return done(null,kinoSession);
+        if (root.FabornKinoSession && base) {
+            kinoSession = root.FabornKinoSession(root,base+'lib/4klab/',VERSION);
+            return done(null,kinoSession);
+        }
+        if (!base || !root.document || !root.document.createElement) return done(new Error('Не завантажено адаптер сесії Samsung з GitHub Pages'));
+        if (kinoSessionQueue) { kinoSessionQueue.push(done); return; }
+        kinoSessionQueue = [done];
+        var node = kinoSessionScript = root.document.createElement('script');
+        function finish(error) {
+            if (kinoSessionScript !== node) return;
+            root.clearTimeout(kinoSessionTimer); kinoSessionTimer = null;
+            node.onload = node.onerror = null;
+            if (node.parentNode) node.parentNode.removeChild(node);
+            kinoSessionScript = null;
+            var callbacks = kinoSessionQueue || []; kinoSessionQueue = null;
+            callbacks.forEach(function (cb) { if (error) cb(error); else ensureKinoSession(cb); });
+        }
+        node.src = base+'lib/4klab/kinobase-session.js?v='+VERSION; node.async = true;
+        node.onload = function () { finish(root.FabornKinoSession ? null : new Error('Несумісний адаптер сесії Samsung')); };
+        node.onerror = function () { finish(new Error('Не вдалося завантажити адаптер сесії Samsung з GitHub Pages')); };
+        kinoSessionTimer = root.setTimeout(function () { finish(new Error('Час завантаження адаптера сесії Samsung вичерпано')); },12000);
+        (root.document.head || root.document.body).appendChild(node);
+    }
+    function kinoNativeRequest(url,done) {
+        var cancelled = false, req;
+        var handle = {abort:function () { cancelled = true; if (req) req.abort(); }};
+        ensureKinoSession(function (error,client) {
+            if (cancelled) return;
+            if (error) return done(error,'',0);
+            req = client.request(url,function (err,body,status) { if (!cancelled) done(err,body,status); });
+        });
+        return handle;
+    }
     var kinoReaderQueue = null, kinoProtocolCache, kinoTitleCache = {}, kinoRefreshJobs = {};
     function kinoReader(done) {
         if (root.FabornKinoBase) return done(null,root.FabornKinoBase);
@@ -962,7 +1012,8 @@
         if (!providerFor(url) && !embedURL(url) && !mediaURL(url)) return callback(new Error('Непідтримувана адреса джерела.'));
         var completed = false, req;
         trace(stage,'запит');
-        req = xhr(url,function (error,body,status) {
+        var transport = activeSession && activeSession.kinoNative && /^https:\/\/kinobase\.org\//.test(url) ? kinoNativeRequest : xhr;
+        req = transport(url,function (error,body,status) {
             completed = true;
             var i = requests.indexOf(req); if (i >= 0) requests.splice(i,1);
             if (serial !== requestSerial) return;
@@ -974,7 +1025,7 @@
                 var detail = error.message;
                 error = new Error(stage.replace(/^KinoBase\s*·\s*/,'')+' ('+endpoint+'): '+detail);
                 error.kinoTransport = true;
-                if (status === 404 && endpoint === '/user_data') error.message += ' — сесію плеєра не прийнято; можливе блокування cookie.';
+                if (status === 404 && endpoint === '/user_data') { error.kinoSession = true; error.message += ' — сесію плеєра не прийнято; можливе блокування cookie.'; }
             }
             trace(stage,error ? error.message : 'HTTP '+status);
             callback(error,body);
@@ -992,7 +1043,21 @@
                 r.audioLanguage = audioLanguage(r.voice,title.audioLanguage,title.originalLanguage);
                 return r.audioLanguage !== 'other';
             });
-            if (provider.id === 'kinobase') return kinoStreams(serial,title,done);
+            if (provider.id === 'kinobase') return kinoStreams(serial,title,function (error,resolved) {
+                var session = activeSession;
+                if (!error || !error.kinoSession || !session || session.kinoNative || storage('kino_session','auto') === 'direct') return done(error,resolved);
+                if (!root.FabornKinoSession && (!root.Worker || !root.WebAssembly)) {
+                    error.message += ' Адаптер сесії Samsung у цьому застосунку недоступний.';
+                    return done(error);
+                }
+                // Start from a fresh title page in the same cookie jar as /user_data and /vod.
+                // Direct sessions remain first; only the exact rejected-session response retries here.
+                session.kinoNative = true;
+                session.status.kinobase = 'Повторне отримання сесії через Samsung…';
+                save('kino_transport','Samsung · повтор після /user_data HTTP 404');
+                trace('KinoBase · сесія','Повтор через Samsung');
+                getTitle(serial,provider,movie,url,done);
+            });
             function expand() {
                 parallel(title.embeds,2,function (embed,next) {
                     publicRequest(serial,provider.name+' · сезони й озвучення',embed,function (error,html) {
@@ -1083,6 +1148,7 @@
     }
     function startDiscovery(movie) {
         cancelCardLab();
+        stopKinoSession();
         cancelPending();
         var serial = requestSerial, tv = Boolean(movie.name || movie.first_air_date || movie.media_type === 'tv');
         var title = {id:'tmdb-'+(tv ? 'tv-' : 'movie-')+(movie.id || normalize(movie.original_title || movie.original_name || movie.title || movie.name)),title:movie.title || movie.name || movie.original_title || movie.original_name || NAME,originalTitle:movie.original_title || movie.original_name || '',year:parseInt(text(movie.release_date || movie.first_air_date).substr(0,4),10) || 0,type:tv ? 'tv' : 'movie',releases:[]};
@@ -1091,6 +1157,7 @@
         var session = {movie:movie,title:title,season:tv ? +last.season || 1 : 0,episode:tv ? +last.episode || 1 : 0,seasonPages:[],visited:{},status:{},ready:false};
         session.catalog = {direct:true,unified:true,titles:[title],session:session};
         activeSession = session; directTrace = []; save('direct_trace',[]); lastDiagnostic = '';
+        save('kino_transport','Звичайний запит');
         loading(session,'пошук');
         var remaining = PROVIDERS.length + 1;
         function finished() {
@@ -1101,6 +1168,7 @@
         // A deadline covers the whole discovery, not just each XHR. Late replies are invalidated.
         discoveryTimer = root.setTimeout(function () {
             if (serial !== requestSerial) return;
+            if (session.kinoNative && session.status.kinobase === 'Повторне отримання сесії через Samsung…') session.status.kinobase = 'Час очікування сесії Samsung вичерпано. Спробуйте «Оновити джерела».';
             trace('Пошук','Досягнуто ліміт очікування; показуємо отримані результати');
             prepareSelection(session);
         },24000);
@@ -1282,6 +1350,7 @@
         save('source',row.release.source); save('quality',row.value);
         if (row.episode.lab) {
             if (!lab4k || storage('lab4k','off') !== 'on') return startDiscovery(session.movie);
+            stopKinoSession();
             session.labChosen = row; session.labLaunching = true; session.screen = 'labplayer';
             closePresentation(); L.Select.hide();
             lab4k.playChoice({season:row.episode.season,episode:row.episode.episode,label:row.release.voice,language:row.release.audioLanguage,quality:row.value});
@@ -1329,9 +1398,12 @@
             rows.push({title:languageLabel(group.language)+group.voice,subtitle:qualityLabel(view.quality)+' · '+(many ? 'Джерела: ' : '')+names.join(', ')+subtitleHint(entry.episode),action:many ? 'sources' : 'play',group:group,release:entry.release,episode:entry.episode,value:entry.value,selected:group === focused});
         });
         if (!view.groups.length) rows.push({title:'Для цієї назви немає доступного потоку',subtitle:'Можна повторити пошук. Причини: Налаштування → ukr by Faborn → Версія та діагностика.',action:'retry'});
+        var issue = kinoIssue(session,view);
+        if (issue) rows.push({title:issue.title,subtitle:issue.message,action:'kinostatus'});
         rows.push({title:'Оновити джерела',action:'retry'});
         select(NAME+(session.title.type === 'tv' ? ' · S'+session.season+'E'+session.episode : ' · '+session.title.title),rows,function (row) {
             if (row.action === 'labstatus') return cardLabDetails(session);
+            if (row.action === 'kinostatus') return kinoDetails(session);
             if (row.action === 'quality') return chooseQuality(session,view);
             if (row.action === 'episode') return chooseSeason(session);
             if (row.action === 'last') return returnToLast(session);
@@ -1340,6 +1412,27 @@
             if (row.action === 'sources') return chooseSource(session,row.group);
             selectStream(session,row);
         },restore);
+    }
+    function kinoIssue(session,view) {
+        if (view.groups.some(function (g) { return g.entries.some(function (entry) { return entry.release.source === 'kinobase'; }); })) return null;
+        if (!session.status.kinobase) return null;
+        var errors = [], qualities = [];
+        session.title.releases.filter(function (r) { return r.source === 'kinobase'; }).forEach(function (r) {
+            r.episodes.filter(function (e) { return e.season === session.season && e.episode === session.episode; }).forEach(function (e) {
+                if (e.error) errors.push(e.error);
+                else if (e.resolvedAt) qualities = qualities.concat(qualityNames(e));
+            });
+        });
+        if (qualities.length) return {title:'KinoBase · інша якість',message:'Доступно: '+unique(qualities).join(', ')+'. Змініть якість вище.'};
+        return {title:'KinoBase · недоступне',message:unique(errors).join('; ') || (session.status.kinobase === 'Знайдено' ? 'Для цієї серії немає перевіреного потоку.' : session.status.kinobase)};
+    }
+    function kinoDetails(session) {
+        session.screen = 'kinostatus';
+        var issue = kinoIssue(session,sourceGroups(session));
+        select('KinoBase',[{title:issue ? issue.message : 'Джерело доступне',action:'back'},{title:'Оновити джерела',action:'retry'},{title:'До озвучень',action:'back'}],function (row) {
+            if (row.action === 'retry') startDiscovery(session.movie);
+            else renderSources(session);
+        },function () { renderSources(session); });
     }
     function chooseSeason(session) {
         session.screen = 'seasons';
@@ -1625,6 +1718,7 @@
                 episode.error = err ? err.message : 'Некоректний HLS'; episode.resolvedAt = 0;
                 lastDiagnostic = episode.error; notify(episode.error); renderSources(session); return;
             }
+            stopKinoSession();
             closePresentation(); L.Select.hide(); L.Controller.toggle(returnController);
             // Only the selected episode has been checked. Never enqueue unresolved streams.
             handoff(movie,catalog,title,release,episode,preference,[]);
@@ -1645,6 +1739,7 @@
             var lines = [NAME + ' ' + VERSION];
             if (L.Storage.field) lines.push('Плеєр Lampa: ' + L.Storage.field('player') + ' · для бети потрібен Tizen / AVPlay');
             lines.push('AVPlay API: ' + (root.webapis && root.webapis.avplay ? 'доступний' : 'недоступний'));
+            lines.push('Сесія KinoBase: '+storage('kino_transport','Звичайний запит'));
             lines.push('4K-експеримент: ' + (storage('lab4k','off') === 'on' ? 'увімкнено' : 'вимкнено'));
             if (storage('lab4k_status','')) lines.push('4K · ' + storage('lab4k_status',''));
             if (storage('last_error', '')) lines.push('Остання помилка плеєра: ' + storage('last_error', ''));
@@ -1786,6 +1881,7 @@
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_accent', type: 'select', values: {blue:'Синій', amber:'Бурштиновий', mint:'М’ятний', violet:'Фіолетовий', aurora:'Синій → фіолетовий', lagoon:'Бірюзовий → синій'}, default: 'blue'}, field: {name: 'Колір акценту', description: 'Колір або градієнт для «Панелі» та «Кінозалу». У стандартному оформленні не застосовується.'}, onChange: applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinobase:'KinoBase', kinoukr:'KinoUkr', uakinogo:'UAKinogo / Alloha (експеримент)'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом. UAKinogo потребує ввімкненого «Експериментальне 4K».'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найвища доступна', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: 'Підсвічує варіант у списку джерел.'}});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_kino_session',type:'select',values:{auto:'Автоматично',direct:'Лише звичайний запит'},default:'auto'},field:{name:'Сесія KinoBase',description:'Після помилки сесії повторює запит через мережевий API Samsung, якщо він доступний у застосунку. Окремий сервер не потрібен.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_lab4k', type: 'select', values: {off:'Вимкнено',on:'Увімкнено'}, default: 'off'}, field: {name: 'Експериментальне 4K', description: 'Додає UAKinogo / Alloha до пошуку в картці: доступні якості, UA / EN / RU, сезони й серії. Потрібен Tizen Sockets; стан видно у списку джерел.'}, onChange:labChanged});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_lab4k_test', type: 'button'}, field: {name: 'Перевірити 4K', description: '«Оппенгеймер» · UA / EN / RU · 2160p AV1. Потрібен Tizen / AVPlay; сумісність визначить тест.'}, onChange:openLab});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_refresh', type: 'button'}, field: {name: 'Оновити індекс із GitHub'}, onChange: function () {

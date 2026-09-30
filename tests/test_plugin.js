@@ -566,7 +566,8 @@ function groupedEnvironment() {
 }
 test('24 stream variants become three translations and an independent quality selector',()=>{
     const {state}=groupedEnvironment();
-    assert.equal(state.menu.items.length,5);
+    assert.equal(state.menu.items.length,6);
+    assert.equal(state.menu.items.filter(i=>i.action==='kinostatus').length,1);
     assert.equal(state.menu.items.filter(i=>i.action==='sources').length,3);
     state.choose(i=>i.action==='quality');
     assert.deepEqual(state.menu.items.map(i=>i.value),['2160p','1080p','720p','480p']);
@@ -662,9 +663,9 @@ const kinoSeries={id:1668,name:'Друзі',original_name:'Friends',original_lan
 function kinoEnvironment(options={}) {
     const data=kinoFixture(),stateData={version:1,missingUA:false,pending:null};
     const file=(s=0,e=0)=>['720','1080','2160'].map(q=>'['+q+'p]'+['Paramount (Русский)','1+1 (Украинский)'].concat(options.english?['Оригинал']:[]).filter(v=>!stateData.missingEN||v!=='Оригинал').filter(v=>!stateData.missingUA||!v.includes('1+1')).map((voice,i)=>'{'+voice+'}https://primary.redcdn.org/'+q+'/s'+s+'e'+e+'/v'+stateData.version+'/master-v1-a'+(i+1)+'.m3u8 or https://mirror.threnet.xyz/'+q+'/s'+s+'e'+e+'/v'+stateData.version+'/master-v1-a'+(i+1)+'.m3u8').join(';')).join(',');
-    const env=environment({respond(req){
+    function respond(req){
         req.status=200;
-        if(options.failEndpoint && req.url.startsWith('https://kinobase.org'+options.failEndpoint)) {
+        if(options.failEndpoint && (!req.native || options.native404) && req.url.startsWith('https://kinobase.org'+options.failEndpoint)) {
             req.status=404;req.responseText='';req.onload();return;
         }
         if(req.url.includes('catalog.json')) req.responseText=JSON.stringify({schema:1,titles:[]});
@@ -686,9 +687,81 @@ function kinoEnvironment(options={}) {
             if(options.failPrimary&&req.url.includes('primary.redcdn.org'))req.status=404;
         } else {req.status=403;req.responseText='';}
         req.onload();
-    }});
-    env.root.FabornKinoBase=kinoReader;env.kino=stateData;return env;
+    }
+    const env=environment({respond});
+    env.root.FabornKinoBase=kinoReader;env.kino=stateData;
+    stateData.nativeRequests=[];stateData.clients=0;stateData.cancels=0;
+    if(options.native) env.root.FabornKinoSession=()=>{
+        stateData.clients++;
+        return {request(url,callback){
+            const req={url,native:true,onload(){callback(this.status===200?null:new Error('HTTP '+this.status),this.responseText,this.status);},abort(){this.aborted=true;}};
+            stateData.nativeRequests.push(req);
+            if(options.nativeError) callback(new Error(options.nativeError),'',0);
+            else if(!options.delayNative) respond(req);
+            return req;
+        },cancel(){stateData.cancels++;}};
+    };
+    stateData.respond=respond;
+    return env;
 }
+test('session 404 reopens the title in a Samsung session then lists and plays English directly',()=>{
+ const env=kinoEnvironment({failEndpoint:'/user_data?',native:true,english:true});env.instance.open(kinoMovie);
+ assert.match(env.kino.nativeRequests[0].url,/\/film\//);
+ assert.equal(env.kino.nativeRequests.filter(r=>r.url.includes('/user_data?')).length,1);
+ assert.ok(env.kino.nativeRequests.some(r=>r.url.includes('/vod/')));
+ assert.deepEqual(env.state.menu.items.filter(i=>i.group).map(i=>i.group.language),['uk','en','ru']);
+ assert.ok(!env.state.menu.items.some(i=>i.action==='kinostatus'));
+ env.state.play('2160p',i=>i.release.audioLanguage==='en');
+ assert.match(env.state.played.url,/^https:\/\/primary.redcdn.org\/2160\//);
+ assert.ok(!env.kino.nativeRequests.some(r=>r.url.includes('.m3u8')));
+ assert.match(env.state.storage.faborn_ukr_kino_transport,/Samsung/);
+});
+test('working direct KinoBase never starts a native session',()=>{
+ const env=kinoEnvironment({native:true});env.instance.open(kinoMovie);
+ assert.equal(env.kino.clients,0);assert.equal(env.kino.nativeRequests.length,0);
+ assert.ok(env.state.menu.items.some(i=>i.group));
+});
+test('non-session 404 and explicit direct setting never start native fallback',()=>{
+ for(const endpoint of ['/film/208161-','/vod/208161?','/user_data?']){
+  const env=kinoEnvironment({failEndpoint:endpoint,native:true});
+  if(endpoint==='/user_data?')env.state.storage.faborn_ukr_kino_session='direct';
+  env.instance.open(kinoMovie);assert.equal(env.kino.clients,0);
+  assert.ok(env.state.menu.items.some(i=>i.action==='kinostatus'));
+ }
+});
+test('native session 404 is attempted once and stays visible with working Back navigation',()=>{
+ const env=kinoEnvironment({failEndpoint:'/user_data?',native:true,native404:true});env.instance.open(kinoMovie);
+ assert.equal(env.kino.nativeRequests.filter(r=>r.url.includes('/user_data?')).length,1);
+ env.state.choose(i=>i.action==='kinostatus');assert.match(env.state.menu.items[0].title,/user_data/);
+ env.state.menu.onBack();assert.ok(env.state.menu.items.some(i=>i.action==='kinostatus'));
+ env.state.menu.onBack();assert.equal(env.state.controller,'full_start');assert.equal(env.state.menu,null);
+});
+test('missing Samsung API is explained in the source list',()=>{
+ const env=kinoEnvironment({failEndpoint:'/user_data?',native:true,nativeError:'SOCKETS: мережевий API Samsung недоступний'});env.instance.open(kinoMovie);
+ assert.match(env.state.menu.items.find(i=>i.action==='kinostatus').subtitle,/SOCKETS/);
+ assert.equal(env.state.played,null);
+});
+test('Back during fallback cancels the request and a late native reply cannot reopen sources',()=>{
+ const env=kinoEnvironment({failEndpoint:'/user_data?',native:true,delayNative:true});env.instance.open(kinoMovie);
+ const req=env.kino.nativeRequests[0];env.state.menu.onBack();
+ assert.ok(req.aborted);assert.ok(env.kino.cancels);
+ env.kino.respond(req);assert.equal(env.state.menu,null);assert.equal(env.state.controller,'full_start');
+ assert.equal(env.kino.nativeRequests.length,1);
+});
+test('native fallback deadline keeps a visible reason instead of a stale waiting label',()=>{
+ const env=kinoEnvironment({failEndpoint:'/user_data?',native:true,delayNative:true});env.instance.open(kinoMovie);
+ Object.values(env.state.timers).find(t=>t.ms===24000).fn();
+ assert.match(env.state.menu.items.find(i=>i.action==='kinostatus').subtitle,/Час очікування/);
+ assert.ok(env.kino.nativeRequests[0].aborted);
+});
+test('expired native series playlist refresh preserves English, season, episode and quality',t=>{
+ let now=Date.now();t.mock.method(Date,'now',()=>now);
+ const env=kinoEnvironment({failEndpoint:'/user_data?',native:true,series:true,english:true});env.instance.open(kinoSeries);
+ env.state.choose(i=>i.action==='episode');env.state.choose(i=>i.value===2);env.state.choose(i=>i.value===2);
+ env.kino.version=2;now+=61000;env.state.play('1080p',i=>i.release.audioLanguage==='en');
+ assert.match(env.state.played.url,/\/1080\/s2e2\/v2\/master-v1-a3.m3u8$/);
+ assert.equal(env.kino.nativeRequests.filter(r=>r.url.includes('/vod/')).length,2);
+});
 test('KinoBase is searched permanently by original title and launches selected RU 4K with audio',()=>{
     const env=kinoEnvironment();env.instance.open(kinoMovie);
     const rows=env.state.menu.items.filter(i=>i.group);

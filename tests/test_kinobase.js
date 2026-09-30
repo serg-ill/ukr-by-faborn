@@ -16,7 +16,7 @@ test('unsupported or excessive source fails closed',()=>{
  assert.equal(globalThis.evaluated,undefined);
 });
 test('shipped runtime and analyzer remain compatible with ES5 Tizen',()=>{
- const acorn=require('../vendor/acorn');for(const file of ['ukr-by-faborn.js','lib/kinobase.js'])acorn.parse(fs.readFileSync(require('node:path').join(__dirname,'..',file),'utf8'),{ecmaVersion:5});
+ const acorn=require('../vendor/acorn');for(const file of ['ukr-by-faborn.js','lib/kinobase.js','lib/4klab/kinobase-session.js','lib/4klab/kinobase-worker.js'])acorn.parse(fs.readFileSync(require('node:path').join(__dirname,'..',file),'utf8'),{ecmaVersion:5});
 });
 test('external audio retains its parent HLS playlist',()=>{
  const url='https://video.redcdn.org/2160/master-v1-a2.m3u8';
