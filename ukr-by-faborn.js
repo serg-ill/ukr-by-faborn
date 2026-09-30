@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.12.2 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.13 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.12.2';
+    var VERSION = '0.1.0-beta.13';
     var NAME = 'ukr by Faborn';
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
@@ -125,9 +125,19 @@
         // Keep the saved Faborn palette so switching back restores the user's choice.
         putStyle('faborn-ukr-ui',standard ? '' : '.full-start__button.view--faborn-ukr{border:0!important;outline:0!important;box-shadow:none!important}'+presentationCSS(accent,tint,fill,ink));
         var enabled = !standard && storage('theme','on') !== 'off';
+        var glass = enabled && storage('theme','on') === 'ios';
         $('body').toggleClass('faborn-theme',enabled);
+        $('body').toggleClass('faborn-glass',glass);
         // Removing our CSS restores the user's existing theme without changing any Lampa preference.
-        putStyle('faborn-ukr-theme',enabled ? themeCSS(accent,tint,fill,ink) : '');
+        putStyle('faborn-ukr-theme',enabled ? (glass ? glassCSS(accent,tint,fill,ink) : themeCSS(accent,tint,fill,ink)) : '');
+    }
+    function changeTheme(value) {
+        // An explicit choice of iOS must also work when the previous layout disabled all theming.
+        if (value === 'ios' && storage('layout','panel') === 'classic') {
+            save('layout','panel');
+            if (L.Settings && L.Settings.update) L.Settings.update();
+        }
+        applyAppearance();
     }
     function themeCSS(accent,tint,fill,ink) {
         var base = 'body.faborn-theme', css = base+':not(.player--viewing){background:#0e131e!important;color:#f3f5fa}';
@@ -153,6 +163,96 @@
         css += base+' .card.focus .card__view::after,'+base+' .card-episode.focus .full-episode::after{border-color:'+accent+';box-shadow:0 0 1.1em '+tint+'}';
         css += base+' .full-start__button{border:0!important;outline:0!important;box-shadow:none!important}'+base+' .full-start__button:not(.focus){background:#222d40;color:#f3f5fa}';
         css += base+' .timeline__line,'+base+' .player-panel__position{background:'+accent+';background-image:'+fill+'}';
+        return css;
+    }
+    function glassCSS(accent,tint,fill,ink) {
+        var base = 'body.faborn-glass', css = '';
+        var edge = 'inset 0 1px 0 rgba(255,255,255,.28),inset 0 -1px 0 rgba(255,255,255,.06),0 1.2em 3em rgba(0,0,0,.32)';
+        var sheen = 'linear-gradient(145deg,rgba(255,255,255,.15),rgba(255,255,255,.025) 45%,rgba(255,255,255,.07))';
+        var surfaces = '.settings__content,.selectbox__content,.modal__content,.settings-input__content,.fbr-window';
+        var chrome = '.head__actions,.navigation-bar__body,.menu,.noty';
+        var buttons = '.head__action,.menu__item,.full-start__button,.settings-folder,.settings-param,.selectbox-item,.modal__button,.navigation-tabs__button,.filter__item,.simple-button,.player-panel .button,.search-source,.hg-button,.fbr-btn';
+        var focus = '.head__action.focus,.head__action.hover,.menu__item.focus,.menu__item.hover,.full-start__button.focus,.settings-folder.focus,.settings-param.focus,.selectbox-item.focus,.modal__button.focus,.navigation-tabs__button.focus,.filter__item.focus,.simple-button.focus,.player-panel .button.focus,.search-source.focus,.hg-button.focus,.hg-button.hg-selectedButton,.fbr-btn.focus';
+        function rule(selectors,style) {
+            css += selectors.split(',').map(function (s) { return base+' '+s; }).join(',')+'{'+style+'}';
+        }
+        // No filter or compositing layer on body, the player root, or the native Tizen video plane.
+        css += base+':not(.player--viewing){background:#101522!important;color:#f7f8fc}';
+        rule(surfaces,'background-color:#242b38!important;background-image:'+sheen+'!important;color:#f7f8fc;border:0;border-radius:1.65em;box-shadow:'+edge);
+        rule('.settings__content,.selectbox__content','border-radius:1.65em 0 0 1.65em');
+        rule(chrome,'background-color:#262e3b;background-image:'+sheen+';color:#f7f8fc;box-shadow:'+edge);
+        rule('.head__actions','border-radius:3em;padding:.22em .4em');
+        rule('.head__action','border-radius:50%;margin-left:.4em');
+        rule('.head__action:first-child','margin-left:0');
+        rule('.head__time','padding-left:.6em');
+        rule('.menu','border-radius:0 1.6em 1.6em 0;padding:.5em 0');
+        rule('.menu__list','padding:0 .55em');
+        rule('.menu__item','border-radius:1em;padding:.9em 1.1em');
+        rule('.menu__item.traverse','background:rgba(255,255,255,.12);color:#fff');
+        rule('.menu__item.traverse .menu__ico [stroke]','stroke:#fff');
+        rule('.menu__item.traverse .menu__ico [fill]:not([fill="none"])','fill:#fff');
+        rule('.navigation-bar__body','border:0;border-radius:1.65em');
+        rule('.navigation-tabs','padding:.3em;border-radius:2em;background:rgba(255,255,255,.06)');
+        rule('.navigation-tabs__button,.filter__item,.simple-button,.modal__button,.search-source','border-radius:2em');
+        rule('.navigation-tabs__button.active,.search-source.active','background:rgba(255,255,255,.16);color:#fff');
+        rule('.settings__layer,.selectbox__layer','background:rgba(4,8,16,.32)');
+        rule('.modal','background-color:rgba(4,8,16,.4)');
+        rule('.settings__title,.selectbox__title,.modal__title','font-weight:600;letter-spacing:-.025em');
+        rule('.settings-folder,.settings-param,.selectbox-item','border-radius:1.05em;margin:0 .65em .25em;padding:1em 1.2em');
+        rule('.settings-param__value,.settings-param__descr,.selectbox-item__subtitle','color:#c9d3e3;opacity:1');
+        rule('.settings-param-title > span,.selectbox-item.selected:not(.nomark)','color:'+accent);
+        rule('.selectbox-item.selected:not(.nomark)::after','border-color:'+accent);
+        rule('.full-start__button,.modal__button,.simple-button,.filter__item','background-color:rgba(255,255,255,.12);background-image:'+sheen+';color:#f7f8fc;border:0!important;outline:0!important;box-shadow:none!important');
+        rule('.full-start__button','border-radius:2em;background-color:rgba(35,44,58,.9)');
+        rule('.card__img,.card__view,.full-episode','border-radius:1.1em');
+        rule('.card.focus .card__view::after,.card-episode.focus .full-episode::after','border-color:#e7f2ff;border-radius:1.35em;box-shadow:0 0 1.5em '+tint);
+        rule('.timeline__line,.player-panel__position,.fbr-progress-track i','background:'+accent+';background-image:'+fill);
+        rule('.player-panel__body','background-color:rgba(24,31,43,.94);background-image:'+sheen+';border-radius:1.6em 1.6em 0 0;box-shadow:'+edge);
+        rule('.player-panel .button','border-radius:1.2em');
+        rule('.noty','left:12%;right:12%;bottom:1em;border-radius:1.4em');
+        rule('.noty:not(.noty--visible)','visibility:hidden');
+        rule('.simple-keyboard.hg-theme-default','background:transparent');
+        rule('.hg-button','border:0;border-radius:.8em;background:rgba(255,255,255,.12);color:#fff;box-shadow:none');
+        rule('.settings-input__input,.simple-keyboard-input','background:rgba(0,0,0,.18);border:0;border-radius:.8em;color:#fff');
+        rule('.fbr-overlay','background:rgba(4,8,16,.32)');
+        rule('.fbr-window','border-radius:1.8em');
+        rule('.fbr-header','border:0;border-image:none;padding:1.2em 1.55em;box-shadow:0 1px 0 rgba(255,255,255,.09)');
+        rule('.fbr-brand','letter-spacing:-.02em');
+        rule('.fbr-brand small','color:#cad5e7;letter-spacing:.1em');
+        rule('.fbr-close','border-radius:50%;background:rgba(255,255,255,.1)');
+        rule('.fbr-title','letter-spacing:-.035em;line-height:1.15');
+        rule('.fbr-label','font-size:.74em;letter-spacing:.07em;color:#d7dfed');
+        rule('.fbr-meta,.fbr-small,.fbr-hint,.fbr-overview,.fbr-episode-overview,.fbr-progress','color:#c8d3e5');
+        rule('.fbr-btn','border:0;border-radius:1.05em;background:rgba(255,255,255,.09);background-image:'+sheen+';color:#f7f8fc');
+        rule('.fbr-control,.fbr-source','border-radius:2em');
+        rule('.fbr-control','padding:.6em 1em');
+        rule('.fbr-btn.chosen','background:'+tint+';background-image:'+sheen+';color:'+accent);
+        rule('.fbr-btn.fbr-control.chosen,.fbr-play','background:'+accent+';background-image:'+fill+';color:'+ink);
+        rule('.fbr-voice-main','padding:.95em 1.1em');
+        rule('.fbr-voice','margin:.75em 0');
+        rule('.fbr-footer','border:0;background:rgba(12,18,29,.2);box-shadow:0 -1px 0 rgba(255,255,255,.09)');
+        rule('.fbr-play','border-radius:2em;padding:.9em 1.2em');
+        rule('.fbr-refresh','background:transparent;color:#cad5e7');
+        rule('.fbr-cinema .fbr-story','background:rgba(8,15,28,.28)');
+        rule('.fbr-art','opacity:.7');
+        rule('.fbr-story:after','background:linear-gradient(180deg,rgba(16,22,35,.03),rgba(16,22,35,.88) 88%)');
+        rule('.fbr-progress-track','background:rgba(255,255,255,.13)');
+        rule('.fbr-loading i','background:rgba(255,255,255,.13)');
+        // White glass marks remote focus; the saved accent marks selection, so they remain distinct.
+        rule(focus,'background:#eff6ff!important;background-image:linear-gradient(145deg,#ffffff,#d3e6fc)!important;color:#132236!important;border:0!important;outline:0!important;box-shadow:0 .35em 1em rgba(0,0,0,.2)!important');
+        rule('.fbr-btn.focus','filter:none;transform:scale(1.018)');
+        rule('.settings-param.focus .settings-param__value,.settings-param.focus .settings-param__descr,.selectbox-item.focus .selectbox-item__subtitle,.fbr-btn.focus .fbr-small,.fbr-btn.focus .fbr-language,.fbr-episode.focus .fbr-episode-overview,.fbr-episode.focus .fbr-episode-status','color:#243d59');
+        rule('.selectbox-item.selected.focus::after','border-color:#243d59');
+        rule('.menu__item.focus .menu__ico [stroke],.menu__item.hover .menu__ico [stroke]','stroke:#132236');
+        rule('.menu__item.focus .menu__ico [fill]:not([fill="none"]),.menu__item.hover .menu__ico [fill]:not([fill="none"])','fill:#132236');
+        // Older Tizen keeps the opaque material above. Only supporting engines blur bounded UI surfaces.
+        css += '@supports ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){';
+        rule(surfaces,'background-color:rgba(29,38,54,.74)!important;-webkit-backdrop-filter:blur(28px) saturate(155%);backdrop-filter:blur(28px) saturate(155%)');
+        rule(chrome,'background-color:rgba(29,38,54,.72);-webkit-backdrop-filter:blur(20px) saturate(145%);backdrop-filter:blur(20px) saturate(145%)');
+        rule('.full-start__button','background-color:rgba(29,38,54,.46);-webkit-backdrop-filter:blur(14px) saturate(130%);backdrop-filter:blur(14px) saturate(130%)');
+        css += '}@media(prefers-reduced-motion:no-preference){';
+        rule(buttons,'transition:background-color .16s,color .16s,box-shadow .16s');
+        css += '}';
         return css;
     }
     function presentationCSS(accent,tint,fill,ink) {
@@ -1682,7 +1782,7 @@
         if (!api || !api.addComponent || !api.addParam) return;
         api.addComponent({component: 'faborn_ukr', name: NAME, icon: ICON});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_layout', type: 'select', values: {panel:'Панель', cinema:'Кінозал', classic:'Стандартне Lampa'}, default: 'panel'}, field: {name: 'Оформлення модуля', description: '«Стандартне Lampa» — штатні вікна та фокус, без кольорових акцентів Faborn у всій системі.'}, onChange: applyAppearance});
-        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_theme', type: 'select', values: {on:'Faborn', off:'Стандартна Lampa'}, default: 'on'}, field: {name: 'Тема всієї Lampa', description: 'Для «Панелі» та «Кінозалу»: оформлення меню, карток і налаштувань. Застосовується одразу.'}, onChange: applyAppearance});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_theme', type: 'select', values: {on:'Faborn', ios:'iOS · Liquid Glass', off:'Стандартна Lampa'}, default: 'on'}, field: {name: 'Тема всієї Lampa', description: 'iOS — скляні меню, картки та вікна. Застосовується одразу; зі стандартного оформлення переходить у «Панель».'}, onChange: changeTheme});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_accent', type: 'select', values: {blue:'Синій', amber:'Бурштиновий', mint:'М’ятний', violet:'Фіолетовий', aurora:'Синій → фіолетовий', lagoon:'Бірюзовий → синій'}, default: 'blue'}, field: {name: 'Колір акценту', description: 'Колір або градієнт для «Панелі» та «Кінозалу». У стандартному оформленні не застосовується.'}, onChange: applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinobase:'KinoBase', kinoukr:'KinoUkr', uakinogo:'UAKinogo / Alloha (експеримент)'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом. UAKinogo потребує ввімкненого «Експериментальне 4K».'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найвища доступна', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: 'Підсвічує варіант у списку джерел.'}});

@@ -95,6 +95,8 @@ function environment(options = {}) {
         },
         PlayerVideo: {listener: {follow(k, fn) { state.videoEvents[k] = fn; }}, video() { return {addEventListener(k, fn) { state.nativeEvents[k] = fn; }}; }}
     };
+    if (options.document) root.document = options.document;
+    if (options.jQuery) root.jQuery = options.jQuery;
     const instance = factory(root); instance.boot();
     state.choose = function (predicate) {
         const menu = state.menu;
@@ -607,11 +609,50 @@ test('appearance settings expose both layouts, fallback, reversible global theme
     const param = key => state.params.find(p => p.param.name === 'faborn_ukr_' + key);
     assert.deepEqual(Object.keys(param('layout').param.values), ['panel', 'cinema', 'classic']);
     assert.equal(param('layout').param.default, 'panel');
-    assert.deepEqual(Object.keys(param('theme').param.values), ['on', 'off']);
+    assert.deepEqual(Object.keys(param('theme').param.values), ['on', 'ios', 'off']);
     assert.equal(Object.keys(param('accent').param.values).length, 6);
     assert.equal(typeof param('theme').onChange, 'function');
     assert.equal(typeof param('accent').onChange, 'function');
     assert.equal(Object.keys(state.storage).filter(k => !k.startsWith('faborn_ukr_')).length, 0);
+});
+
+test('iOS activates from classic, persists across layouts, and can be completely removed', () => {
+    const nodes = {}, classes = new Set();
+    const jq = () => ({length: 0, append() {return this;}, toggleClass(name,enabled) {if(enabled)classes.add(name);else classes.delete(name);return this;}});
+    const env = environment({jQuery:jq,document:{
+        createElement() {return {};}, getElementById(id) {return nodes[id];},
+        getElementsByTagName() {return [];}, body:{appendChild(node) {nodes[node.id]=node;}}
+    }});
+    const {state} = env;
+    const param = key => state.params.find(p=>p.param.name==='faborn_ukr_'+key);
+    const change = (key,value) => {state.storage['faborn_ukr_'+key]=value;param(key).onChange(value);};
+    let refreshed=0;env.root.Lampa.Settings={update(){refreshed++;}};
+    change('accent','lagoon');
+    change('layout','classic');
+    change('theme','ios');
+    assert.equal(state.storage.faborn_ukr_layout,'panel');
+    assert.equal(refreshed,1);
+    assert.ok(classes.has('faborn-glass'));
+    assert.ok(nodes['faborn-ukr-theme'].textContent.length>0);
+    const glassStyles=nodes['faborn-ukr-theme'].textContent;
+    change('layout','cinema');
+    assert.ok(classes.has('faborn-glass'));
+    change('layout','classic');
+    assert.equal(classes.size,0);
+    assert.equal(nodes['faborn-ukr-ui'].textContent,'');
+    assert.equal(nodes['faborn-ukr-theme'].textContent,'');
+    change('layout','cinema');
+    assert.equal(nodes['faborn-ukr-theme'].textContent,glassStyles);
+    change('theme','off');
+    assert.equal(classes.size,0);
+    assert.equal(nodes['faborn-ukr-theme'].textContent,'');
+    change('theme','on');
+    assert.ok(classes.has('faborn-theme'));
+    assert.ok(!classes.has('faborn-glass'));
+    assert.ok(!nodes['faborn-ukr-theme'].textContent.includes('faborn-glass'));
+    assert.equal(state.storage.faborn_ukr_accent,'lagoon');
+    assert.equal(state.controller,'full_start');
+    assert.equal(Object.keys(state.storage).filter(k=>!k.startsWith('faborn_ukr_')).length,0);
 });
 
 const kinoFixture=require('./fixtures/kinobase-protocol');
