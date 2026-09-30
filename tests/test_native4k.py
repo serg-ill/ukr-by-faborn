@@ -76,6 +76,21 @@ class NativeLoopbackTests(unittest.TestCase):
             socket.create_connection(('127.0.0.1', port), timeout=.2)
         self.assertGreater(self.lib.lab_listen(), 0)
 
+    def test_paused_reader_applies_backpressure_without_hanging_the_worker(self):
+        with self.connection() as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1024)
+            buffer = ctypes.create_string_buffer(b'x' * 65536)
+            blocked = False
+            for _ in range(512):
+                before = time.monotonic()
+                count = self.lib.lab_send(buffer, 65536)
+                self.assertLess(time.monotonic() - before, .5)
+                self.assertGreaterEqual(count, 0)
+                if count == 0:
+                    blocked = True
+                    break
+            self.assertTrue(blocked, 'Loopback writer should pause when the player stops reading')
+
     def test_native_transport_rejects_non_https_and_header_injection(self):
         self.assertEqual(self.lib.lab_init(), 1)
         self.assertLess(self.lib.lab_get(b'file:///etc/passwd', b'', b'', b'', b'', b'', 1024), 0)

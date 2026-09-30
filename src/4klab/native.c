@@ -2,7 +2,6 @@
 #include <arpa/inet.h>
 #include <curl/curl.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <poll.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -10,6 +9,7 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -28,6 +28,22 @@ static size_t body_size, body_limit;
 static char error_text[CURL_ERROR_SIZE], location[8192], content_range[160];
 static char request_buffer[8193];
 static int listener = -1, client = -1;
+
+/* Samsung's fcntl(F_SETFL) changes Emscripten bookkeeping only. Use the
+ * supported native poll + socket timeouts instead of relying on O_NONBLOCK. */
+static int bounded_socket(int fd) {
+    struct timeval timeout = {0, 100000};
+    return setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) ||
+           setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+}
+static int ready(int fd, short event) {
+    struct pollfd p = {fd, event, 0};
+    int result = poll(&p, 1, 0);
+    if (result < 0) return -1;
+    if (!result) return 0;
+    if (p.revents & event) return 1;
+    return p.revents & (POLLERR | POLLHUP | POLLNVAL) ? -1 : 0;
+}
 
 static size_t receive_body(void *data, size_t size, size_t n, void *unused) {
     (void)unused;
@@ -142,8 +158,7 @@ API int lab_listen(void) {
     addr.sin_port = 0;
     socklen_t size = sizeof(addr);
     if (bind(listener, (struct sockaddr *)&addr, size) || listen(listener, 4) ||
-        getsockname(listener, (struct sockaddr *)&addr, &size) ||
-        fcntl(listener, F_SETFL, O_NONBLOCK) < 0) {
+        getsockname(listener, (struct sockaddr *)&addr, &size) || bounded_socket(listener)) {
         close(listener); listener = -1; return -3;
     }
     return ntohs(addr.sin_port);
@@ -154,11 +169,13 @@ API int lab_accept(void) {
     if (poll(&p, 1, 0) <= 0 || !(p.revents & POLLIN)) return 0;
     client = accept(listener, NULL, NULL);
     if (client < 0) return 0;
-    if (fcntl(client, F_SETFL, O_NONBLOCK) < 0) { lab_close_client(); return -1; }
+    if (bounded_socket(client)) { lab_close_client(); return -1; }
     return 1;
 }
 API int lab_read(void) {
     if (client < 0) return -1;
+    int state = ready(client, POLLIN);
+    if (state <= 0) return state;
     int len = recv(client, request_buffer, sizeof(request_buffer)-1, 0);
     if (len < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return 0;
     if (len <= 0) return -1;
@@ -168,6 +185,8 @@ API int lab_read(void) {
 API const char *lab_request(void) { return request_buffer; }
 API int lab_send(const void *data, int len) {
     if (client < 0 || len <= 0) return -1;
+    int state = ready(client, POLLOUT);
+    if (state <= 0) return state;
     int sent = send(client, data, len, 0);
     if (sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return 0;
     return sent;
