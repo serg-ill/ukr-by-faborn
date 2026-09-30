@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.13.3 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.14 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,8 +8,9 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.13.3';
+    var VERSION = '0.1.0-beta.14';
     var NAME = 'ukr by Faborn';
+    var interfaceUI = null, interfaceScript = null, lastFullEvent = null;
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
     var pendingRequest, playbackTimer, watchedPlayback, playbackContext, historyPlayback;
@@ -133,6 +134,8 @@
         $('body').toggleClass('faborn-glass',glass);
         // Removing our CSS restores the user's existing theme without changing any Lampa preference.
         putStyle('faborn-ukr-theme',enabled ? (glass ? glassCSS(accent,tint,fill,ink) : themeCSS(accent,tint,fill,ink)) : '');
+        $('.view--faborn-torrent').toggleClass('hide',storage('torrent_button','on') !== 'on');
+        if (interfaceUI) interfaceUI.apply();
     }
     function changeTheme(value) {
         // An explicit choice of iOS must also work when the previous layout disabled all theming.
@@ -328,7 +331,6 @@
         content += '<div class="fbr-mini-title">'+heading+track+'</div>';
         if (busy) content += '<div class="fbr-loading"><strong>'+escapeHTML(busy.charAt(0).toUpperCase()+busy.slice(1))+'…</strong><i></i><i></i><i></i><div class="fbr-small">UAKino · UASerials · UAFix · KinoBase</div></div>';
         else {
-            if (session.labStarted) content += btn('labstatus','UAKinogo / Alloha · експеримент<span class="fbr-small">'+escapeHTML(session.status.uakinogo)+'</span>','fbr-last',false,function () { cardLabDetails(session); });
             if (title.type === 'tv') {
                 content += '<div class="fbr-controls">'+btn('season','Сезон '+session.season,'fbr-control',false,function () { session.uiFocus = 'season'; chooseSeason(session); })+btn('episode','Серія '+session.episode,'fbr-control',false,function () { session.uiFocus = 'episode'; chooseEpisode(session,true); })+'</div>';
                 var last = lastPosition(session);
@@ -1209,7 +1211,7 @@
             session.status[provider.id] = 'Очікування відповіді';
             discoverProvider(serial,session,provider,function (status) { session.status[provider.id] = status; finished(); });
         });
-        if (storage('lab4k','off') === 'on') startCardLab(session);
+        // Alloha is retired. A previously saved 'on' must never start its worker.
     }
     function resolveEpisode(serial,title,release,episode,done,force) {
         if (episode.lab) return done();
@@ -1399,6 +1401,7 @@
     function renderSources(session) {
         if (activeSession !== session) return;
         session.screen = 'sources';
+        learnSourceQuality(session);
         var rows = [], view = sourceGroups(session);
         var status = Object.keys(session.status).map(function (id) {
             var errors = [];
@@ -1409,7 +1412,6 @@
         });
         save('source_status',status);
         if (canPresent()) return showPresentation(session,view);
-        if (session.labStarted) rows.push({title:'UAKinogo / Alloha · експеримент',subtitle:session.status.uakinogo,action:'labstatus'});
         if (view.qualities.length > 1) rows.push({title:'Якість: '+qualityLabel(view.quality),subtitle:'Змінити якість',action:'quality'});
         if (session.title.type === 'tv') rows.push({title:'Сезон '+session.season+' · Серія '+session.episode,subtitle:'Змінити сезон або серію',action:'episode'});
         var last = lastPosition(session);
@@ -1905,8 +1907,7 @@
             if (L.Storage.field) lines.push('Плеєр Lampa: ' + L.Storage.field('player') + ' · для бети потрібен Tizen / AVPlay');
             lines.push('AVPlay API: ' + (root.webapis && root.webapis.avplay ? 'доступний' : 'недоступний'));
             lines.push('Сесія KinoBase: '+storage('kino_transport','Звичайний запит'));
-            lines.push('4K-експеримент: ' + (storage('lab4k','off') === 'on' ? 'увімкнено' : 'вимкнено'));
-            if (storage('lab4k_status','')) lines.push('4K · ' + storage('lab4k_status',''));
+
             if (storage('last_error', '')) lines.push('Остання помилка плеєра: ' + storage('last_error', ''));
             if (storage('last_launch', '')) lines.push('Останній запуск: ' + storage('last_launch', ''));
             if (lastDiagnostic) lines.push(lastDiagnostic);
@@ -1963,64 +1964,7 @@
             else if (row.action === 'back') renderSources(session);
         },function () { renderSources(session); });
     }
-    function startCardLab(session) {
-        if (activeSession !== session || storage('lab4k','off') !== 'on') return;
-        session.labStarted = true; session.labLaunching = false;
-        session.labPending = session.season+':'+session.episode;
-        session.status.uakinogo = 'Завантаження адаптера…';
-        var run = (session.labRun || 0)+1; session.labRun = run;
-        function current() { return activeSession === session && session.labRun === run && storage('lab4k','off') === 'on'; }
-        function refresh() {
-            if (current()) {
-                save('source_status',Object.keys(session.status).map(function (id) { return sourceName(id)+': '+session.status[id]; }));
-                if (session.ready && session.screen === 'sources' && !session.labLaunching) renderSources(session);
-            }
-        }
-        function failure(message,playbackFailure) {
-            if (!current()) return;
-            session.status.uakinogo = message; session.labPending = '';
-            if (!playbackFailure) session.title.releases = session.title.releases.filter(function (r) { return r.source !== 'uakinogo'; });
-            save('lab4k_status',message); refresh();
-        }
-        refresh();
-        ensureLab(function (error,adapter) {
-            if (!current()) return;
-            if (error) { failure(error.message); return; }
-            adapter.discover(session.movie,session.season,session.episode,{
-                stage:function (message) { if (current()) { session.status.uakinogo = message; refresh(); } },
-                error:failure,
-                episodes:function (items) { if (current()) session.labEpisodes = items; },
-                result:function (data) {
-                    if (!current()) return;
-                    session.labEpisodes = data.episodes; session.labSelection = data.season+':'+data.episode; session.labPending = '';
-                    session.title.releases.forEach(function (r) {
-                        if (r.source === 'uakinogo') r.episodes = r.episodes.filter(function (e) { return e.season !== data.season || e.episode !== data.episode; });
-                    });
-                    data.tracks.forEach(function (track) {
-                        if (['uk','en','ru'].indexOf(track.language) < 0 || !Array.isArray(track.qualities)) return;
-                        var r = session.title.releases.filter(function (v) { return v.source === 'uakinogo' && v.voice === track.label && v.audioLanguage === track.language; })[0];
-                        if (!r) { r = {id:session.title.id+'-alloha-'+encodeURIComponent(track.language+'|'+track.label),source:'uakinogo',voice:track.label,audioLanguage:track.language,episodes:[]}; session.title.releases.push(r); }
-                        r.episodes.push({id:r.id+'-s'+data.season+'e'+data.episode,season:data.season,episode:data.episode,lab:true,labQualities:track.qualities,resolvedAt:Date.now(),qualities:{}});
-                    });
-                    session.title.releases = session.title.releases.filter(function (r) { return r.episodes.length; });
-                    var qualities = unique(data.tracks.reduce(function (all,t) { return all.concat(t.qualities); },[])).sort(function (a,b) { return parseInt(b,10)-parseInt(a,10); });
-                    session.status.uakinogo = 'Знайдено · '+qualities.map(qualityLabel).join(', ')+' · озвучень: '+data.tracks.length;
-                    if (session.labSelection !== session.season+':'+session.episode) { session.labPending = session.season+':'+session.episode; adapter.episode(session.season,session.episode); }
-                    else refresh();
-                },
-                playerData:function (data) {
-                    var chosen = session.labChosen;
-                    var item = playData(session.movie,session.title,chosen.release,chosen.episode,chosen.value);
-                    item.url = item.faborn_url = data.url; labPlaybackData = item;
-                    setPlayerVoices(item,session.movie,session.catalog,session.title,chosen.release,chosen.episode);
-                    save('last_launch',session.title.title+' · '+chosen.value+' · UAKinogo / Alloha · передано плеєру');
-                    return item;
-                },
-                beforePlay:function () { closePresentation(); L.Select.hide(); L.Controller.toggle(returnController); },
-                back:function () { if (current()) { session.labLaunching = false; renderSources(session); } else L.Controller.toggle(returnController); }
-            });
-        });
-    }
+    function startCardLab() { /* Alloha is retired; no requests or workers. */ }
     function labChanged() {
         if (storage('lab4k','off') !== 'on') {
             cancelLabLoad();
@@ -2038,51 +1982,108 @@
             L.Select.hide(); adapter.open(returnController);
         });
     }
+    function loadInterface() {
+        if (!root.document || !root.document.querySelector || interfaceUI || interfaceScript || !baseURL()) return;
+        function ready() {
+            if (typeof root.FabornInterface !== 'function') return;
+            interfaceUI = root.FabornInterface(root,L,$); interfaceUI.install();
+            if (lastFullEvent) interfaceUI.full(lastFullEvent);
+        }
+        if (typeof root.FabornInterface === 'function') return ready();
+        interfaceScript = root.document.createElement('script');
+        interfaceScript.src = baseURL()+'lib/faborn-ui.js?v='+VERSION; interfaceScript.async = true;
+        interfaceScript.onload = ready;
+        interfaceScript.onerror = function () { interfaceScript = null; };
+        root.document.head.appendChild(interfaceScript);
+    }
+    function learnSourceQuality(session) {
+        if (!interfaceUI || !session.movie.id) return;
+        var qualities = [], languages = [];
+        session.title.releases.forEach(function (release) {
+            if (release.source === 'uakinogo') return;
+            release.episodes.forEach(function (episode) {
+                if (episode.season !== session.season || episode.episode !== session.episode || episode.error || !episode.resolvedAt) return;
+                var actual = qualityNames(episode).filter(function (q) { return q !== 'auto' && mediaURL(episode.qualities[q]); });
+                if (actual.length) { qualities = qualities.concat(actual); languages.push(release.audioLanguage || 'uk'); }
+            });
+        });
+        if (!qualities.length) return;
+        try { interfaceUI.learn(session.movie,{qualities:unique(qualities),languages:unique(languages),season:session.title.type === 'tv' ? session.season : 0,episode:session.title.type === 'tv' ? session.episode : 0}); } catch (ignore) { /* Optional card badges must not block source playback. */ }
+    }
     function settings() {
         var api = L.SettingsApi;
         if (!api || !api.addComponent || !api.addParam) return;
         api.addComponent({component: 'faborn_ukr', name: NAME, icon: ICON});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_buttons',type:'button'},field:{name:'Порядок кнопок у картці',description:'Переміщення іконок зі збереженням після перезапуску. Також доступне довгим натисканням іконки Faborn.'},onChange:function () { if(interfaceUI) interfaceUI.editButtons(); }});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_button',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Кнопка торрентів',description:'Штатний пошук Lampa з твоїми налаштуваннями парсера і TorrServer.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_home',type:'select',values:{on:'Faborn · три картки',off:'Стандартна Lampa'},default:'on'},field:{name:'Головний екран',description:'Три картки, читабельні описи та SVG-іконки. Після зміни повторно відкрий головну.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_ratings',type:'select',values:{on:'Faborn',off:'Стандартні'},default:'on'},field:{name:'Рейтинги у картці',description:'Єдиний блок доступних оцінок і твоя оцінка, збережена на цьому пристрої.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_badges',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Бейджі якості Faborn',description:'Дані знайдених джерел: якість, мови й конкретна серія. 4K та HDR не визначаються за постером.'},onChange:applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_layout', type: 'select', values: {panel:'Панель', cinema:'Кінозал', classic:'Стандартне Lampa'}, default: 'panel'}, field: {name: 'Оформлення модуля', description: '«Стандартне Lampa» — штатні вікна та фокус, без кольорових акцентів Faborn у всій системі.'}, onChange: applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_theme', type: 'select', values: {on:'Faborn', ios:'iOS · Liquid Glass', off:'Стандартна Lampa'}, default: 'on'}, field: {name: 'Тема всієї Lampa', description: 'iOS — скляні меню, картки та вікна. Застосовується одразу; зі стандартного оформлення переходить у «Панель».'}, onChange: changeTheme});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_glass_transparency',type:'select',values:{solid:'Непрозоре',low:'Низька',standard:'Стандартна',high:'Висока',max:'Максимальна'},default:'standard'},field:{name:'Прозорість скла iOS',description:'Для теми iOS · Liquid Glass. Вища прозорість — краще видно фон крізь меню, кнопки й вікна. Застосовується одразу.'},onChange:applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_accent', type: 'select', values: {blue:'Синій', amber:'Бурштиновий', mint:'М’ятний', violet:'Фіолетовий', aurora:'Синій → фіолетовий', lagoon:'Бірюзовий → синій'}, default: 'blue'}, field: {name: 'Колір акценту', description: 'Колір або градієнт для «Панелі» та «Кінозалу». У стандартному оформленні не застосовується.'}, onChange: applyAppearance});
-        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinobase:'KinoBase', kinoukr:'KinoUkr', uakinogo:'UAKinogo / Alloha (експеримент)'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом. UAKinogo потребує ввімкненого «Експериментальне 4K».'}});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinobase:'KinoBase', kinoukr:'KinoUkr'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найвища доступна', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: 'Підсвічує варіант у списку джерел.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_kino_session',type:'select',values:{auto:'Автоматично',direct:'Лише звичайний запит'},default:'auto'},field:{name:'Сесія KinoBase',description:'Після помилки сесії повторює запит через мережевий API Samsung, якщо він доступний у застосунку. Окремий сервер не потрібен.'}});
-        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_lab4k', type: 'select', values: {off:'Вимкнено',on:'Увімкнено'}, default: 'off'}, field: {name: 'Експериментальне 4K', description: 'Додає UAKinogo / Alloha до пошуку в картці: доступні якості, UA / EN / RU, сезони й серії. Потрібен Tizen Sockets; стан видно у списку джерел.'}, onChange:labChanged});
-        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_lab4k_test', type: 'button'}, field: {name: 'Перевірити 4K', description: '«Оппенгеймер» · UA / EN / RU · 2160p AV1. Потрібен Tizen / AVPlay; сумісність визначить тест.'}, onChange:openLab});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_refresh', type: 'button'}, field: {name: 'Оновити індекс із GitHub'}, onChange: function () {
             loadCatalog(true, function (error, catalog) { notify(error ? error.message : 'Індекс оновлено: ' + catalog.titles.length + ' назв'); });
         }});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_diagnostic', type: 'button'}, field: {name: 'Версія та діагностика', description: VERSION}, onChange: function () { rememberController(); diagnostics(); }});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_pages', type: 'input', values: '', default: '', placeholder: 'Визначається автоматично'}, field: {name: 'Адреса GitHub Pages', description: 'Зазвичай визначається автоматично. Резерв: https://USERNAME.github.io/REPOSITORY/'}});
     }
+    var TORRENT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3v10a7 7 0 0 0 14 0V3h-5v10a2 2 0 0 1-4 0V3Z"/><path d="M5 8h5M14 8h5"/></svg>';
+    function buttonMarkup(kind) {
+        var torrent = kind === 'torrent', label = torrent ? 'Торренти' : NAME;
+        return '<div class="full-start__button selector view--faborn-'+(torrent ? 'torrent' : 'ukr')+'" role="button" aria-label="'+label+'" data-faborn-action="'+kind+'" data-title="'+label+'" data-subtitle="'+label+'">'+(torrent ? TORRENT_ICON : ICON)+'<span aria-hidden="true" style="display:none!important;font-size:0!important;line-height:0!important;width:0!important;height:0!important;overflow:hidden!important">'+label+'</span></div>';
+    }
+    function torrentRequest(movie,language) {
+        var localized=movie.title || movie.name || '', original=movie.original_title || movie.original_name || localized;
+        var year=text(movie.first_air_date || movie.release_date || '').slice(0,4), copy={};
+        Object.keys(movie).forEach(function (key) { copy[key]=movie[key]; });
+        copy.title=localized; copy.original_title=original;
+        var combinations={df:original,df_year:original+' '+year,df_lg:original+' '+localized,df_lg_year:original+' '+localized+' '+year,lg:localized,lg_year:localized+' '+year,lg_df:localized+' '+original,lg_df_year:localized+' '+original+' '+year};
+        return {url:'',title:'Торренти',component:'torrents',search:text(combinations[language] || combinations.df_lg).trim(),search_one:localized,search_two:original,movie:copy,page:1};
+    }
+    function openTorrents(movie) {
+        if (!L.Activity || !L.Activity.push || L.Component && L.Component.get && !L.Component.get('torrents')) return notify('У цій збірці Lampa немає компонента торрентів.');
+        var request=torrentRequest(movie,L.Storage.field('parse_lang'));
+        L.Activity.push(request);
+    }
     function attach(event) {
         if (!event || event.type !== 'complite' || !event.object || !event.object.activity || !event.data || !event.data.movie) return;
-        var render = event.object.activity.render(), button, anchor;
-        if (!render || render.find('.view--faborn-ukr').length) return;
-        button = $('<div class="full-start__button selector view--faborn-ukr" role="button" aria-label="' + NAME + '" data-title="' + NAME + '" data-subtitle="' + NAME + ' · ' + VERSION + '">' + ICON + '<span class="fbr-button-title">' + NAME + '</span></div>');
-        button.on('hover:enter', function () { open(event.data.movie); });
-        // Modern Lampa keeps .view--torrent inside a hidden source group. The requested icon belongs on the visible card row.
-        anchor = render.find('.full-start-new__buttons .button--play').first();
-        if (anchor.length) { anchor.after(button); return; }
-        anchor = render.find('.view--torrent').first();
-        if (anchor.length) anchor.after(button);
-        else {
-            anchor = render.find('.full-start__buttons').first();
-            if (anchor.length) anchor.append(button);
+        lastFullEvent = event;
+        var render = event.object.activity.render(), button, torrent, anchor;
+        if (!render) return;
+        button=render.find('.view--faborn-ukr').first();
+        if (!button.length) {
+            button=$(buttonMarkup('online'));
+            button.on('hover:enter',function () { open(event.data.movie); }).on('hover:focus',function () { if(event.link && event.link.items && event.link.items[0]) event.link.items[0].last=this; });
+            button.on('hover:long',function () { if (interfaceUI) interfaceUI.editButtons(); });
+            anchor=render.find('.full-start-new__buttons .button--play').first();
+            if (anchor.length) anchor.after(button);
             else {
-                anchor = render.find('.full-start__button').last();
-                if (anchor.length) anchor.after(button);
+                anchor=render.find('.full-start__buttons').first();
+                if (anchor.length) anchor.append(button);
+                else { anchor=render.find('.full-start__button').last();if(anchor.length) anchor.after(button); }
             }
         }
+        torrent=render.find('.view--faborn-torrent').first();
+        if (!torrent.length && button.length) {
+            torrent=$(buttonMarkup('torrent'));
+            torrent.on('hover:enter',function () { openTorrents(event.data.movie); }).on('hover:focus',function () { if(event.link && event.link.items && event.link.items[0]) event.link.items[0].last=this; });
+            button.after(torrent);
+        }
+        torrent.toggleClass('hide',storage('torrent_button','on') !== 'on');
     }
     function install() {
         if (installed || !root.Lampa || !root.jQuery) return;
         L = root.Lampa; $ = root.jQuery;
         if (!L.Listener || !L.Select || !L.Player) return;
         installed = true;
-        if (!$('#faborn-ukr-style').length) $('body').append('<style id="faborn-ukr-style">.full-start__button.view--faborn-ukr{justify-content:center;min-width:3.7em}.view--faborn-ukr svg{width:1.65em;height:1.65em;flex-shrink:0}.view--faborn-ukr .fbr-button-title{display:none!important}</style>');
+        save('lab4k','off'); save('lab4k_status','');
+        if (storage('source','uakino') === 'uakinogo') save('source','kinobase');
+        if (!$('#faborn-ukr-style').length) $('body').append('<style id="faborn-ukr-style">.full-start__button.view--faborn-ukr,.full-start__button.view--faborn-torrent{justify-content:center;font-size:0!important;min-width:3.64rem!important;width:3.64rem!important;height:3.64rem!important;padding:0!important;border-radius:.85rem!important;margin-right:.975rem!important;border:0!important;outline:0!important;box-shadow:none!important}.full-start__button.view--faborn-ukr>svg,.full-start__button.view--faborn-torrent>svg{width:1.95rem!important;height:1.95rem!important;margin:0!important;flex-shrink:0}.full-start__button.view--faborn-torrent>:not(svg),.full-start__button.view--faborn-torrent:before,.full-start__button.view--faborn-torrent:after,.full-start__button.view--faborn-ukr>:not(svg),.full-start__button.view--faborn-ukr:before,.full-start__button.view--faborn-ukr:after{display:none!important}</style>');
         L.Listener.follow('full', attach);
         if (L.Player.listener) {
             L.Player.listener.follow('start', function (data) {
@@ -2128,6 +2129,7 @@
         }
         settings();
         applyAppearance();
+        loadInterface();
     }
     function boot() {
         var tries = 0;
@@ -2138,7 +2140,7 @@
         attempt();
     }
     return {
-        version: VERSION, name: NAME, boot: boot, open: open,
+        version: VERSION, name: NAME, boot: boot, open: open, openTorrents:openTorrents, torrentRequest:torrentRequest, buttonMarkup:buttonMarkup,
         // Pure helpers are also used by the offline package checks.
         normalize: normalize, matchTitles: matchTitles, mediaURL: mediaURL,
         safeBase: safeBase, validCatalog: validCatalog, qualityNames: qualityNames,

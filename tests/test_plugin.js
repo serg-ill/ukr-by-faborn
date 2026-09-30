@@ -166,25 +166,15 @@ test('install is idempotent and does not modify another plugin playback', () => 
     state.playerEvents.start(foreign);
     assert.equal(foreign.url, 'https://other.example/movie.m3u8');
 });
-test('4K laboratory is off by default and cannot load from its test button while disabled', () => {
-    const {state}=environment();
-    const setting=state.params.find(p=>p.param.name==='faborn_ukr_lab4k');
-    assert.equal(setting.param.default,'off');
-    state.params.find(p=>p.param.name==='faborn_ukr_lab4k_test').onChange();
-    assert.equal(state.requests.length,0);assert.equal(state.menu,null);assert.equal(state.played,null);
-    assert.match(state.notices.at(-1),/Спочатку увімкни/);
-});
-test('canceling the optional script load ignores its late onload and returns navigation', () => {
-    const {state,root}=environment();
-    let script,opened=0;
-    root.document.createElement=()=>({});
-    root.document.head={appendChild(node){script=node;node.parentNode={removeChild(){}};}};
-    root.Faborn4KLab=()=>({open(){opened++;},disable(){}});
-    state.storage.faborn_ukr_lab4k='on';
-    state.params.find(p=>p.param.name==='faborn_ukr_lab4k_test').onChange();
-    const late=script.onload;
-    assert.match(script.src,/lib\/4klab\/ui.js/);state.menu.onBack();late();
-    assert.equal(opened,0);assert.equal(state.menu,null);assert.equal(state.controller,'full_start');
+test('retired Alloha is absent from settings and its saved flag cannot start discovery', () => {
+ const env=environment(),{state,root}=env;let loaded=0;
+ root.Faborn4KLab=()=>{loaded++;return {};};state.storage.faborn_ukr_lab4k='on';
+ env.instance.open({title:'Оппенгеймер',original_title:'Oppenheimer',release_date:'2023-07-19'});
+ assert.equal(loaded,0);
+ assert.equal(state.params.some(p=>p.param.name==='faborn_ukr_lab4k'||p.param.name==='faborn_ukr_lab4k_test'),false);
+ assert.equal(state.menu.items.some(i=>i.action==='labstatus'),false);
+ assert.equal(state.requests.some(r=>/uakinogo|alloha/.test(r.url)),false);
+ assert.ok(state.params.find(p=>p.param.name==='faborn_ukr_kino_session'));
 });
 test('input settings supply the string values required by Lampa Params.bind', () => {
     const {state} = environment();
@@ -937,44 +927,6 @@ test('HLS subtitle playlists stay attached when selecting a quality',()=>{
  assert.deepEqual(api.parseMaster(body,masterURL),{'1080p':masterURL});
 });
 
-function cardLabEnvironment(){
- const env=environment(),calls=[];let callbacks;
- const adapter={cancel(){calls.push({type:'cancel'})},disable(){},discover(movie,season,episode,handlers){callbacks=handlers;calls.push({type:'discover',movie,season,episode})},episode(season,episode){calls.push({type:'episode',season,episode})},playChoice(choice){calls.push({type:'play',choice})}};
- env.root.document.createElement=()=>({});env.root.document.head={appendChild(script){script.parentNode={removeChild(){}};script.onload()}};
- env.root.Faborn4KLab=()=>adapter;env.state.storage.faborn_ukr_lab4k='on';
- return {...env,calls,get handlers(){return callbacks},resolved(season=0,episode=0){callbacks.result({season,episode,episodes:[{season:1,episode:1},{season:1,episode:2},{season:2,episode:1}],tracks:[{label:'(English) Original',language:'en',qualities:['2160p','1080p']},{label:'(Ukrainian) Studio',language:'uk',qualities:['2160p','1080p']}]})}};
-}
-test('enabled experiment is discovered from the card and merged into its quality and language groups',()=>{
- const env=cardLabEnvironment();const movie={id:872585,title:'Оппенгеймер',original_title:'Oppenheimer',release_date:'2023-07-19'};
- env.instance.open(movie);assert.deepEqual(env.calls.find(c=>c.type==='discover').movie,movie);
- assert.ok(env.state.menu.items.some(r=>r.action==='labstatus'));
- env.resolved();assert.ok(env.state.menu.items.some(r=>r.group && r.group.language==='en' && r.subtitle.includes('UAKinogo / Alloha')));
- env.state.play('2160p',r=>r.release.source==='uakinogo');
- assert.equal(env.calls.at(-1).type,'play');assert.equal(env.calls.at(-1).choice.quality,'2160p');
- const data=env.handlers.playerData({url:'http://127.0.0.1:12345/0123456789abcdef0123456789abcdef/0.m3u8'});
- data.faborn_4klab=true;env.handlers.beforePlay();env.root.Lampa.Player.play(data);env.state.progress(120,7200);
- assert.equal(env.state.history.length,1);assert.equal(env.state.storage['faborn_ukr_position_tmdb-movie-872585'].time,120);
-});
-test('experiment failures remain visible while stable source results stay playable',()=>{
- const env=cardLabEnvironment();env.instance.open({title:'Профі',original_title:'A Working Man',release_date:'2025-03-26'});
- const before=env.state.menu.items.filter(r=>r.group).length;env.handlers.error('SOCKETS: API недоступний');
- assert.equal(env.state.menu.items.filter(r=>r.group).length,before);
- assert.match(env.state.menu.items.find(r=>r.action==='labstatus').subtitle,/SOCKETS/);
- env.state.play('2160p',r=>r.release.source!=='uakinogo');assert.ok(env.state.played.url.startsWith('https://'));
-});
-test('late experimental replies after Back or a different card never reopen or contaminate it',()=>{
- const env=cardLabEnvironment();env.instance.open({title:'First',original_title:'First'});const old=env.handlers;
- env.state.menu.onBack();old.error('late');old.result({tracks:[],episodes:[],season:0,episode:0});
- assert.equal(env.state.menu,null);assert.equal(env.state.controller,'full_start');
- env.instance.open({title:'Second',original_title:'Second'});old.result({tracks:[{label:'wrong',language:'en',qualities:['2160p']}],episodes:[],season:0,episode:0});
- assert.equal(env.state.menu.items.some(r=>r.title.includes('wrong')),false);
-});
-test('experimental episode metadata participates in existing season and episode controls',()=>{
- const env=cardLabEnvironment();env.instance.open({id:1,name:'Friends',original_name:'Friends',first_air_date:'1994-09-22'});env.resolved(1,1);
- env.state.choose(r=>r.action==='episode');env.state.choose(r=>r.value===2);
- assert.deepEqual(env.calls.at(-1),{type:'episode',season:2,episode:1});
- assert.ok(env.state.menu.items.some(r=>r.value===1));
-});
 test('a video server soft 404 is diagnosed as unavailable, not as a Playerjs parsing error',()=>{
  assert.throws(()=>api.playerEntries('<html><title>404 Not Found</title><h1>404 Not Found</h1></html>',{}),/404: відео недоступне/);
 });
@@ -1058,21 +1010,6 @@ test('repeated audio clicks during a pending switch do not invalidate the pendin
  assert.equal(state.played.voice_name,'Оригинал');assert.ok(state.changedURL);state.videoEvents.loadeddata();
  assert.equal(state.seeked,510);assert.equal(state.played.timeline.stop_recording,undefined);
 });
-test('Alloha switches through its existing adapter without closing the player or bypassing loopback',()=>{
- const env=voicePlayer(cardLabEnvironment()),{state}=env;let selection,done;
- // Replace only the adapter switch; real main-plugin callbacks still populate the player.
- const factory=env.root.Faborn4KLab;
- env.root.Faborn4KLab=()=>Object.assign(factory(),{switchChoice(value,cb){selection=value;done=cb;}});
- env.instance.open({id:1,name:'Friends',original_name:'Friends',first_air_date:'1994-09-22'});env.resolved(1,1);
- state.play('2160p',r=>r.release.source==='uakinogo'&&r.release.audioLanguage==='uk');
- const data=env.handlers.playerData({url:'http://127.0.0.1:12345/0123456789abcdef0123456789abcdef/0.m3u8'});
- data.faborn_4klab=true;data.quality={'2160p':data.url};env.handlers.beforePlay();env.root.Lampa.Player.play(data);
- data.voiceovers.find(v=>v.language==='EN').onSelect();
- assert.deepEqual(selection,{season:1,episode:1,label:'(English) Original',language:'en',quality:'2160p'});
- done(null,{url:'http://127.0.0.1:12345/0123456789abcdef0123456789abcdef/9.m3u8'});
- state.videoEvents.loadeddata();assert.equal(state.seeked,510);assert.equal(state.played,data);assert.equal(state.closed,undefined);
- assert.match(state.changedURL,/127\.0\.0\.1.*\/9.m3u8$/);assert.equal(data.faborn_4klab,true);
-});
 test('a soft 404 in the first episode iframe falls through to its second supported player',()=>{
  const page='https://uafix.net/serials/dzhentlmeni/',ep=page+'season-01-episode-01/';
  const env=environment({respond(req){req.status=200;
@@ -1088,4 +1025,24 @@ test('a soft 404 in the first episode iframe falls through to its second support
  env.instance.open({name:'Джентльмени',original_name:'The Gentlemen',first_air_date:'2024-03-07'});
  assert.ok(env.state.menu.items.some(r=>r.group && r.subtitle.includes('UAFix')));
  assert.ok(env.state.requests.some(r=>r.url==='https://ashdi.vip/vod/99001'));
+});
+
+test('torrent shortcut routes TV metadata and selected search language to native Lampa',()=>{
+ const movie={id:1668,name:'Друзі',original_name:'Friends',first_air_date:'1994-09-22',imdb_id:'tt0108778'};
+ const r=api.torrentRequest(movie,'df_lg_year');
+ assert.equal(r.component,'torrents');assert.equal(r.search,'Friends Друзі 1994');assert.equal(r.search_one,'Друзі');assert.equal(r.search_two,'Friends');assert.equal(r.movie.name,'Друзі');assert.equal(r.movie.imdb_id,'tt0108778');assert.equal(movie.title,undefined);
+});
+test('torrent shortcut keeps the existing parser and server configuration untouched',()=>{
+ const {instance,root,state}=environment();const calls=[];
+ root.Lampa.Activity={push:r=>calls.push(r)};root.Lampa.Component={get:()=>function(){}};
+ Object.assign(state.storage,{torrserver_url:'http://192.168.1.3:8090',parser_url:'https://parser.example',parser_use:false});
+ const before=JSON.stringify(state.storage);instance.openTorrents({id:1,title:'Film',original_title:'Original',release_date:'2020-01-01'});
+ assert.equal(calls.length,1);assert.equal(calls[0].component,'torrents');assert.equal(JSON.stringify(state.storage),before);assert.equal(state.requests.length,0);assert.equal(state.played,null);
+});
+test('torrent shortcut explains when its native component is unavailable',()=>{
+ const {instance,root,state}=environment();root.Lampa.Activity={push(){throw Error('should not navigate');}};root.Lampa.Component={get:()=>undefined};
+ instance.openTorrents({title:'Film'});assert.match(state.notices.pop(),/немає компонента торрентів/);
+});
+test('card button identity excludes release version and retains a nonvisual name for editors',()=>{
+ for(const kind of ['online','torrent']){const html=api.buttonMarkup(kind);assert.ok(!html.includes(api.version));assert.match(html,/data-faborn-action=/);assert.match(html,/<span[^>]+display:none!important/);assert.match(html,/font-size:0!important/);assert.match(html,/<svg/);}
 });

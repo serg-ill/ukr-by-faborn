@@ -1,0 +1,35 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs');
+const factory=require('../lib/faborn-ui');
+function environment(){const data={};const L={Storage:{get(k,f){return Object.hasOwn(data,k)?data[k]:f;},set(k,v){data[k]=v;}}};return {data,L,ui:factory({},L,null)};}
+test('the new interface remains ES5 for TV browsers',()=>{require('../vendor/acorn').parse(fs.readFileSync(require.resolve('../lib/faborn-ui'),'utf8'),{ecmaVersion:5});});
+test('movie and series ratings use different keys even with the same TMDB ID',()=>{const {ui}=environment();assert.equal(ui.identity({id:1,title:'Film'}),'movie:1');assert.equal(ui.identity({id:1,media_type:'tv'}),'tv:1');assert.equal(ui.identity({title:'Film'}),'');});
+test('ratings preserve each source scale and reject missing or impossible numbers',()=>{const {ui}=environment();const r=ui.ratingFacts({vote_average:8.8,imdb_rating:8.6,rt_rating:'93%',metascore:90});assert.deepEqual(r.map(x=>[x.value,x.scale]),[['8.8','/10'],['8.6','/10'],['93','%'],['90','/100']]);assert.equal(ui.ratingFacts({vote_average:0,imdb_rating:99,rt_rating:'N/A'}).length,0);});
+test('late source scores update existing rows without producing duplicates',()=>{const {ui}=environment();const r=ui.ratingFacts({vote_average:8,imdb_rating:8},{imdb:'8,8'});assert.equal(r.length,2);assert.equal(r[1].value,'8.8');});
+test('rating labels are escaped before inserting them into the interface',()=>{const {ui}=environment();assert.ok(!ui.ratingMarkup([{id:'imdb',name:'<img onerror=x>',value:'<script>',scale:'%'}]).includes('<script>'));assert.match(ui.ratingMarkup([{id:'imdb',name:'A&B',value:8,scale:'/10'}]),/A&amp;B/);});
+test('quality badges do not guess HDR, Dolby Vision or surround from 4K',()=>{const {ui}=environment();assert.deepEqual(ui.qualityFacts({qualities:['2160p'],languages:['uk','en']}),[{icon:'quality',label:'4K',kind:'quality'},{icon:'globe',label:'UA / EN',kind:'language'}]);assert.deepEqual(ui.qualityFacts(null),[]);});
+test('TV quality is explicitly limited to the episode that was searched',()=>{const {ui}=environment();assert.ok(ui.qualityFacts({qualities:['1080p'],season:2,episode:1}).some(b=>b.label==='S2E1'));assert.ok(!ui.qualityFacts({qualities:['4K HDR']}).length);});
+test('quality cache expires and cannot be supplied by an unrelated title or future timestamp',()=>{const {ui,data}=environment(),m={id:1};ui.learn(m,{qualities:['1080p']});const entry=data.faborn_ukr_quality_cache['movie:1'];assert.equal(ui.cachedQuality({id:2}),null);assert.ok(ui.cachedQuality(m));assert.equal(ui.cachedQuality(m,entry.checkedAt+86400001),null);entry.checkedAt=Date.now()+120000;assert.equal(ui.cachedQuality(m),null);});
+test('quality cache stays bounded without storing stream URLs',()=>{const {ui,data}=environment();for(let n=1;n<210;n++)ui.learn({id:n},{qualities:['720p'],url:'https://private.example/token'});assert.equal(Object.keys(data.faborn_ukr_quality_cache).length,180);assert.ok(!JSON.stringify(data).includes('private.example'));});
+test('personal rating persists locally, is separate for TV and can be removed',()=>{const {ui}=environment(),m={id:3};assert.equal(ui.localRating(m),0);ui.localRating(m,8);assert.equal(ui.localRating(m),8);assert.equal(ui.localRating({id:3,media_type:'tv'}),0);ui.localRating(m,0);assert.equal(ui.localRating(m),0);assert.equal(ui.localRating({},10),0);});
+test('home enhancement ignores actors, trailers and nonmovie utility rows',()=>{const {ui}=environment(),movie={id:1,title:'Film',poster_path:'/p.jpg'};assert.ok(ui.isMovieLine({results:[movie]}));assert.ok(!ui.isMovieLine({type:'shots',results:[movie]}));assert.ok(!ui.isMovieLine({results:[{...movie,known_for_department:'Acting'}]}));assert.ok(!ui.isMovieLine({results:[]}));});
+test('native line pagination and callbacks are retained with three cards per batch',()=>{const {ui}=environment(),data={results:[{id:1,title:'Film',poster_path:'/p.jpg'}]},hooks=[];const line={view:7,params:{items:{view:7}},use(h){hooks.push(h);}};ui.enhanceLine(line,data);assert.equal(line.view,3);assert.equal(line.params.items.view,3);assert.equal(data.results[0].params.style.name,'wide');assert.equal(hooks.length,1);});
+test('standard Lampa disables home transformation without rewriting its input',()=>{const {ui,data}=environment();data.faborn_ukr_layout='classic';const line={view:7,use(){throw Error('should not alter native line');}};ui.enhanceLine(line,{results:[{id:1,title:'Film',poster_path:'/p.jpg'}]});assert.equal(line.view,7);});
+test('button order preserves saved IDs with missing, new or duplicate actions',()=>{
+ const {ui}=environment();assert.deepEqual(ui.orderedKeys(['online','torrent','watch','bookmark'],['torrent','missing','online','torrent']),['torrent','online','watch','bookmark']);assert.deepEqual(ui.orderedKeys(['watch','torrent','online'],null),['online','torrent','watch']);
+});
+test('button identity is independent of translated label, focus and plugin release number',()=>{
+ const {ui}=environment();const node=(cls,label)=>({className:cls,querySelector(){return null;},getAttribute(){return label;},textContent:label});
+ assert.equal(ui.buttonKey(node('selector view--faborn-ukr focus','ukr by Faborn beta.14')),'online');assert.equal(ui.buttonKey(node('view--faborn-ukr','Інша мова beta.15')),'online');assert.equal(ui.buttonKey(node('full-start__button button--book focus','Закладки')),'bookmark');assert.equal(ui.buttonKey(node('view--faborn-torrent','Торренти')),'torrent');
+});
+test('award totals stay distinct from review scores and nomination counts',()=>{
+ const {ui}=environment();const facts=ui.awardFacts({Awards:'Won 7 Oscars. 370 wins & 394 nominations total.'});
+ assert.deepEqual(facts.map(x=>[x.id,x.value,x.scale]),[['oscars','7',''],['awards','370','']]);
+ assert.deepEqual(ui.awardFacts({Awards:'Nominated for 1 Oscar. 12 nominations.'}),[]);
+ assert.equal(ui.ratingFacts({Awards:'7 Oscars'}).length,0);
+});
+test('awards require positive integral counts and accept explicit card metadata',()=>{
+ const {ui}=environment();assert.deepEqual(ui.awardFacts({awards:{wins:5,oscars:{wins:2}}}).map(x=>x.value),['2','5']);
+ assert.deepEqual(ui.awardFacts({oscar_wins:-1,awards_wins:2.5}),[]);
+ assert.deepEqual(ui.awardFacts({awards:'N/A'}),[]);
+});
