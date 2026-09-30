@@ -822,3 +822,61 @@ test('HLS subtitle playlists stay attached when selecting a quality',()=>{
  const body='#EXTM3U\n#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",URI="subs.m3u8"\n#EXT-X-STREAM-INF:RESOLUTION=1920x1080,SUBTITLES="subs"\nvideo.m3u8';
  assert.deepEqual(api.parseMaster(body,masterURL),{'1080p':masterURL});
 });
+
+function cardLabEnvironment(){
+ const env=environment(),calls=[];let callbacks;
+ const adapter={cancel(){calls.push({type:'cancel'})},disable(){},discover(movie,season,episode,handlers){callbacks=handlers;calls.push({type:'discover',movie,season,episode})},episode(season,episode){calls.push({type:'episode',season,episode})},playChoice(choice){calls.push({type:'play',choice})}};
+ env.root.document.createElement=()=>({});env.root.document.head={appendChild(script){script.parentNode={removeChild(){}};script.onload()}};
+ env.root.Faborn4KLab=()=>adapter;env.state.storage.faborn_ukr_lab4k='on';
+ return {...env,calls,get handlers(){return callbacks},resolved(season=0,episode=0){callbacks.result({season,episode,episodes:[{season:1,episode:1},{season:1,episode:2},{season:2,episode:1}],tracks:[{label:'(English) Original',language:'en',qualities:['2160p','1080p']},{label:'(Ukrainian) Studio',language:'uk',qualities:['2160p','1080p']}]})}};
+}
+test('enabled experiment is discovered from the card and merged into its quality and language groups',()=>{
+ const env=cardLabEnvironment();const movie={id:872585,title:'Оппенгеймер',original_title:'Oppenheimer',release_date:'2023-07-19'};
+ env.instance.open(movie);assert.deepEqual(env.calls.find(c=>c.type==='discover').movie,movie);
+ assert.ok(env.state.menu.items.some(r=>r.action==='labstatus'));
+ env.resolved();assert.ok(env.state.menu.items.some(r=>r.group && r.group.language==='en' && r.subtitle.includes('UAKinogo / Alloha')));
+ env.state.play('2160p',r=>r.release.source==='uakinogo');
+ assert.equal(env.calls.at(-1).type,'play');assert.equal(env.calls.at(-1).choice.quality,'2160p');
+ const data=env.handlers.playerData({url:'http://127.0.0.1:12345/0123456789abcdef0123456789abcdef/0.m3u8'});
+ data.faborn_4klab=true;env.handlers.beforePlay();env.root.Lampa.Player.play(data);env.state.progress(120,7200);
+ assert.equal(env.state.history.length,1);assert.equal(env.state.storage['faborn_ukr_position_tmdb-movie-872585'].time,120);
+});
+test('experiment failures remain visible while stable source results stay playable',()=>{
+ const env=cardLabEnvironment();env.instance.open({title:'Профі',original_title:'A Working Man',release_date:'2025-03-26'});
+ const before=env.state.menu.items.filter(r=>r.group).length;env.handlers.error('SOCKETS: API недоступний');
+ assert.equal(env.state.menu.items.filter(r=>r.group).length,before);
+ assert.match(env.state.menu.items.find(r=>r.action==='labstatus').subtitle,/SOCKETS/);
+ env.state.play('2160p',r=>r.release.source!=='uakinogo');assert.ok(env.state.played.url.startsWith('https://'));
+});
+test('late experimental replies after Back or a different card never reopen or contaminate it',()=>{
+ const env=cardLabEnvironment();env.instance.open({title:'First',original_title:'First'});const old=env.handlers;
+ env.state.menu.onBack();old.error('late');old.result({tracks:[],episodes:[],season:0,episode:0});
+ assert.equal(env.state.menu,null);assert.equal(env.state.controller,'full_start');
+ env.instance.open({title:'Second',original_title:'Second'});old.result({tracks:[{label:'wrong',language:'en',qualities:['2160p']}],episodes:[],season:0,episode:0});
+ assert.equal(env.state.menu.items.some(r=>r.title.includes('wrong')),false);
+});
+test('experimental episode metadata participates in existing season and episode controls',()=>{
+ const env=cardLabEnvironment();env.instance.open({id:1,name:'Friends',original_name:'Friends',first_air_date:'1994-09-22'});env.resolved(1,1);
+ env.state.choose(r=>r.action==='episode');env.state.choose(r=>r.value===2);
+ assert.deepEqual(env.calls.at(-1),{type:'episode',season:2,episode:1});
+ assert.ok(env.state.menu.items.some(r=>r.value===1));
+});
+test('a video server soft 404 is diagnosed as unavailable, not as a Playerjs parsing error',()=>{
+ assert.throws(()=>api.playerEntries('<html><title>404 Not Found</title><h1>404 Not Found</h1></html>',{}),/404: відео недоступне/);
+});
+test('a soft 404 in the first episode iframe falls through to its second supported player',()=>{
+ const page='https://uafix.net/serials/dzhentlmeni/',ep=page+'season-01-episode-01/';
+ const env=environment({respond(req){req.status=200;
+  if(req.url.includes('catalog.json'))req.responseText=JSON.stringify(catalog);
+  else if(req.url==='https://uafix.net/search.html')req.responseText='<h1>Пошук</h1><a class="sres-wrap" href="'+page+'"><h2>Джентльмени / The Gentlemen</h2></a>';
+  else if(req.url===page)req.responseText='<h1>Джентльмени</h1><span class="forigin">The Gentlemen</span><li>Рік: 2024</li><li>Переклад: Українська</li><a href="'+ep+'">1 серія</a>';
+  else if(req.url===ep)req.responseText='<iframe src="https://zetvideo.net/vod/65473"></iframe><iframe src="https://ashdi.vip/vod/99001"></iframe>';
+  else if(req.url==='https://zetvideo.net/vod/65473')req.responseText='<title>404 Not Found</title>';
+  else if(req.url==='https://ashdi.vip/vod/99001')req.responseText='new Playerjs({file:"https://ashdi.vip/hls/master.m3u8"})';
+  else if(req.url==='https://ashdi.vip/hls/master.m3u8')req.responseText='#EXTM3U\n#EXT-X-STREAM-INF:RESOLUTION=1920x1080\n1080.m3u8';
+  else {req.status=404;req.responseText='';}req.onload();
+ }});
+ env.instance.open({name:'Джентльмени',original_name:'The Gentlemen',first_air_date:'2024-03-07'});
+ assert.ok(env.state.menu.items.some(r=>r.group && r.subtitle.includes('UAFix')));
+ assert.ok(env.state.requests.some(r=>r.url==='https://ashdi.vip/vod/99001'));
+});

@@ -164,3 +164,63 @@ test('committed Samsung WASM and generated factory actually initialize together'
         } catch(error) { reject(error); }});
     });
 });
+
+test('card matching separates same-name movies and series, and rejects a different year',()=>{
+    const movie={name:'Джентльмени',original_name:'The Gentlemen',first_air_date:'2024-03-07'};
+    const page='<h1>Джентльмены 1-2 сезон (2024)</h1><span class="pmovie__original-title">The Gentlemen</span>';
+    assert.equal(Core.matches(page,movie),true);
+    assert.equal(Core.matches(page,{title:'The Gentlemen',release_date:'2019-01-01'}),false);
+    assert.equal(Core.matches(page.replace('2024','2021'),movie),false);
+    assert.equal(Core.matches(page.replace('The Gentlemen','Different series'),movie),false);
+    const search='<div class="card__title"><a href="/84-film.html">Джентльмены (2019)</a></div>Год выпуска: 2019<div class="card__title"><a href="/936-series.html">Джентльмены (1-2 сезон)</a></div>Год выпуска: 2024';
+    assert.deepEqual(Core.search(search,'https://uakinogo.is',movie).map(r=>r.url),['https://uakinogo.is/936-series.html']);
+});
+test('series metadata selects the actual episode and prefers Ukrainian without requiring it',()=>{
+    const info={files:{type:'serial',all:{1:{1:{t66:{id:10,id_translation:66},t154:{id:11,id_translation:154}},2:{t93:{id:12,id_translation:93}}},2:{1:{t66:{id:13,id_translation:66}}}}}};
+    assert.deepEqual(Core.episodes(info),[{season:1,episode:1},{season:1,episode:2},{season:2,episode:1}]);
+    assert.deepEqual(Core.entry(info,1,1),{id:'11',audio:154});
+    assert.deepEqual(Core.entry(info,1,2),{id:'12',audio:93});
+    assert.throws(()=>Core.entry(info,1,3),/EPISODE/);
+});
+test('card tracks retain real lower qualities and verify dimensions for the chosen quality',()=>{
+    const rows=Core.tracks({hlsSource:[{label:'(English) Original',quality:{1080:media,720:media}}]},true);
+    assert.deepEqual(Object.keys(rows[0].qualities),['720p','1080p']);
+    assert.equal(Core.tracks({hlsSource:[{label:'English',quality:{1080:media}}]}).length,0);
+    assert.equal(Core.resolution('#EXTM3U\n#EXT-X-STREAM-INF:RESOLUTION=1920x1080\na.m3u8','1080p').height,1080);
+    assert.throws(()=>Core.resolution('#EXTM3U\n#EXT-X-STREAM-INF:RESOLUTION=1280x720\na.m3u8','1080p'),/QUALITY/);
+});
+test('background card discovery never steals navigation and sends the current card to the worker',()=>{
+    const {ui,state}=harness(),received=[];
+    state.prefs.faborn_ukr_lab4k='on';state.controller='faborn_ukr_view';
+    const movie={name:'Джентльмени',original_name:'The Gentlemen',first_air_date:'2024-03-07'};
+    ui.discover(movie,1,2,{stage:s=>received.push(s),result:r=>received.push(r)});
+    assert.equal(state.controller,'faborn_ukr_view');assert.equal(state.menu,null);
+    const init=state.workers[0].messages[0];assert.deepEqual(init.movie,movie);assert.equal(init.episode,2);
+    state.message('resolved',{tracks:[{label:'English',language:'en',qualities:['2160p']}],episodes:[{season:1,episode:2}],season:1,episode:2});
+    assert.equal(received.at(-1).episode,2);assert.equal(state.menu,null);
+    ui.episode(2,1);assert.equal(state.workers[0].messages.at(-1).type,'episode');
+    ui.cancel();assert.equal(state.menu,null);assert.equal(state.controller,'faborn_ukr_view');
+});
+test('card incompatibility is returned to source status without replacing the source menu',()=>{
+    const {ui,state,root}=harness();delete root.webapis;state.prefs.faborn_ukr_lab4k='on';
+    let error;ui.discover({title:'Film'},0,0,{error:e=>error=e});
+    assert.match(error,/AVPLAY/);assert.equal(state.menu,null);assert.equal(state.workers.length,0);
+});
+test('card playback keeps the selected language, quality and per-episode history data',()=>{
+    const {ui,state}=harness();state.prefs.faborn_ukr_lab4k='on';let backs=0;
+    ui.discover({name:'Friends'},1,2,{playerData(){return {title:'Friends · S1E2',season:1,episode:2,timeline:{time:60}}},back(){backs++}});
+    state.message('resolved',{tracks:[],episodes:[],season:1,episode:2});
+    ui.playChoice({season:1,episode:2,label:'English',language:'en',quality:'1080p'});
+    const command=state.workers[0].messages.at(-1);assert.equal(command.type,'play');assert.equal(command.quality,'1080p');assert.equal(command.language,'en');
+    state.message('play',{url:'http://127.0.0.1:12345/'+key+'/0.m3u8',label:'English',quality:'1080p',width:1920,height:1080,codecs:'avc1,aac'});
+    assert.equal(state.played.episode,2);assert.equal(state.played.timeline.time,60);assert.deepEqual(Object.keys(state.played.quality),['1080p']);
+    state.emitVideo('timeupdate',{current:3});assert.match(state.prefs.faborn_ukr_lab4k_status,/1080p/);assert.equal(backs,0);
+});
+test('switching to a normal source stops the adapter but permits a later card choice',()=>{
+ const {ui,state}=harness();state.prefs.faborn_ukr_lab4k='on';
+ ui.discover({title:'Film'},0,0,{});state.message('resolved',{tracks:[],episodes:[],season:0,episode:0});
+ const old=state.workers[0];ui.cancel(true);old.onmessage({data:{type:'stopped'}});
+ ui.playChoice({season:0,episode:0,label:'English',language:'en',quality:'1080p'});
+ assert.equal(state.workers.length,2);assert.equal(state.workers[1].messages[0].choice.quality,'1080p');
+ assert.equal(state.workers[1].messages[0].movie.title,'Film');
+});

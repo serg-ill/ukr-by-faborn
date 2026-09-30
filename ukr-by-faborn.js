@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.12.1 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.12.2 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.12.1';
+    var VERSION = '0.1.0-beta.12.2';
     var NAME = 'ukr by Faborn';
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
@@ -16,7 +16,7 @@
     var seasonMetadata = {}, seasonMetadataOrder = [];
     var directTrace = [], presentation = null;
     var capturedBase = detectBase();
-    var lab4k = null, labScript = null, labLoadTimer = null, labLoadSerial = 0;
+    var lab4k = null, labScript = null, labLoadTimer = null, labLoadSerial = 0, labPlaybackData = null;
 
     function text(value) { return value === undefined || value === null ? '' : String(value); }
     function escapeHTML(value) {
@@ -80,6 +80,7 @@
         } catch (ignore) { returnController = 'content'; }
     }
     function restore() {
+        cancelCardLab();
         cancelPending(); activeSession = null;
         closePresentation();
         if (L && L.Select) L.Select.hide();
@@ -214,6 +215,7 @@
         content += '<div class="fbr-mini-title">'+heading+track+'</div>';
         if (busy) content += '<div class="fbr-loading"><strong>'+escapeHTML(busy.charAt(0).toUpperCase()+busy.slice(1))+'…</strong><i></i><i></i><i></i><div class="fbr-small">UAKino · UASerials · UAFix · KinoBase</div></div>';
         else {
+            if (session.labStarted) content += btn('labstatus','UAKinogo / Alloha · експеримент<span class="fbr-small">'+escapeHTML(session.status.uakinogo)+'</span>','fbr-last',false,function () { cardLabDetails(session); });
             if (title.type === 'tv') {
                 content += '<div class="fbr-controls">'+btn('season','Сезон '+session.season,'fbr-control',false,function () { session.uiFocus = 'season'; chooseSeason(session); })+btn('episode','Серія '+session.episode,'fbr-control',false,function () { session.uiFocus = 'episode'; chooseEpisode(session,true); })+'</div>';
                 var last = lastPosition(session);
@@ -277,7 +279,7 @@
         L.Controller.add('faborn_ukr_view',{
             toggle:function () { if (!presentation || presentation.html !== html) return; var wanted = focusKey; L.Controller.collectionSet(html); var target = html.find('[data-fbr]').filter(function () { return $(this).attr('data-fbr') === wanted; }); L.Controller.collectionFocus(target.length ? target[0] : false,html); },
             up:function () { root.Navigator.move('up'); },down:function () { root.Navigator.move('down'); },left:function () { root.Navigator.move('left'); },right:function () { root.Navigator.move('right'); },back:onBack,
-            gone:function () { if (presentation && presentation.html === html) { closePresentation(); cancelPending(); activeSession = null; } }
+            gone:function () { if (presentation && presentation.html === html) { closePresentation(); cancelCardLab(); cancelPending(); activeSession = null; } }
         });
         L.Controller.toggle('faborn_ukr_view');
     }
@@ -801,6 +803,7 @@
         return episode.embeddedSubtitles ? ' · CC: субтитри у плеєрі' : '';
     }
     function playerEntries(html, defaults) {
+        if (/<title>\s*404 Not Found\s*<\/title>/i.test(text(html))) throw new Error('Відеосервер повернув сторінку 404: відео недоступне.');
         var start = text(html).search(/new\s+Playerjs\s*\(/);
         if (start < 0) throw new Error('Не знайдено відкриту конфігурацію відеоплеєра.');
         var config = text(html).substr(start), raw = quotedProperty(config,'file'), tree, out = [];
@@ -863,6 +866,7 @@
             completed = true;
             var i = requests.indexOf(req); if (i >= 0) requests.splice(i,1);
             if (serial !== requestSerial) return;
+            if (error && /Час очікування вичерпано/.test(error.message)) error = new Error(stage+': '+error.message);
             if (error && /^https:\/\/kinobase\.org\//i.test(url)) {
                 // A 404 can mean a rejected anonymous player session, not a missing title.
                 // Keep the exact endpoint, but never include its session query parameters.
@@ -978,6 +982,7 @@
         startDiscovery(movie || {});
     }
     function startDiscovery(movie) {
+        cancelCardLab();
         cancelPending();
         var serial = requestSerial, tv = Boolean(movie.name || movie.first_air_date || movie.media_type === 'tv');
         var title = {id:'tmdb-'+(tv ? 'tv-' : 'movie-')+(movie.id || normalize(movie.original_title || movie.original_name || movie.title || movie.name)),title:movie.title || movie.name || movie.original_title || movie.original_name || NAME,originalTitle:movie.original_title || movie.original_name || '',year:parseInt(text(movie.release_date || movie.first_air_date).substr(0,4),10) || 0,type:tv ? 'tv' : 'movie',releases:[]};
@@ -1013,8 +1018,10 @@
             session.status[provider.id] = 'Очікування відповіді';
             discoverProvider(serial,session,provider,function (status) { session.status[provider.id] = status; finished(); });
         });
+        if (storage('lab4k','off') === 'on') startCardLab(session);
     }
     function resolveEpisode(serial,title,release,episode,done,force) {
+        if (episode.lab) return done();
         if (!force && episode.resolvedAt && Date.now()-episode.resolvedAt < 60000) return done();
         function verify(entry) {
             episodeRequest(serial,entry,entry.master,sourceName(release.source)+' · якість',function (err,body) {
@@ -1036,16 +1043,17 @@
                 } catch (e) { done(e); }
             });
         }
-        function embed(url) {
+        function embed(url,fallback) {
+            var fail = fallback || done;
             publicRequest(serial,sourceName(release.source)+' · плеєр',url,function (err,body) {
-                if (err) return done(err);
+                if (err) return fail(err);
                 try {
                     var entries = playerEntries(body,{type:title.type,season:episode.season,episode:episode.episode,voice:release.voice,audioLanguage:release.audioLanguage,originalLanguage:title.originalLanguage});
                     var candidates = entries.filter(function (e) { return e.season === episode.season && e.episode === episode.episode; });
                     var entry = candidates.filter(function (e) { return e.voice === (episode.voice || release.voice) && e.audioLanguage === release.audioLanguage; })[0] || (candidates.length === 1 && candidates[0].audioLanguage === release.audioLanguage ? candidates[0] : null);
                     if (!entry) throw new Error('Цю серію або озвучення не знайдено в плеєрі.');
                     episode.embed = url; verify(entry);
-                } catch (e) { done(e); }
+                } catch (e) { fail(e); }
             });
         }
         if (episode.kino && (force || !episode.kinoFetched || Date.now()-episode.kinoFetched >= 60000)) {
@@ -1055,7 +1063,12 @@
                 if (err) return done(err);
                 var refs = playerRefs(text(body).split(/<[^>]+id=["']dle-comments/i)[0]);
                 if (!refs.length) return done(new Error('На сторінці серії немає підтримуваного плеєра.'));
-                embed(refs[0]);
+                var index = 0;
+                function next(error) {
+                    if (index >= refs.length) return done(error || new Error('Плеєри серії недоступні.'));
+                    embed(refs[index++],next);
+                }
+                next();
             });
         } else if (episode.embed && (!episode.master || force)) embed(episode.embed);
         else if (episode.master) verify(episode);
@@ -1082,6 +1095,10 @@
         cancelPending();
         var serial = requestSerial;
         activeSession = session; session.ready = false;
+        if (session.labStarted && lab4k && session.labSelection !== session.season+':'+session.episode && session.labPending !== session.season+':'+session.episode) {
+            session.labPending = session.season+':'+session.episode;
+            lab4k.episode(session.season,session.episode);
+        }
         loading(session,'перевірка джерел');
         var pages = session.seasonPages.filter(function (p) { return p.season === session.season && !session.visited[p.url]; });
         function resolveRows() {
@@ -1121,6 +1138,7 @@
         },resolveRows);
     }
     function sourceName(id) {
+        if (id === 'uakinogo') return 'UAKinogo / Alloha';
         var p = PROVIDERS.filter(function (v) { return v.id === id; })[0];
         return p ? p.name : id === 'kinoukr' ? 'KinoUkr' : id;
     }
@@ -1162,6 +1180,14 @@
     function selectStream(session, row) {
         if (activeSession !== session) return;
         save('source',row.release.source); save('quality',row.value);
+        if (row.episode.lab) {
+            if (!lab4k || storage('lab4k','off') !== 'on') return startDiscovery(session.movie);
+            session.labChosen = row; session.labLaunching = true; session.screen = 'labplayer';
+            closePresentation(); L.Select.hide();
+            lab4k.playChoice({season:row.episode.season,episode:row.episode.episode,label:row.release.voice,language:row.release.audioLanguage,quality:row.value});
+            return;
+        }
+        if (lab4k && lab4k.cancel) lab4k.cancel(true);
         launch(session.movie,session.catalog,session.title,row.release,row.episode,row.value);
     }
     function chooseSource(session, group) {
@@ -1191,6 +1217,7 @@
         });
         save('source_status',status);
         if (canPresent()) return showPresentation(session,view);
+        if (session.labStarted) rows.push({title:'UAKinogo / Alloha · експеримент',subtitle:session.status.uakinogo,action:'labstatus'});
         if (view.qualities.length > 1) rows.push({title:'Якість: '+qualityLabel(view.quality),subtitle:'Змінити якість',action:'quality'});
         if (session.title.type === 'tv') rows.push({title:'Сезон '+session.season+' · Серія '+session.episode,subtitle:'Змінити сезон або серію',action:'episode'});
         var last = lastPosition(session);
@@ -1204,6 +1231,7 @@
         if (!view.groups.length) rows.push({title:'Для цієї назви немає доступного потоку',subtitle:'Можна повторити пошук. Причини: Налаштування → ukr by Faborn → Версія та діагностика.',action:'retry'});
         rows.push({title:'Оновити джерела',action:'retry'});
         select(NAME+(session.title.type === 'tv' ? ' · S'+session.season+'E'+session.episode : ' · '+session.title.title),rows,function (row) {
+            if (row.action === 'labstatus') return cardLabDetails(session);
             if (row.action === 'quality') return chooseQuality(session,view);
             if (row.action === 'episode') return chooseSeason(session);
             if (row.action === 'last') return returnToLast(session);
@@ -1215,14 +1243,14 @@
     }
     function chooseSeason(session) {
         session.screen = 'seasons';
-        var values = unique(session.title.releases.reduce(function (all,r) { return all.concat(r.episodes.map(function (e) { return e.season; })); },[]).concat(session.seasonPages.map(function (p) { return p.season; }))).sort(function (a,b) { return a-b; });
+        var values = unique(session.title.releases.reduce(function (all,r) { return all.concat(r.episodes.map(function (e) { return e.season; })); },[]).concat(session.seasonPages.map(function (p) { return p.season; })).concat((session.labEpisodes || []).map(function (e) { return e.season; }))).sort(function (a,b) { return a-b; });
         select('Оберіть сезон',values.map(function (s) { return {title:'Сезон '+s,value:s,selected:s === session.season}; }),function (row) {
             session.season = row.value;
             session.episode = 1; session.afterPrepare = true; prepareSelection(session);
         },function () { renderSources(session); });
     }
     function chooseEpisode(session, direct) {
-        var values = unique(session.title.releases.reduce(function (all,r) { return all.concat(r.episodes.filter(function (e) { return e.season === session.season; }).map(function (e) { return e.episode; })); },[])).sort(function (a,b) { return a-b; });
+        var values = unique(session.title.releases.reduce(function (all,r) { return all.concat(r.episodes.filter(function (e) { return e.season === session.season; }).map(function (e) { return e.episode; })); },[]).concat((session.labEpisodes || []).filter(function (e) { return e.season === session.season; }).map(function (e) { return e.episode; }))).sort(function (a,b) { return a-b; });
         if (!values.length) return renderSources(session);
         session.screen = 'episodes'; session.episodeFocus = 'ep-'+session.episode;
         var season = session.season, key = metadataKey(session,season);
@@ -1336,6 +1364,7 @@
         }).filter(function (row) { return row.score > 0; }).sort(function (a, b) { return b.score - a.score; }).map(function (row) { return row.title; });
     }
     function qualityNames(episode) {
+        if (episode.lab) return (episode.labQualities || []).filter(function (q) { return /^(2160|1440|1080|720|480|360)p$/.test(q); }).sort(function (a,b) { return parseInt(b,10)-parseInt(a,10); });
         return Object.keys(episode.qualities || {}).filter(function (q) { return mediaURL(episode.qualities[q]); }).sort(function (a, b) { return parseInt(b, 10) - parseInt(a, 10); });
     }
     function pickURL(episode, preference) {
@@ -1526,8 +1555,7 @@
             if (Array.isArray(sourceTrace)) sourceTrace.forEach(function (line) { lines.push('Прямий пошук · ' + line); });
             lines.push('GitHub Pages: ' + (baseURL() || 'не визначено'));
             if (catalog) {
-                lines.push('Індекс: ' + catalog.generatedAt + ' · назв: ' + catalog.titles.length);
-                (catalog.warnings || []).forEach(function (warning) { lines.push(warning); });
+                lines.push('Резервний індекс: '+catalog.titles.length+' назв · '+catalog.generatedAt+'. Основний пошук виконується за відкритою карткою; він не обмежений цим індексом.');
             }
             select('Діагностика', lines.map(function (line) { return {title: line}; }), function () { diagnostics(); }, restore);
     }
@@ -1536,6 +1564,101 @@
         if (labLoadTimer !== null) root.clearTimeout(labLoadTimer);
         labLoadTimer = null;
         if (labScript) { labScript.onload = labScript.onerror = null; if (labScript.parentNode) labScript.parentNode.removeChild(labScript); labScript = null; }
+    }
+    function cancelCardLab() {
+        cancelLabLoad();
+        if (lab4k && lab4k.cancel) lab4k.cancel();
+    }
+    function ensureLab(done) {
+        if (lab4k) return done(null,lab4k);
+        var base = baseURL();
+        if (!base || !root.document || !root.document.createElement) return done(new Error('LOAD: не визначено адресу модуля GitHub Pages'));
+        cancelLabLoad();
+        var run = labLoadSerial;
+        function error() {
+            if (run !== labLoadSerial) return;
+            cancelLabLoad(); done(new Error('LOAD: не завантажено адаптер із GitHub Pages'));
+        }
+        labScript = root.document.createElement('script');
+        labScript.src = base+'lib/4klab/ui.js?v='+VERSION;
+        labScript.onerror = error;
+        labScript.onload = function () {
+            if (run !== labLoadSerial || storage('lab4k','off') !== 'on') return;
+            if (typeof root.Faborn4KLab !== 'function') { error(); return; }
+            cancelLabLoad();
+            lab4k = root.Faborn4KLab(root,L,base+'lib/4klab/',VERSION);
+            done(null,lab4k);
+        };
+        labLoadTimer = root.setTimeout(error,15000);
+        root.document.head.appendChild(labScript);
+    }
+    function cardLabDetails(session) {
+        session.screen = 'labstatus';
+        select('UAKinogo / Alloha · експеримент',[
+            {title:session.status.uakinogo,subtitle:'Пошук виконується для відкритої картки. Потік перевіряється перед запуском.',action:'info'},
+            {title:'Повторити пошук цього джерела',action:'retry'},
+            {title:'Повернутися до озвучень',action:'back'}
+        ],function (row) {
+            if (row.action === 'retry') { startCardLab(session); renderSources(session); }
+            else if (row.action === 'back') renderSources(session);
+        },function () { renderSources(session); });
+    }
+    function startCardLab(session) {
+        if (activeSession !== session || storage('lab4k','off') !== 'on') return;
+        session.labStarted = true; session.labLaunching = false;
+        session.labPending = session.season+':'+session.episode;
+        session.status.uakinogo = 'Завантаження адаптера…';
+        var run = (session.labRun || 0)+1; session.labRun = run;
+        function current() { return activeSession === session && session.labRun === run && storage('lab4k','off') === 'on'; }
+        function refresh() {
+            if (current()) {
+                save('source_status',Object.keys(session.status).map(function (id) { return sourceName(id)+': '+session.status[id]; }));
+                if (session.ready && session.screen === 'sources' && !session.labLaunching) renderSources(session);
+            }
+        }
+        function failure(message,playbackFailure) {
+            if (!current()) return;
+            session.status.uakinogo = message; session.labPending = '';
+            if (!playbackFailure) session.title.releases = session.title.releases.filter(function (r) { return r.source !== 'uakinogo'; });
+            save('lab4k_status',message); refresh();
+        }
+        refresh();
+        ensureLab(function (error,adapter) {
+            if (!current()) return;
+            if (error) { failure(error.message); return; }
+            adapter.discover(session.movie,session.season,session.episode,{
+                stage:function (message) { if (current()) { session.status.uakinogo = message; refresh(); } },
+                error:failure,
+                episodes:function (items) { if (current()) session.labEpisodes = items; },
+                result:function (data) {
+                    if (!current()) return;
+                    session.labEpisodes = data.episodes; session.labSelection = data.season+':'+data.episode; session.labPending = '';
+                    session.title.releases.forEach(function (r) {
+                        if (r.source === 'uakinogo') r.episodes = r.episodes.filter(function (e) { return e.season !== data.season || e.episode !== data.episode; });
+                    });
+                    data.tracks.forEach(function (track) {
+                        if (['uk','en','ru'].indexOf(track.language) < 0 || !Array.isArray(track.qualities)) return;
+                        var r = session.title.releases.filter(function (v) { return v.source === 'uakinogo' && v.voice === track.label && v.audioLanguage === track.language; })[0];
+                        if (!r) { r = {id:session.title.id+'-alloha-'+encodeURIComponent(track.language+'|'+track.label),source:'uakinogo',voice:track.label,audioLanguage:track.language,episodes:[]}; session.title.releases.push(r); }
+                        r.episodes.push({id:r.id+'-s'+data.season+'e'+data.episode,season:data.season,episode:data.episode,lab:true,labQualities:track.qualities,resolvedAt:Date.now(),qualities:{}});
+                    });
+                    session.title.releases = session.title.releases.filter(function (r) { return r.episodes.length; });
+                    var qualities = unique(data.tracks.reduce(function (all,t) { return all.concat(t.qualities); },[])).sort(function (a,b) { return parseInt(b,10)-parseInt(a,10); });
+                    session.status.uakinogo = 'Знайдено · '+qualities.map(qualityLabel).join(', ')+' · озвучень: '+data.tracks.length;
+                    if (session.labSelection !== session.season+':'+session.episode) { session.labPending = session.season+':'+session.episode; adapter.episode(session.season,session.episode); }
+                    else refresh();
+                },
+                playerData:function (data) {
+                    var chosen = session.labChosen;
+                    var item = playData(session.movie,session.title,chosen.release,chosen.episode,chosen.value);
+                    item.url = item.faborn_url = data.url; labPlaybackData = item;
+                    save('last_launch',session.title.title+' · '+chosen.value+' · UAKinogo / Alloha · передано плеєру');
+                    return item;
+                },
+                beforePlay:function () { closePresentation(); L.Select.hide(); L.Controller.toggle(returnController); },
+                back:function () { if (current()) { session.labLaunching = false; renderSources(session); } else L.Controller.toggle(returnController); }
+            });
+        });
     }
     function labChanged() {
         if (storage('lab4k','off') !== 'on') {
@@ -1546,31 +1669,13 @@
     function openLab() {
         if (storage('lab4k','off') !== 'on') { notify('Спочатку увімкни «Експериментальне 4K»'); return; }
         rememberController();
-        if (lab4k) { lab4k.open(returnController); return; }
-        var base = baseURL();
-        if (!base || !root.document || !root.document.createElement) { notify('Не визначено адресу GitHub Pages'); return; }
-        cancelLabLoad();
-        var run = labLoadSerial;
         select('4K · Завантаження тесту',[{title:'Скасувати',subtitle:'Завантажується тест із GitHub Pages…',cancel:true}],function (row) {
             if (row.cancel) { cancelLabLoad(); restore(); }
         },function () { cancelLabLoad(); restore(); });
-        function error() {
-            if (run !== labLoadSerial) return;
-            cancelLabLoad(); save('lab4k_status','LOAD: не завантажено тест із GitHub Pages');
-            restore(); notify('Не вдалося завантажити 4K-тест. Деталі у діагностиці.');
-        }
-        labScript = root.document.createElement('script');
-        labScript.src = base+'lib/4klab/ui.js?v='+VERSION;
-        labScript.onerror = error;
-        labScript.onload = function () {
-            if (run !== labLoadSerial || storage('lab4k','off') !== 'on') return;
-            if (typeof root.Faborn4KLab !== 'function') { error(); return; }
-            cancelLabLoad(); L.Select.hide();
-            lab4k = root.Faborn4KLab(root,L,base+'lib/4klab/',VERSION);
-            lab4k.open(returnController);
-        };
-        labLoadTimer = root.setTimeout(error,15000);
-        root.document.head.appendChild(labScript);
+        ensureLab(function (error,adapter) {
+            if (error) { save('lab4k_status',error.message); restore(); notify(error.message); return; }
+            L.Select.hide(); adapter.open(returnController);
+        });
     }
     function settings() {
         var api = L.SettingsApi;
@@ -1579,9 +1684,9 @@
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_layout', type: 'select', values: {panel:'Панель', cinema:'Кінозал', classic:'Стандартне Lampa'}, default: 'panel'}, field: {name: 'Оформлення модуля', description: '«Стандартне Lampa» — штатні вікна та фокус, без кольорових акцентів Faborn у всій системі.'}, onChange: applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_theme', type: 'select', values: {on:'Faborn', off:'Стандартна Lampa'}, default: 'on'}, field: {name: 'Тема всієї Lampa', description: 'Для «Панелі» та «Кінозалу»: оформлення меню, карток і налаштувань. Застосовується одразу.'}, onChange: applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_accent', type: 'select', values: {blue:'Синій', amber:'Бурштиновий', mint:'М’ятний', violet:'Фіолетовий', aurora:'Синій → фіолетовий', lagoon:'Бірюзовий → синій'}, default: 'blue'}, field: {name: 'Колір акценту', description: 'Колір або градієнт для «Панелі» та «Кінозалу». У стандартному оформленні не застосовується.'}, onChange: applyAppearance});
-        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinobase:'KinoBase', kinoukr:'KinoUkr'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом.'}});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinobase:'KinoBase', kinoukr:'KinoUkr', uakinogo:'UAKinogo / Alloha (експеримент)'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом. UAKinogo потребує ввімкненого «Експериментальне 4K».'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найвища доступна', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: 'Підсвічує варіант у списку джерел.'}});
-        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_lab4k', type: 'select', values: {off:'Вимкнено',on:'Увімкнено'}, default: 'off'}, field: {name: 'Експериментальне 4K', description: 'Окремий тест UAKinogo / Alloha. Адаптер працює на телевізорі; після ввімкнення натисни «Перевірити 4K».'}, onChange:labChanged});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_lab4k', type: 'select', values: {off:'Вимкнено',on:'Увімкнено'}, default: 'off'}, field: {name: 'Експериментальне 4K', description: 'Додає UAKinogo / Alloha до пошуку в картці: доступні якості, UA / EN / RU, сезони й серії. Потрібен Tizen Sockets; стан видно у списку джерел.'}, onChange:labChanged});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_lab4k_test', type: 'button'}, field: {name: 'Перевірити 4K', description: '«Оппенгеймер» · UA / EN / RU · 2160p AV1. Потрібен Tizen / AVPlay; сумісність визначить тест.'}, onChange:openLab});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_refresh', type: 'button'}, field: {name: 'Оновити індекс із GitHub'}, onChange: function () {
             loadCatalog(true, function (error, catalog) { notify(error ? error.message : 'Індекс оновлено: ' + catalog.titles.length + ' назв'); });
@@ -1621,11 +1726,12 @@
                 // Lampa applies its global quality preference before this event. Preserve the explicit selection only for our streams.
                 clearPlaybackWatch();
                 finishHistory();
-                if (!data || !data.faborn_title || !mediaURL(data.faborn_url)) return;
+                var labOwned = data && data === labPlaybackData && data.faborn_4klab === true;
+                if (!data || !data.faborn_title || (!labOwned && !mediaURL(data.faborn_url))) return;
                 data.url = data.faborn_url;
                 historyPlayback = data;
                 save('last_' + data.faborn_title, data.faborn_episode);
-                watchPlayback(data);
+                if (!labOwned) watchPlayback(data);
             });
             L.Player.listener.follow('ready', watchNativeError);
             L.Player.listener.follow('destroy', function () { clearPlaybackWatch(); finishHistory(); });
