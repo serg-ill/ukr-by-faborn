@@ -57,10 +57,10 @@ test('escapes source labels before Lampa templates', () => {
 });
 
 function environment(options = {}) {
-    const state = {storage: {}, follows: {}, playerEvents: {}, videoEvents: {}, nativeEvents: {}, timers: {}, timerId: 0, params: [], notices: [], menu: null, played: null, requests: [], catalog: catalog};
+    const state = {storage: {}, follows: {}, playerEvents: {}, videoEvents: {}, nativeEvents: {}, timers: {}, timerId: 0, params: [], notices: [], controller: 'full_start', menu: null, played: null, requests: [], catalog: catalog};
     const jq = () => ({length: 0, append() { return this; }});
     function XHR() { state.requests.push(this); }
-    XHR.prototype.open = function (method, url) { this.url = url; this.method = method; this.headers = {}; };
+    XHR.prototype.open = function (method, url) { if (options.openError) throw new Error('Request blocked'); this.url = url; this.method = method; this.headers = {}; };
     XHR.prototype.setRequestHeader = function (name,value) { this.headers[name] = value; };
     XHR.prototype.send = function (body) {
         this.body = body;
@@ -79,18 +79,18 @@ function environment(options = {}) {
         Storage: {get(k, d) { return Object.hasOwn(state.storage, k) ? state.storage[k] : d; }, set(k, v) { state.storage[k] = v; }, field(k) { return k === 'player' ? (options.player || 'tizen') : undefined; }},
         Platform: {is(name) { return name === (options.platform || 'tizen'); }},
         Noty: {show(s) { state.notices.push(s); }},
-        Select: {show(menu) { state.menu = menu; }, hide() { state.menu = null; }},
+        Select: {show(menu) { state.menu = menu; state.controller = 'select'; }, hide() { state.menu = null; }},
         Listener: {follow(k, fn) { state.follows[k] = fn; }},
-        Controller: {enabled() { return {name: 'content'}; }, toggle(n) { state.controller = n; }},
+        Controller: {enabled() { return {name: state.controller}; }, toggle(n) { state.controller = n; }},
         SettingsApi: {addComponent() {}, addParam(p) { state.params.push(p); }},
         Timeline: {view(hash) { return {hash, time: 17, percent: 1}; }},
         Utils: {hash(s) { return s; }},
         Player: {
             listener: {follow(k, fn) { state.playerEvents[k] = fn; }},
             playlist(p) { state.playlist = p; },
-            play(data) { state.playerEvents.start(data); state.played = data; if (state.playerEvents.ready) state.playerEvents.ready(data); },
+            play(data) { state.playerReturn = state.controller; state.controller = 'player'; state.playerEvents.start(data); state.played = data; if (state.playerEvents.ready) state.playerEvents.ready(data); },
             playdata() { return state.played; },
-            close() { state.closed = true; state.played = null; state.playerEvents.destroy(); }
+            close() { state.controller = state.playerReturn; state.closed = true; state.played = null; state.playerEvents.destroy(); }
         },
         PlayerVideo: {listener: {follow(k, fn) { state.videoEvents[k] = fn; }}, video() { return {addEventListener(k, fn) { state.nativeEvents[k] = fn; }}; }}
     };
@@ -112,29 +112,21 @@ function environment(options = {}) {
 test('full film flow hands 4K, quality map, subtitles and stable timeline to Lampa', () => {
     const {instance, state} = environment();
     instance.open({title: 'Профі', original_title: 'A Working Man', release_date: '2025-03-26'});
-    state.choose(i => i.value && i.value.id === 'a-working-man-2025');
-    state.choose(i => i.value && i.value.source === 'kinoukr');
     state.choose(i => i.value === '2160p');
     assert.ok(state.played.url.includes('/hls/2160/'));
     assert.equal(Object.keys(state.played.quality).length, 4);
-    assert.equal(state.played.timeline.hash, 'faborn|a-working-man-2025|0|0');
+    assert.equal(state.played.timeline.hash, 'faborn|tmdb-movie-a working man|0|0');
     assert.equal(state.played.subtitles[0].label, 'Українські');
     assert.equal(state.playlist.length, 0);
 });
-test('series flow creates an ordered eight-episode playlist in selected voice', () => {
-    const {instance, state} = environment();
-    instance.open({name: 'Річер', original_name: 'Reacher', first_air_date: '2022-02-03'});
-    state.choose(i => i.value && i.value.id === 'reacher-2022');
-    state.choose(i => i.value && i.value.voice === 'Uaflix');
-    state.choose(i => i.value === 3);
-    state.choose(i => i.value && i.value.episode === 2);
-    state.choose(i => i.value === '1080p');
-    assert.equal(state.playlist.length, 8);
-    assert.equal(state.played.episode, 2);
-    assert.ok(state.playlist.every((e, n) => e.episode === n + 1 && e.voice_name === 'Uaflix'));
-    assert.equal(state.storage['faborn_ukr_last_reacher-2022'], 'reacher-s03e02-uaflix');
-    state.playerEvents.start(state.playlist[2]);
-    assert.equal(state.storage['faborn_ukr_last_reacher-2022'], 'reacher-s03e03-uaflix');
+test('series uses one episode selector and one source/quality list', () => {
+    const {instance,state} = environment();
+    instance.open({name:'Річер',original_name:'Reacher',first_air_date:'2022-02-03'});
+    state.choose(i=>i.action==='episode'); state.choose(i=>i.value===3); state.choose(i=>i.value===2);
+    state.choose(i=>i.action==='play' && i.release.voice==='Uaflix' && i.value==='1080p');
+    assert.equal(state.played.episode,2); assert.equal(state.played.season,3);
+    assert.equal(state.played.voice_name,'Uaflix'); assert.deepEqual(state.playlist,[]);
+    assert.equal(state.playerReturn,'full_start');
 });
 test('canceling a pending catalog read does not open a stale modal', () => {
     const {instance, state} = environment({delayed: true});
@@ -142,12 +134,12 @@ test('canceling a pending catalog read does not open a stale modal', () => {
     state.menu.onBack();
     const req = state.requests[0]; req.status = 200; req.responseText = JSON.stringify(catalog); req.onload();
     assert.equal(state.menu, null);
-    assert.equal(state.controller, 'content');
+    assert.equal(state.controller, 'full_start');
 });
 test('failed catalog fetch reports error and does not launch video', () => {
     const {instance, state} = environment({failure: true});
     instance.open({title: 'Профі'});
-    assert.ok(state.notices.some(s => s.includes('403')));
+    assert.ok(state.menu.items.some(i=>i.title.includes('немає доступного')));
     assert.equal(state.played, null);
 });
 test('install is idempotent and does not modify another plugin playback', () => {
@@ -168,10 +160,10 @@ test('input settings supply the string values required by Lampa Params.bind', ()
         assert.ok(param.placeholder);
     }
 });
-test('diagnostics can be opened directly from the movie menu', () => {
+test('diagnostics remain in settings rather than the playback menu', () => {
     const {instance, state} = environment();
     instance.open({title: 'Бджоляр'});
-    state.choose(i => i.action === 'diagnostics');
+    state.params.find(p=>p.param.name==='faborn_ukr_diagnostic').onChange();
     assert.equal(state.menu.title, 'Діагностика');
     assert.ok(state.menu.items.some(i => i.title.includes(instance.version)));
     assert.ok(state.menu.items.some(i => i.title.includes('Плеєр Lampa: tizen')));
@@ -180,50 +172,28 @@ test('diagnostics can be opened directly from the movie menu', () => {
 test('browser playback is explicitly blocked after known segment CORS failure', () => {
     const {instance, state} = environment({platform: 'browser'});
     instance.open({title: 'Профі'});
-    state.choose(i => i.value && i.value.id === 'a-working-man-2025');
-    state.choose(i => i.value && i.value.source === 'kinoukr');
     state.choose(i => i.value === '2160p');
     assert.equal(state.played, null);
-    assert.ok(state.menu.title.includes('Samsung Tizen'));
+    assert.ok(state.menu.title.includes('Tizen'));
 });
 test('Tizen browser mode requires AVPlay without altering global player settings', () => {
     const {instance, state} = environment({player: 'inner'});
     instance.open({title: 'Профі'});
-    state.choose(i => i.value && i.value.id === 'a-working-man-2025');
-    state.choose(i => i.value && i.value.source === 'kinoukr');
     state.choose(i => i.value === '2160p');
     assert.equal(state.played, null);
-    assert.equal(state.menu.title, 'Обери штатний плеєр Tizen');
+    assert.equal(state.menu.title, 'Потрібен плеєр Tizen');
     assert.equal(state.storage.player, undefined);
 });
 
 function filmQualityMenu(env) {
     env.instance.open({title: 'Бджоляр', original_title: 'The Beekeeper', release_date: '2024-01-10'});
-    env.state.choose(i => i.value && i.value.id === 'the-beekeeper-2024');
-    env.state.choose(i => i.value && i.value.source === 'uakino');
 }
 
-test('launch replaces a cached URL with the latest Pages entry before opening AVPlay', () => {
-    const env = environment(); filmQualityMenu(env);
-    const updated = JSON.parse(JSON.stringify(catalog));
-    const ep = updated.titles[0].releases[0].episodes[0];
-    ep.qualities['1080p'] = 'https://ashdi.vip/new-location/hls/1080/fresh/index.m3u8';
-    env.state.catalog = updated;
-    env.state.choose(i => i.value === '1080p');
-    assert.equal(env.state.played.url, ep.qualities['1080p']);
-    assert.equal(env.state.requests.filter(r => r.url.includes('catalog.json')).length, 2);
+test('selected manifest is checked immediately before AVPlay, and a 404 is not played', () => {
+    const options = {}; const env = environment(options); filmQualityMenu(env);
+    options.failure = true; env.state.choose(i=>i.value==='1080p');
+    assert.equal(env.state.played,null); assert.ok(env.state.notices.some(n=>n.includes('404') || n.includes('403')));
 });
-
-test('a newly unavailable entry never opens the stale cached stream', () => {
-    const env = environment(); filmQualityMenu(env);
-    const updated = JSON.parse(JSON.stringify(catalog));
-    updated.titles[0].releases[0].episodes[0].state = 'unavailable';
-    env.state.catalog = updated;
-    env.state.choose(i => i.value === '1080p');
-    assert.equal(env.state.played, null);
-    assert.equal(env.state.menu.title, 'Ця версія зараз недоступна');
-});
-
 test('canceling link refresh prevents late replies from starting video', () => {
     const options = {}; const env = environment(options); filmQualityMenu(env);
     options.delayed = true;
@@ -233,7 +203,7 @@ test('canceling link refresh prevents late replies from starting video', () => {
     req.status = 200; req.responseText = JSON.stringify(catalog); req.onload();
     assert.equal(req.aborted, true);
     assert.equal(env.state.played, null);
-    assert.ok(env.state.menu.title.includes('Якість'));
+    assert.equal(env.state.menu,null); assert.equal(env.state.controller,'full_start');
 });
 
 test('a stuck native startup closes after 45 seconds and exposes a retry menu', () => {
@@ -317,18 +287,16 @@ function directEnvironment(config = {}) {
         else if (req.url === djangoURL) req.responseText = movieHTML;
         else if (req.url === seriesURL) req.responseText = seriesHTML;
         else if (req.url.includes('playlists.php')) req.responseText = JSON.stringify({response:seriesPlaylist});
-        else if (req.url.includes('/vod/')) req.responseText = embedHTML;
+        else if (req.url === 'https://ashdi.vip/vod/3306' || req.url.includes('ashdi.vip/vod/16')) req.responseText = embedHTML;
         else if (req.url === masterURL) req.responseText = masterHTML;
         else if (req.url.includes('/hls/')) req.responseText = '#EXTM3U\n#EXTINF:6,\nsegment.ts';
-        else assert.fail('Unexpected request '+req.url);
+        else { req.status=403; req.responseText=''; }
         req.onload();
     }});
 }
 function chooseDirect(env, series = false) {
     env.instance.open(series ? {name:'Річер',original_name:'Reacher',first_air_date:'2022-02-03'} : {id:68718,title:'Джанґо вільний',original_title:'Django Unchained',release_date:'2012-12-25'});
-    env.state.choose(i => i.action === 'uakino');
-    env.state.choose(i => i.value && i.value.url === (series ? seriesURL : djangoURL));
-    env.state.choose(i => i.value && i.value.source === 'uakino');
+
 }
 test('UAKino results preserve year, ignore recommendations, decode text and reject foreign hosts', () => {
     assert.deepEqual(api.parseSearch(searchHTML).map(r => [r.title,r.year]),[['Джанго',1966],['Джанґо вільний',2012]]);
@@ -346,7 +314,7 @@ test('UAKino challenge, unknown markup and missing Ukrainian evidence fail expli
 test('film metadata and season metadata are taken from the page, not nav dates or TMDB', () => {
     const film = api.parseSource(movieHTML,djangoURL);
     assert.equal(film.year,2012); assert.equal(film.originalTitle,'Django Unchained');
-    assert.equal(film.voice,'Український дубляж'); assert.deepEqual(film.embeds,['https://ashdi.vip/vod/3306']);
+    assert.equal(film.voice,'Український дубляж'); assert.ok(film.embeds.includes('https://ashdi.vip/vod/3306'));
     const show = api.parseSource(seriesHTML,seriesURL);
     assert.equal(show.season,3); assert.equal(show.title,'Джек Річер'); assert.equal(show.type,'tv'); assert.equal(show.year,2025);
     assert.equal(show.playlistURL,'https://uakino.best/engine/ajax/playlists.php?news_id=26631&xfield=playlist');
@@ -380,63 +348,171 @@ test('new film outside catalog flows through source, embed, HLS and AVPlay witho
     assert.equal(search.method,'POST'); assert.ok(search.body.includes(encodeURIComponent('Джанґо вільний')));
     assert.ok(env.state.storage.faborn_ukr_direct_trace.some(l=>l.includes('передано 2160p')));
 });
-test('series resolves only selected voice and episode, leaving no unresolved autoplay URLs', () => {
-    const env = directEnvironment({series:true}); chooseDirect(env,true);
-    env.state.choose(i=>i.value===3);
-    env.state.choose(i=>i.value && i.value.episode===2);
-    env.state.choose(i=>i.value==='1080p');
-    assert.equal(env.state.played.season,3); assert.equal(env.state.played.episode,2); assert.equal(env.state.played.voice_name,'DniproFilm');
-    assert.deepEqual(env.state.playlist,[]);
-    assert.equal(env.state.requests.filter(r=>r.url.includes('/vod/')).length,1);
-    assert.equal(env.state.requests.find(r=>r.url.includes('/vod/')).url,'https://ashdi.vip/vod/166247');
+test('one unavailable provider and failed Pages index do not block another source', () => {
+    const env=directEnvironment({intercept(req) {if(req.url.includes('catalog.json')){req.status=503;req.onload();return true;}}});
+    chooseDirect(env); env.state.choose(i=>i.value==='1080p'); assert.ok(env.state.played);
+    assert.ok(env.state.requests.some(r=>r.url==='https://uaserials.my/'));
+    assert.ok(env.state.requests.some(r=>r.url==='https://uafix.net/search.html'));
 });
-test('403 is visible with its exact stage and diagnostics do not require another network request', () => {
-    const env = directEnvironment({intercept(req) { if(req.url==='https://uakino.best/ua/') {req.status=403;req.onload();return true;} }});
-    env.instance.open({title:'Джанґо вільний'}); env.state.choose(i=>i.action==='uakino');
-    assert.ok(env.state.menu.items[0].subtitle.includes('Пошук UAKino: HTTP 403'));
-    const count=env.state.requests.length;
-    env.state.choose(i=>i.action==='diagnostics');
-    assert.equal(env.state.requests.length,count);
-    assert.ok(env.state.menu.items.some(i=>i.title.includes('Пошук UAKino: HTTP 403')));
+test('every pending request is aborted and late replies cannot reopen a closed menu', () => {
+    const env=environment({delayed:true}); env.instance.open({title:'Test'});
+    assert.equal(env.state.requests.length,4); env.state.menu.onBack();
+    for (const req of env.state.requests) {assert.equal(req.aborted,true);req.status=200;req.responseText=searchHTML;req.onload();}
+    assert.equal(env.state.menu,null); assert.equal(env.state.controller,'full_start');
+    assert.equal(Object.keys(env.state.timers).length,0);
 });
-test('network error and timeout end loading, keeping evidence instead of claiming no matches', () => {
-    for (const event of ['onerror','ontimeout']) {
-        const env=directEnvironment({intercept(req) { if(req.url==='https://uakino.best/ua/') {req[event](); return true;} }});
-        env.instance.open({title:'Test'}); env.state.choose(i=>i.action==='uakino');
-        assert.equal(env.state.menu.title,'UAKino · не вдалося завершити');
-        assert.equal(env.state.played,null);
+test('retry from the select controller never overwrites the original card controller', () => {
+    const env=environment(); filmQualityMenu(env); assert.equal(env.state.controller,'select');
+    env.state.choose(i=>i.action==='retry'); env.state.menu.onBack();
+    assert.equal(env.state.controller,'full_start'); assert.equal(env.state.menu,null);
+});
+test('closing after season and episode navigation restores the card controller', () => {
+    const env=environment(); env.instance.open({name:'Річер',original_name:'Reacher',first_air_date:'2022-02-03'});
+    env.state.choose(i=>i.action==='episode'); env.state.choose(i=>i.value===3); env.state.menu.onBack(); env.state.menu.onBack(); env.state.menu.onBack();
+    assert.equal(env.state.controller,'full_start'); assert.equal(env.state.menu,null);
+});
+test('discovery deadline displays partial results and ignores late providers', () => {
+    let waiting;
+    const env=directEnvironment({intercept(req) {if(req.url==='https://uaserials.my/') {waiting=req;return true;}}});
+    chooseDirect(env); assert.ok(env.state.menu.title.includes('пошук'));
+    env.state.fireTimer(24000); const menu=env.state.menu;
+    assert.ok(menu.items.some(i=>i.action==='play')); assert.equal(waiting.aborted,true);
+    waiting.status=200;waiting.responseText='';waiting.onload();assert.equal(env.state.menu,menu);
+});
+test('network errors and timeouts finish without a stuck loading menu', () => {
+    for(const event of ['onerror','ontimeout']) {
+        const env=directEnvironment({intercept(req) {if(!req.url.includes('catalog.json')) {req[event]();return true;}}});
+        env.instance.open({title:'Unknown'}); assert.ok(env.state.menu.items.some(i=>i.action==='retry'));
+        assert.equal(Object.keys(env.state.timers).length,0);
     }
 });
-test('direct search remains available when the static index fails', () => {
-    const env=directEnvironment({intercept(req) {if(req.url.includes('catalog.json')){req.status=503;req.onload();return true;}}});
-    chooseDirect(env); env.state.choose(i=>i.value==='1080p');
-    assert.ok(env.state.played);
+test('synchronous request rejection also leaves a usable menu and restores navigation', () => {
+    const env=environment({openError:true});
+    assert.doesNotThrow(()=>env.instance.open({title:'Unknown'}));
+    assert.ok(env.state.menu.items.some(i=>i.action==='retry'));
+    env.state.menu.onBack(); assert.equal(env.state.controller,'full_start');
+    assert.equal(Object.keys(env.state.timers).length,0);
 });
-test('cancelled direct request is aborted and its late response cannot reopen menus', () => {
-    const env=directEnvironment({intercept(req) {return req.url==='https://uakino.best/ua/';}});
-    env.instance.open({title:'Test'}); env.state.choose(i=>i.action==='uakino');
-    const req=env.state.requests.at(-1); env.state.menu.onBack();
-    const menu=env.state.menu;
-    assert.equal(req.aborted,true);req.status=200;req.responseText=searchHTML;req.onload();
-    assert.equal(env.state.menu,menu);
+test('an unavailable UAKino AJAX playlist does not discard its direct player', () => {
+    const env=directEnvironment({intercept(req) {
+        if(req.url===djangoURL) {
+            req.status=200; req.responseText=movieHTML+'<div class="playlists-ajax" data-news_id="10" data-xfname="playlist"></div>'; req.onload();return true;
+        }
+        if(req.url.includes('/engine/ajax/playlists.php')) { req.status=503;req.onload();return true; }
+    }});
+    chooseDirect(env);env.state.choose(i=>i.value==='1080p');assert.ok(env.state.played);
 });
-test('direct search selected during slow catalog loading is not overwritten by late catalog', () => {
-    let pending;
-    const env=directEnvironment({intercept(req) {if(req.url.includes('catalog.json')) {pending=req;return true;}}});
-    env.instance.open({title:'Test'});env.state.choose(i=>i.action==='uakino');
-    const menu=env.state.menu;pending.status=200;pending.responseText=JSON.stringify(catalog);pending.onload();
-    assert.equal(env.state.menu,menu);assert.ok(menu.title.startsWith('UAKino'));
-});
-test('direct playback watchdog can refresh the source without needing a curated entry', () => {
+test('direct playback watchdog refreshes the player without a static catalog entry', () => {
     const env=directEnvironment();chooseDirect(env);env.state.choose(i=>i.value==='1080p');
-    env.state.fireTimer(45000);
-    assert.equal(env.state.menu.title,'Відео не запустилося');env.state.choose(i=>i.action==='retry');
-    assert.equal(env.state.requests.filter(r=>r.url.includes('/vod/')).length,2);
-    assert.equal(env.state.requests.filter(r=>r.url.includes('catalog.json')).length,1);
-    assert.ok(env.state.played);
+    env.state.fireTimer(45000);env.state.choose(i=>i.action==='retry');
+    assert.equal(env.state.requests.filter(r=>r.url==='https://ashdi.vip/vod/3306').length,2);
+    assert.equal(env.state.requests.filter(r=>r.url.includes('catalog.json')).length,1);assert.ok(env.state.played);
 });
 test('source and embed URL filters reject credential tricks and arbitrary servers', () => {
     ['http://uakino.best/a','https://uakino.best.evil/a','https://x@uakino.best/a','https://uakino.best\\@evil/a'].forEach(u=>assert.equal(api.uakinoURL(u),false));
     assert.equal(api.embedURL('//ashdi.vip/vod/123'),'https://ashdi.vip/vod/123');
     assert.equal(api.embedURL('https://ashdi.vip/vod/1/../../evil'),'');
+});
+
+const fromCard={id:124364,name:'Ззовні',original_name:'From',first_air_date:'2022-02-20'};
+const hailCard={id:936075,title:'Проект «Аве Марія»',original_title:'Project Hail Mary',release_date:'2026-03-19'};
+const uaserials=api.providers.find(p=>p.id==='uaserials');
+const uafix=api.providers.find(p=>p.id==='uafix');
+const hailSource='https://uaserials.my/12030-proiekt-ave-mariia-2026-r.html';
+const fromSource='https://uaserials.my/6097-zzovni.html';
+
+test('real UASerials search and title markup match both titles reported on the TV',()=>{
+    assert.equal(api.providerSearch(fixture('uaserials-search.html'),uaserials)[0].originalTitle,'From');
+    const show=api.providerPage(fixture('uaserials-from.html'),fromSource);
+    assert.ok(api.sameTitle(fromCard,show,true)); assert.equal(show.year,2022);
+    assert.deepEqual(show.embeds,['https://hdvbua.pro/embed/6097/b0c42c552']);
+    const film=api.providerPage(fixture('uaserials-hail.html'),hailSource);
+    assert.ok(api.sameTitle(hailCard,film,true)); assert.equal(film.type,'movie');
+    assert.ok(api.sameTitle(hailCard,api.providerSearch(fixture('uaserials-hail-search.html'),uaserials)[0],false));
+});
+test('real UAFix markup supports films, season links and separate episode pages',()=>{
+    const film=api.providerPage(fixture('uafix-hail-mary.html'),'https://uafix.net/films/prjawmar-nc2/');
+    assert.ok(api.sameTitle(hailCard,film,true)); assert.equal(film.embeds[0],'https://zetvideo.net/vod/57356');
+    assert.ok(api.sameTitle(hailCard,api.providerSearch(fixture('uafix-search.html'),uafix)[0],false));
+    const show=api.providerPage(fixture('uafix-from.html'),'https://uafix.net/serials/szovni/');
+    assert.ok(api.sameTitle(fromCard,show,true)); assert.equal(show.seasonPages.length,4);
+    assert.equal(show.releases[0].episodes.length,21);
+    assert.ok(show.releases[0].episodes.some(e=>e.page.endsWith('/season-01-episode-01/')));
+});
+test('UAKino movie playlists no longer require a series number',()=>{
+    const title=api.parseSource(movieHTML,djangoURL);
+    api.addEpisodeRefs(title,'<li data-file="//ashdi.vip/vod/3306" data-voice="Дубляж">1080p</li><li data-file="https://zetvideo.net/vod/1" data-voice="English">HD</li>');
+    assert.equal(title.releases.length,1); assert.equal(title.releases[0].episodes[0].episode,0);
+    assert.equal(title.releases[0].episodes[0].embed,'https://ashdi.vip/vod/3306');
+});
+test('real HDVB nested playlists retain all four seasons and distinct Ukrainian voices',()=>{
+    const entries=api.playerEntries(fixture('hdvb-from.html'),{type:'tv',season:1,voice:'Українська'});
+    assert.equal(entries.length,60);
+    assert.deepEqual([...new Set(entries.map(e=>e.season))],[1,2,3,4]);
+    assert.deepEqual([...new Set(entries.map(e=>e.voice))],['HDrezka Studio','BaibaKoTV','Двохгол. зак.']);
+    assert.equal(entries.filter(e=>e.season===2 && e.episode===1).length,2);
+    assert.ok(entries.every(e=>api.mediaURL(e.master)));
+});
+test('nested player folders work in voice-first order and exclude foreign audio',()=>{
+    const tree=[{title:'Український дубляж',folder:[{title:'Сезон 2',folder:[{title:'Серія 7',file:masterURL}]}]},{title:'English',folder:[{title:'Season 1',folder:[{title:'Episode 1',file:masterURL}]}]}];
+    const entries=api.playerEntries('new Playerjs({file:'+JSON.stringify(JSON.stringify(tree))+'})',{type:'tv'});
+    assert.equal(entries.length,1); assert.equal(entries[0].season,2); assert.equal(entries[0].episode,7);
+    assert.equal(entries[0].voice,'Український дубляж');
+});
+test('matching rejects remakes, other titles and a movie/series mismatch',()=>{
+    assert.equal(api.sameTitle(hailCard,{title:'Інша назва',year:2026,type:'movie'},true),false);
+    assert.equal(api.sameTitle(hailCard,{title:'Проєкт Аве Марія',year:2005,type:'movie'},true),false);
+    assert.equal(api.sameTitle(hailCard,{title:'Проєкт Аве Марія',year:2026,type:'tv'},true),false);
+    assert.equal(api.sameTitle(fromCard,{title:'Ззовні 4 сезон',originalTitle:'From 4 season',year:2026,season:4,type:'tv'},true),true);
+});
+function multiSourceEnvironment(series=false, intercept) {
+    return environment({respond(req){
+        if(intercept && intercept(req)) return;
+        req.status=200;
+        if(req.url.includes('catalog.json')) req.responseText=JSON.stringify(catalog);
+        else if(req.url===uaserials.origin+'/') req.responseText=fixture(series?'uaserials-search.html':'uaserials-hail-search.html');
+        else if(req.url===(series?fromSource:hailSource)) req.responseText=fixture(series?'uaserials-from.html':'uaserials-hail.html');
+        else if(req.url.startsWith('https://hdvbua.pro/embed/')) req.responseText=fixture(series?'hdvb-from.html':'hdvb-hail.html');
+        else if(req.url.includes('hdvbua.pro/') && req.url.endsWith('index.m3u8')) req.responseText=masterHTML.replace('2160/','720/').replace('3840x1600','1280x720');
+        else { req.status=403; req.responseText=''; }
+        req.onload();
+    }});
+}
+test('Hail Mary: card to actual UASerials source/quality to player, without intermediate menus',()=>{
+    const env=multiSourceEnvironment(); env.instance.open(hailCard);
+    const rows=env.state.menu.items.filter(i=>i.action==='play');
+    assert.equal(rows.length,2); assert.ok(rows.every(i=>i.title.includes('UASerials')));
+    assert.ok(!env.state.menu.items.some(i=>/Знайти|індекс|діагностика/i.test(i.title)));
+    env.state.choose(i=>i.value==='1080p'); assert.equal(env.state.played.card.id,hailCard.id);
+    assert.ok(env.state.played.url.includes('hdvbua.pro')); assert.equal(env.state.playerReturn,'full_start');
+});
+test('From: changing season/episode selects the matching stream and voice',()=>{
+    const env=multiSourceEnvironment(true);env.instance.open(fromCard);
+    env.state.choose(i=>i.action==='episode');env.state.choose(i=>i.value===2);env.state.choose(i=>i.value===3);
+    env.state.choose(i=>i.action==='play' && i.release.voice==='BaibaKoTV' && i.value==='1080p');
+    assert.equal(env.state.played.season,2);assert.equal(env.state.played.episode,3);
+    assert.ok(env.state.played.url.includes('from.s02e03.baibako'));assert.equal(env.state.played.voice_name,'BaibaKoTV');
+    assert.deepEqual(env.state.playlist,[]);
+});
+test('unavailable player status is retained in provider diagnostics',()=>{
+    const env=multiSourceEnvironment(false,req=>{
+        if(req.url.startsWith('https://hdvbua.pro/embed/')) {req.status=404;req.onload();return true;}
+    });
+    env.instance.open(hailCard);
+    assert.ok(!env.state.menu.items.some(i=>i.action==='play'));
+    assert.ok(env.state.storage.faborn_ukr_source_status.includes('UASerials: HTTP 404'));
+});
+test('refresh keeps the chosen voice when a title offers multiple embedded players',()=>{
+    const master=api.playerEntries(fixture('hdvb-hail.html'),{type:'movie',voice:'Українська'})[0].master;
+    const tree=[{title:'Дубляж',file:master},{title:'Багатоголосий',file:master}];
+    const env=multiSourceEnvironment(false,req=>{
+        if(req.url===hailSource) req.responseText=fixture('uaserials-hail.html')+'<iframe data-src="https://hdvbua.pro/embed/1011709/b0c42c552"></iframe>';
+        else if(req.url.startsWith('https://hdvbua.pro/embed/')) req.responseText='new Playerjs({file:'+JSON.stringify(JSON.stringify(tree))+'})';
+        else return false;
+        req.status=200;req.onload();return true;
+    });
+    env.instance.open(hailCard);env.state.choose(i=>i.action==='play' && i.release.voice==='Багатоголосий · плеєр 2' && i.value==='1080p');
+    env.state.fireTimer(45000);env.state.choose(i=>i.action==='retry');
+    assert.equal(env.state.played.voice_name,'Багатоголосий · плеєр 2');
+    assert.equal(env.state.requests.filter(r=>r.url==='https://hdvbua.pro/embed/1011709/b0c42c552').length,2);
 });

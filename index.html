@@ -2,21 +2,22 @@
 <html lang="uk">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ukr by Faborn · beta 4</title>
+<title>ukr by Faborn · beta 5</title>
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 <style>
 body{margin:0;background:#111722;color:#f3f6fc;font:18px/1.55 system-ui,sans-serif}main{max-width:780px;margin:9vh auto;padding:28px}header{display:flex;align-items:center;gap:22px}header img{width:72px}h1{font-size:36px;margin:0}small{color:#b7c4d8}code{display:block;padding:18px;background:#202a3a;border-radius:12px;overflow-wrap:anywhere;color:#a9d6ff}a{color:#a9d6ff}.note{border-left:4px solid #ffd54a;padding-left:18px;margin:28px 0}li{margin-bottom:8px}
 </style>
 <main>
-<header><img src="assets/icon.svg" alt=""><div><h1>ukr by Faborn</h1><small>0.1.0-beta.4 · Lampa / Tizen · GitHub Pages</small></div></header>
+<header><img src="assets/icon.svg" alt=""><div><h1>ukr by Faborn</h1><small>0.1.0-beta.5 · Lampa / Tizen · GitHub Pages</small></div></header>
 <p>Додай цю адресу в Lampa: <strong>Налаштування → Розширення → Додати</strong>.</p>
 <code id="install">ukr-by-faborn.js</code>
-<p>Якщо розширення вже встановлене, залиш його адресу й повністю перезапусти Lampa. Вводити посилання заново не потрібно. У картці фільму або серіалу є окрема синьо-жовта іконка <strong>ukr by Faborn</strong>; у її меню — «Версія та діагностика».</p>
-<p>Beta.4 додає <strong>«Знайти на UAKino»</strong>: відкрий картку TMDB → ukr by Faborn → знайди назву → вибери озвучення та якість. Пошук працює поза тестовим індексом і виконується безпосередньо з телевізора.</p>
-<div class="note"><strong>Резервний тестовий індекс</strong><br>«Бджоляр» (2024), «Профі» (2025), «Джек Річер» — сезон 3, серії 1–8 у DniproFilm та Uaflix. Це не повні каталоги сайтів.</div>
-<p><strong>Для перевірки на Samsung обери плеєр Tizen / AVPlay у Lampa.</strong> Сегменти Ashdi блокуються CORS у браузерному плеєрі. Попередня beta.3 вже відтворює відео за відгуком користувача. Новий прямий пошук beta.4 потребує перевірки на телевізорі.</p>
-<ul><li>Фільми: 4K / 1080p / 720p / 480p, якщо потік доступний.</li><li>Серіали: озвучення та вибір епізоду. У прямому пошуку наступну серію поки обирай вручну.</li><li>Відео надходить з Ashdi. GitHub розміщує розширення й індекс.</li></ul>
-<p>Якщо сайт недоступний, модуль покаже етап і причину. Пункт «Версія та діагностика» зберігає результат останніх запитів.</p>
+<p>Уже встановлено? <strong>Повністю перезапусти Lampa.</strong> Посилання змінювати не потрібно.</p>
+<div class="note"><strong>Картка → ukr by Faborn → джерело з якістю → плеєр.</strong><br>Пошук на UAKino, UASerials та UAFix виконується автоматично. У списку показуються доступні потоки й українське озвучення.</div>
+<p>Для серіалів зверху є вибір сезону й серії. Натискання варіанта, наприклад <strong>UASerials · 1080p</strong>, запускає перегляд. Окремих меню пошуку й тестового каталогу більше немає.</p>
+<ul><li>4K / 1080p / 720p / 480p — залежно від потоку.</li><li>Кнопка «Назад» повертає керування картці.</li><li>Потрібен плеєр Tizen / AVPlay у налаштуваннях Lampa.</li></ul>
+<p>Версія й діагностика: <strong>Налаштування → ukr by Faborn → Версія та діагностика</strong>. Має бути 0.1.0-beta.5.</p>
+<p>Недоступні плеєри не потрапляють до списку готових потоків. На 30.09.2026 перевірені плеєри UAFix / Zetvideo для двох назв відповіли 404. Потоки UASerials для «Проєкт Аве Марія» й «Ззовні» віддали 1080p; новий сценарій ще потрібно перевірити на телевізорі.</p>
+<p>GitHub розміщує модуль і резервний індекс. KinoUkr додається з резервного індексу; прямого пошуку цього сайту немає. Наступна серія поки вибирається вручну.</p>
 <p id="status">Читаю дату індексу…</p>
 <p><a href="data/status.json">Стан останнього оновлення</a> · <a href="data/catalog.json">Індекс</a></p>
 </main>

@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.4 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.5 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,12 +8,12 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.4';
+    var VERSION = '0.1.0-beta.5';
     var NAME = 'ukr by Faborn';
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
     var pendingRequest, playbackTimer, watchedPlayback, playbackContext;
-    var directTrace = [], directContext;
+    var directTrace = [];
     var capturedBase = detectBase();
 
     function text(value) { return value === undefined || value === null ? '' : String(value); }
@@ -30,7 +30,7 @@
         return out;
     }
     function mediaURL(value) {
-        return /^https:\/\/(?:[a-z0-9-]+\.)*ashdi\.vip\//i.test(text(value)) && !/[\s<>"\\]/.test(value);
+        return /^https:\/\/(?:[a-z0-9-]+\.)*(?:ashdi\.vip|hdvbua\.pro|zetvideo\.net|tortuga\.(?:tw|wtf))\//i.test(text(value)) && !/[\s<>"\\]/.test(value);
     }
     function safeBase(value) {
         return /^(https:\/\/[a-z0-9-]+\.github\.io(?:\/[^?#]*)?|http:\/\/(?:localhost|127\.0\.0\.1):\d+(?:\/[^?#]*)?)$/i.test(value);
@@ -72,9 +72,16 @@
     }
     function notify(message) { if (L && L.Noty) L.Noty.show(message); }
     function rememberController() {
-        try { returnController = L.Controller.enabled().name || 'content'; } catch (ignore) { returnController = 'content'; }
+        try {
+            var name = L.Controller.enabled().name;
+            if (name && ['select','keyboard','player','player_panel'].indexOf(name) < 0) returnController = name;
+        } catch (ignore) { returnController = 'content'; }
     }
-    function restore() { if (L && L.Controller) L.Controller.toggle(returnController); }
+    function restore() {
+        cancelPending(); activeSession = null;
+        if (L && L.Select) L.Select.hide();
+        if (L && L.Controller) L.Controller.toggle(returnController);
+    }
     function select(title, items, onSelect, onBack) {
         L.Select.show({
             title: title,
@@ -96,17 +103,19 @@
             finished = true;
             callback(error, body, req.status || 0);
         }
-        req.open(post ? 'POST' : 'GET', url, true);
-        req.timeout = timeout || 18000;
-        if (post) req.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
-        if (ajax) req.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
         req.onload = function () {
             if (req.status >= 200 && req.status < 300) done(null, req.responseText);
             else done(new Error('HTTP ' + req.status));
         };
         req.onerror = function () { done(new Error('Мережа / CORS / TLS: HTTP-статус недоступний')); };
         req.ontimeout = function () { done(new Error('Час очікування вичерпано')); };
-        try { req.send(post || null); } catch (error) { done(error); }
+        try {
+            req.open(post ? 'POST' : 'GET', url, true);
+            req.timeout = timeout || 18000;
+            if (post) req.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
+            if (ajax) req.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            req.send(post || null);
+        } catch (error) { done(error); }
         return req;
     }
 
@@ -136,7 +145,7 @@
     function pageID(url) { var m = /\/(\d+)-[^/]+\.html(?:\?|$)/.exec(text(url)); return m ? m[1] : ''; }
     function embedURL(url) {
         url = text(url).replace(/^\/\//, 'https://');
-        return /^https:\/\/ashdi\.vip\/(?:vod|serial)\/\d+\/?(?:\?[^\s<>"'\\]*)?$/i.test(url) ? url : '';
+        return /^https:\/\/(?:(?:ashdi\.vip|zetvideo\.net|tortuga\.(?:tw|wtf))\/(?:vod|serial)\/\d+\/?|hdvbua\.pro\/embed\/\d+\/[a-z0-9]+)(?:\?[^\s<>"'\\]*)?$/i.test(url) ? url : '';
     }
     function seasonNumber(value) { var m = /(?:(\d+)\s*(?:сезон|season)|(?:сезон|season)\s*(\d+))/i.exec(value); return m ? parseInt(m[1] || m[2], 10) : 0; }
     function withoutSeason(value) { return text(value).replace(/\s*\d+\s*(?:сезон|season)\s*/i, '').trim(); }
@@ -180,7 +189,7 @@
         var voice = fieldValue(clean, /(?:Мова озвучення|Озвучення)/i);
         var language = /<meta\b[^>]*itemprop=["']inLanguage["'][^>]*content=["']uk["']/i.test(clean) || /<meta\b[^>]*content=["']uk["'][^>]*itemprop=["']inLanguage["']/i.test(clean);
         if (!language && !/україн/i.test(voice)) throw new Error('Сторінка не підтверджує українське озвучення.');
-        var title = {id: 'uakino-' + pageID(url), title: withoutSeason(name), originalTitle: original ? withoutSeason(plain(original[1])) : '', year: year ? +year[0] : 0, type: season || /schema.org\/TVSeries/i.test(clean) ? 'tv' : 'movie', sourcePage: url, season: season || 1, audioEvidence: voice || 'inLanguage=uk', voice: voice || 'Українське озвучення', releases: [], embeds: [], seasonPages: []};
+        var title = {id: 'uakino-' + pageID(url), title: withoutSeason(name), originalTitle: original ? withoutSeason(plain(original[1])) : '', year: year ? +year[0] : 0, type: season || /schema.org\/TVSeries/i.test(clean) ? 'tv' : 'movie', source:'uakino', sourcePage: url, season: season || 1, audioEvidence: voice || 'inLanguage=uk', voice: voice || 'Українське озвучення', releases: [], embeds: [], seasonPages: []};
         var re = /<(iframe|link|div|li)\b([^>]*)>/gi, m;
         while ((m = re.exec(clean))) {
             var a = attrs(m[2]), embed = embedURL(a.src || a['data-src'] || (a.itemprop === 'video' ? a.value : ''));
@@ -201,21 +210,15 @@
         return title;
     }
     function addEpisodeRefs(title, html) {
-        var re = /<li\b([^>]*)>([\s\S]*?)<\/li>/gi, m, seen = Object.create(null), clean = cleanMarkup(html);
+        var re = /<li\b([^>]*)>([\s\S]*?)<\/li>/gi, m, clean = cleanMarkup(html);
         while ((m = re.exec(clean))) {
             var a = attrs(m[1]), embed = embedURL(a['data-file']), label = plain(m[2]);
             var n = /(?:серія|серії|episode)\s*(\d+)|(\d+)\s*(?:серія|серії)/i.exec(label);
-            var voice = plain(a['data-voice'] || title.voice);
-            if (!embed || !n || /росій|русск|english|англій/i.test(voice)) continue;
-            var number = parseInt(n[1] || n[2],10), season = +a['data-season'] || title.season, key = voice + '|' + season + '|' + number;
-            if (seen[key]) continue;
-            seen[key] = true;
-            var release = title.releases.filter(function (r) { return r.voice === voice; })[0];
-            if (!release) {
-                release = {id: title.id + '-voice-' + title.releases.length, source: 'uakino', voice: voice, audioLanguage: 'uk', audioEvidence: title.audioEvidence, episodes: []};
-                title.releases.push(release);
-            }
-            release.episodes.push({id: release.id + '-s' + season + 'e' + number, title: 'Серія ' + number, season: season, episode: number, embed: embed, state: 'pending'});
+            var voice = plain(a['data-voice'] || (title.type === 'movie' ? label : '') || title.voice);
+            if (!embed || foreignVoice(voice) || title.type === 'tv' && !n) continue;
+            var number = title.type === 'movie' ? 0 : +(n[1] || n[2]), season = title.type === 'movie' ? 0 : +a['data-season'] || title.season;
+            var release = newRelease(title,voice);
+            if (!release.episodes.some(function (e) { return e.season === season && e.episode === number; })) release.episodes.push({id:release.id+'-s'+season+'e'+number,title:label,season:season,episode:number,embed:embed,state:'pending'});
         }
     }
     function quotedProperty(source, key) {
@@ -272,132 +275,452 @@
         directTrace = directTrace.slice(-10);
         save('direct_trace', directTrace);
     }
-    function directError(stage, error, retry, back) {
-        var message = stage + ': ' + text(error.message || error);
-        trace(stage, text(error.message || error));
-        lastDiagnostic = message;
-        select('UAKino · не вдалося завершити', [
-            {title: 'Повторити', subtitle: message, action: 'retry'},
-            {title: 'Версія та діагностика', subtitle: 'Збережено етап і результат запиту.', action: 'diagnostics'},
-            {title: 'Повернутися', action: 'back'}
-        ], function (row) {
-            if (row.action === 'retry') retry();
-            else if (row.action === 'diagnostics') diagnostics();
-            else back();
-        }, back);
+    var PROVIDERS = [
+        {id:'uakino', name:'UAKino', origin:'https://uakino.best', search:'/ua/'},
+        {id:'uaserials', name:'UASerials', origin:'https://uaserials.my', search:'/'},
+        {id:'uafix', name:'UAFix', origin:'https://uafix.net', search:'/search.html'}
+    ];
+    function providerFor(url) {
+        return PROVIDERS.filter(function (p) { return text(url).indexOf(p.origin + '/') === 0; })[0];
     }
-    function directRequest(serial, stage, url, callback, post, ajax) {
-        if (serial !== requestSerial) return;
-        if (!uakinoURL(url) && !mediaURL(url)) return callback(new Error('Непідтримувана адреса джерела.'));
-        trace(stage, 'запит');
-        var completed = false;
-        var req = xhr(url, function (error, body, status) {
-            completed = true;
-            if (serial !== requestSerial) return;
-            pendingRequest = null;
-            trace(stage, error ? error.message : 'HTTP ' + status);
-            callback(error, body);
-        }, 18000, post, ajax);
-        if (!completed) pendingRequest = req;
+    function publicURL(url, origin) {
+        url = decodeHTML(text(url)).replace(/^\/\//, 'https://');
+        if (url.charAt(0) === '/') url = origin + url;
+        return providerFor(url) && !/[\s<>"'\\]/.test(url) ? url.split('#')[0] : '';
     }
-    function directLoading(stage, back) {
-        select('UAKino · ' + stage, [{title: 'Завантаження… · Назад — скасувати', subtitle: 'Запит із телевізора, до 18 секунд на етап.'}], function () { cancelPending(); back(); }, function () { cancelPending(); back(); });
+    function classText(html, cls) {
+        var re = new RegExp('<(div|span|h[1-6])\\b[^>]*class=["\'][^"\']*\\b' + cls + '\\b[^"\']*["\'][^>]*>([\\s\\S]*?)<\\/\\1>', 'i');
+        var m = re.exec(html); return m ? plain(m[2]) : '';
     }
-    function directSearch(movie, query, page) {
-        query = text(query || movie.title || movie.name || movie.original_title || movie.original_name).trim().substr(0,60);
-        var back = function () { open(movie); };
-        if (!query) return directEdit(movie, '');
-        cancelPending();
-        var serial = requestSerial;
-        page = page || 1;
-        if (page === 1) { directTrace = []; save('direct_trace', []); lastDiagnostic = ''; }
-        directLoading('пошук «' + query + '»', back);
-        // Same form and fields as UAKino's public quick search; no proxy or credentials.
-        directRequest(serial, 'Пошук UAKino', 'https://uakino.best/ua/', function (error, body) {
-            if (error) return directError('Пошук UAKino', error, function () { directSearch(movie,query,page); }, back);
-            var matches;
-            try { matches = parseSearch(body); } catch (e) { return directError('Результати UAKino', e, function () { directSearch(movie,query,page); }, back); }
-            trace('Результати UAKino', matches.length + ' назв');
-            directContext = {movie:movie, query:query, page:page, matches:matches};
-            directResults(directContext);
-        }, 'do=search&subaction=search&from_page=' + page + '&story=' + encodeURIComponent(query));
+    function labelText(html, label) {
+        var re = /<li\b[^>]*>([\s\S]*?)<\/li>/gi, m;
+        while ((m = re.exec(html))) {
+            var value = plain(m[1]), hit = label.exec(value);
+            if (hit) return value.substr(hit.index + hit[0].length).trim();
+        }
+        return '';
     }
-    function directEdit(movie, value) {
-        if (!L.Input || !L.Input.edit) return open(movie);
-        L.Input.edit({title:'Пошук UAKino',value:value || movie.title || movie.name || '',free:true},function (query) { if (query) directSearch(movie,query); else open(movie); });
+    function cleanTitle(value) {
+        return withoutSeason(plain(value).replace(/дивит[иь]с[ья][\s\S]*$/i, '').replace(/^[^a-zа-яіїєґ0-9]+/i, '')).trim();
     }
-    function directResults(context) {
-        var rows = context.matches.map(function (item) {
-            return {title:item.title + (item.year ? ' ('+item.year+')' : ''), subtitle:'UAKino' + (item.season ? ' · сезон ' + item.season : '') + ' · обери відповідну назву', value:item};
-        });
-        if (!rows.length) rows.push({title:'За цим запитом нічого не знайдено',subtitle:'Спробуй оригінальну назву або зміни запит.',action:'edit'});
-        var original = context.movie.original_title || context.movie.original_name;
-        if (original && normalize(original) !== normalize(context.query)) rows.push({title:'Шукати: ' + original,action:'original'});
-        rows.push({title:'Змінити назву пошуку',action:'edit'});
-        if (context.matches.length >= 10 && context.page < 10) rows.push({title:'Наступна сторінка результатів',action:'next'});
-        if (context.page > 1) rows.push({title:'Попередня сторінка результатів',action:'previous'});
-        rows.push({title:'Версія та діагностика',action:'diagnostics'});
-        select('UAKino · ' + context.query,rows,function (row) {
-            if (row.action === 'edit') directEdit(context.movie,context.query);
-            else if (row.action === 'original') directSearch(context.movie,original);
-            else if (row.action === 'next' || row.action === 'previous') directSearch(context.movie,context.query,context.page + (row.action === 'next' ? 1 : -1));
-            else if (row.action === 'diagnostics') diagnostics();
-            else directPage(context.movie,row.value.url,context);
-        },function () { open(context.movie); });
+    function titleKeys(value) {
+        return text(value).split(/\s*\/\s*/).map(function (s) { return normalize(cleanTitle(s)).replace(/проєкт/g,'проект'); }).filter(Boolean);
     }
-    function directPage(movie, url, context) {
-        cancelPending();
-        var serial = requestSerial, stage = 'Сторінка UAKino';
-        var back = function () { directResults(context); }, retry = function () { directPage(movie,url,context); };
-        directLoading('читання сторінки',back);
-        directRequest(serial,stage,url,function (error,body) {
-            if (error) return directError(stage,error,retry,back);
-            var title;
-            try { title = parseSource(body,url); } catch (e) { return directError(stage,e,retry,back); }
-            function ready() {
-                if (!title.releases.length && title.type === 'movie') title.embeds.forEach(function (embed,index) {
-                    title.releases.push({id:title.id+'-player-'+index,source:'uakino',voice:title.voice+(index ? ' · плеєр '+(index+1) : ''),audioLanguage:'uk',audioEvidence:title.audioEvidence,episodes:[{id:title.id+'-video-'+index,season:0,episode:0,embed:embed,state:'pending'}]});
-                });
-                if (!title.releases.length) return directError('Список відео',new Error('Не знайдено підтримуваний плеєр Ashdi або список серій.'),retry,back);
-                trace('Список відео',title.releases.length+' озвучень');
-                var catalog = {direct:true,titles:[title],context:context};
-                releases(movie,catalog,title);
+    function sameTitle(movie, candidate, full) {
+        var names = unique([movie.title,movie.name,movie.original_title,movie.original_name].reduce(function (a,n) { return a.concat(titleKeys(n)); },[]));
+        var aliases = unique([candidate.title,candidate.originalTitle].concat(candidate.aliases || []).reduce(function (a,n) { return a.concat(titleKeys(n)); },[]));
+        if (!names.some(function (n) { return aliases.some(function (a) {
+            return a === n || !full && n.length >= 4 && (' '+a+' ').indexOf(' '+n+' ') >= 0;
+        }); })) return false;
+        var tv = Boolean(movie.name || movie.first_air_date || movie.media_type === 'tv');
+        if (full && candidate.type !== (tv ? 'tv' : 'movie')) return false;
+        var year = parseInt(text(movie.release_date || movie.first_air_date).substr(0,4),10);
+        // UAKino dates individual seasons by broadcast year, while TMDB dates the series premiere.
+        if (year && candidate.year && !(tv && candidate.season > 1) && Math.abs(year - candidate.year) > 1) return false;
+        return true;
+    }
+    function providerSearch(html, provider) {
+        if (provider.id === 'uakino') return parseSearch(html);
+        if (challenge(html)) throw new Error('Сайт повернув перевірку доступу.');
+        var clean = cleanMarkup(html), rows = [], re, m, seen = {};
+        if (!/Пошук|За Вашим запитом/i.test(plain(clean))) throw new Error('Не отримано сторінку результатів пошуку.');
+        if (provider.id === 'uaserials') {
+            clean.split(/<div\b[^>]*class=["'][^"']*\bshort-cols\b[^"']*["'][^>]*>/i).slice(1).forEach(function (chunk) {
+                var a = /<a\b([^>]*)>/i.exec(chunk), url = a && publicURL(attrs(a[1]).href,provider.origin);
+                if (url && pageID(url)) rows.push({url:url,title:classText(chunk,'th-title'),originalTitle:classText(chunk,'th-title-oname')});
+            });
+        } else {
+            re = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+            while ((m = re.exec(clean))) {
+                var at = attrs(m[1]), h = /<h[23][^>]*>([\s\S]*?)<\/h[23]>/i.exec(m[2]);
+                var url = publicURL(at.href,provider.origin);
+                if (url && /\bsres-wrap\b/.test(at['class'] || '') && h) rows.push({url:url,title:plain(h[1])});
             }
-            if (!title.releases.length && title.playlistURL) {
-                stage = 'Список серій UAKino';
-                directLoading('список серій',back);
-                directRequest(serial,stage,title.playlistURL,function (err,response) {
-                    if (err) return directError(stage,err,retry,back);
+        }
+        return rows.filter(function (r) { if (seen[r.url] || r.url.indexOf(provider.origin+'/') !== 0) return false; seen[r.url] = true; return Boolean(r.title); }).slice(0,60);
+    }
+    function playerRefs(html) {
+        var clean = cleanMarkup(html), re = /<(?:iframe|link|li|div)\b([^>]*)>/gi, m, out = [];
+        while ((m = re.exec(clean))) {
+            var a = attrs(m[1]), url = embedURL(a.src || a['data-src'] || a['data-file'] || (a.itemprop === 'video' && a.value));
+            if (url && !/трейлер|trailer/i.test(a.title || '')) out.push(url);
+        }
+        return unique(out);
+    }
+    function providerPage(html, url) {
+        var provider = providerFor(url);
+        if (!provider) throw new Error('Невідоме джерело.');
+        if (provider.id === 'uakino') {
+            var ua = parseSource(html,url); ua.source = provider.id; return ua;
+        }
+        if (challenge(html)) throw new Error('Сайт повернув перевірку доступу.');
+        var clean = cleanMarkup(html).split(/<[^>]+(?:id=["']dle-comments|class=["'](?:full-comms|comments)\b)/i)[0];
+        var h = /<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(clean);
+        if (!h) throw new Error('На сторінці немає назви.');
+        var name = cleanTitle(h[1]), original = classText(clean,'oname') || classText(clean,'forigin') || classText(clean,'eng-rus') || labelText(clean,/Ориг\. назва:\s*/i).split(' / ')[0];
+        var year = /\b(?:19|20)\d{2}\b/.exec(labelText(clean,/Рік(?: виходу)?:\s*/i));
+        var voice = labelText(clean,/(?:Переклад|Озвучення):\s*/i);
+        var uk = /<meta\b[^>]*itemprop=["']inLanguage["'][^>]*content=["']uk(?:-UA)?["']/i.test(clean);
+        var heading = (clean.match(/<h[12]\b[^>]*>[\s\S]*?<\/h[12]>/gi) || []).map(plain).join(' ');
+        if (!uk && !/українськ/i.test(heading)) throw new Error('Сторінка не підтверджує українське озвучення.');
+        var tv = /серіал|сезон/i.test(heading) || /\/serials\//.test(url);
+        var id = provider.id + '-' + (pageID(url) || url.split('/').filter(Boolean).pop());
+        var title = {id:id,title:name,originalTitle:original,source:provider.id,sourcePage:url,year:year ? +year[0] : 0,type:tv ? 'tv' : 'movie',season:seasonNumber(name) || 1,voice:voice || 'Українське озвучення',audioEvidence:uk ? 'inLanguage=uk-UA' : heading.substr(0,240),releases:[],embeds:playerRefs(clean),seasonPages:[]};
+        if (provider.id === 'uafix' && tv) addFixEpisodes(title,clean);
+        return title;
+    }
+    function newRelease(title, voice) {
+        voice = plain(voice || title.voice);
+        var release = title.releases.filter(function (r) { return r.voice === voice; })[0];
+        if (!release) {
+            release = {id:title.id+'-voice-'+title.releases.length,source:title.source || 'uakino',sourcePage:title.sourcePage,voice:voice,audioLanguage:'uk',audioEvidence:title.audioEvidence,episodes:[]};
+            title.releases.push(release);
+        }
+        return release;
+    }
+    function foreignVoice(voice) { return /росій|русск|english|англій|\b(?:rus|eng)\b/i.test(voice); }
+    function addFixEpisodes(title,html) {
+        var re = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi, m;
+        while ((m = re.exec(html))) {
+            var url = publicURL(attrs(m[1]).href,'https://uafix.net');
+            if (!url || url.indexOf(title.sourcePage.replace(/\?.*$/,'')) !== 0) continue;
+            var ep = /\/season-(\d+)-episode-(\d+)\/$/.exec(url);
+            if (ep) {
+                var r = newRelease(title,title.voice), season = +ep[1], number = +ep[2];
+                if (!r.episodes.some(function (e) { return e.season === season && e.episode === number; })) r.episodes.push({id:r.id+'-s'+season+'e'+number,season:season,episode:number,page:url,state:'pending'});
+            } else if (/\/sezon-\d+\/$/.test(url) && !title.seasonPages.some(function (p) { return p.url === url; })) title.seasonPages.push({url:url,title:plain(m[2])});
+        }
+    }
+    function subtitlesFrom(value) {
+        var out = [], re = /\[([^\]]+)\](https:\/\/[^,\s]+)/g, m;
+        while ((m = re.exec(text(value)))) if (mediaURL(m[2])) out.push({label:m[1],url:m[2]});
+        return out;
+    }
+    function playerEntries(html, defaults) {
+        var start = text(html).search(/new\s+Playerjs\s*\(/);
+        if (start < 0) throw new Error('Не знайдено відкриту конфігурацію відеоплеєра.');
+        var config = text(html).substr(start), raw = quotedProperty(config,'file'), tree, out = [];
+        if (!raw) throw new Error('Плеєр не віддав прямого потоку.');
+        if (raw.charAt(0) === '[' && /\[\s*\{/.test(raw)) {
+            try { tree = JSON.parse(raw); } catch (e) { throw new Error('Не вдалося прочитати список відео.'); }
+        } else tree = [{file:raw,subtitle:quotedProperty(config,'subtitle')}];
+        function walk(items, season, voice, depth) {
+            if (!Array.isArray(items) || depth > 5 || out.length > 2000) return;
+            items.forEach(function (item) {
+                if (!item || typeof item !== 'object') return;
+                var label = plain(item.title), s = seasonNumber(label), v = voice;
+                if (foreignVoice(label)) return;
+                if (item.folder) {
+                    if (!s && label) v = label;
+                    walk(item.folder,s || season,v,depth+1); return;
+                }
+                var file = text(item.file), qualities = {}, master = '', m;
+                if (mediaURL(file) && /\.m3u8(?:\?|$)/i.test(file)) master = file;
+                else {
+                    var re = /\[(2160|1440|1080|720|480|360)p?\](https:\/\/[^,\s]+)/g;
+                    while ((m = re.exec(file))) if (mediaURL(m[2]) && /\.m3u8(?:\?|$)/i.test(m[2])) { qualities[m[1]+'p'] = m[2]; if (!master) master = m[2]; }
+                }
+                if (!master) return;
+                var n = /(?:серія|episode)\s*(\d+)|(\d+)\s*(?:серія|episode)/i.exec(label);
+                if (defaults.type === 'tv' && !n && !defaults.episode) return;
+                out.push({master:master,qualities:qualities,subtitles:subtitlesFrom(item.subtitle),season:defaults.type === 'tv' ? season || defaults.season || 1 : 0,episode:defaults.type === 'tv' ? n ? +(n[1] || n[2]) : defaults.episode : 0,voice:defaults.type === 'movie' && label ? label : v || defaults.voice,title:label});
+            });
+        }
+        walk(tree,defaults.season || 0,defaults.voice,0);
+        if (!out.length) throw new Error('Немає підтримуваного українського HLS-потоку.');
+        return out;
+    }
+    var requests = [], activeSession, discoveryTimer;
+    function parallel(items, limit, work, done) {
+        var next = 0, running = 0, finished = 0, ended = false;
+        if (!items.length) return done();
+        function pump() {
+            if (ended) return;
+            while (running < limit && next < items.length) {
+                var item = items[next++]; running++;
+                work(item,function () {
+                    running--; finished++;
+                    if (finished === items.length) { ended = true; done(); }
+                    else pump();
+                });
+            }
+        }
+        pump();
+    }
+    function publicRequest(serial, stage, url, callback, post, ajax) {
+        if (serial !== requestSerial) return;
+        if (!providerFor(url) && !embedURL(url) && !mediaURL(url)) return callback(new Error('Непідтримувана адреса джерела.'));
+        var completed = false, req;
+        trace(stage,'запит');
+        req = xhr(url,function (error,body,status) {
+            completed = true;
+            var i = requests.indexOf(req); if (i >= 0) requests.splice(i,1);
+            if (serial !== requestSerial) return;
+            trace(stage,error ? error.message : 'HTTP '+status);
+            callback(error,body);
+        },12000,post,ajax);
+        if (!completed) requests.push(req);
+    }
+    function getTitle(serial, provider, movie, url, done) {
+        publicRequest(serial,provider.name+' · сторінка',url,function (err,body) {
+            if (err) return done(err);
+            var title, playerError;
+            try { title = providerPage(body,url); } catch (e) { return done(e); }
+            if (!sameTitle(movie,title,true)) return done(new Error('Назва, рік або тип не збігаються з карткою.'));
+            function expand() {
+                parallel(title.embeds,2,function (embed,next) {
+                    publicRequest(serial,provider.name+' · сезони й озвучення',embed,function (error,html) {
+                        if (error) playerError = error;
+                        if (!error) {
+                            try {
+                                playerEntries(html,title).forEach(function (entry) {
+                                    var release = newRelease(title,entry.voice+(title.embeds.length > 1 ? ' · плеєр '+(title.embeds.indexOf(embed)+1) : ''));
+                                    if (release.episodes.some(function (e) { return e.season === entry.season && e.episode === entry.episode; })) return;
+                                    entry.id = release.id+'-s'+entry.season+'e'+entry.episode; entry.embed = embed; entry.state = 'pending';
+                                    release.episodes.push(entry);
+                                });
+                            } catch (e) { playerError = e; trace(provider.name+' · список відео',e.message); }
+                        }
+                        next();
+                    });
+                },function () { done(!title.releases.length && !title.seasonPages.length ? playerError : null,title); });
+            }
+            if (title.playlistURL) {
+                publicRequest(serial,provider.name+' · список відео',title.playlistURL,function (error,response) {
+                    if (error) return title.embeds.length ? expand() : done(error);
                     try {
                         var data = JSON.parse(response);
-                        if (!data || typeof data.response !== 'string') throw new Error('Невідомий формат списку серій.');
+                        if (!data || typeof data.response !== 'string') throw new Error('Не отримано список відео.');
                         addEpisodeRefs(title,data.response);
-                    } catch (e) { return directError(stage,new Error('Не вдалося прочитати список серій: '+e.message),retry,back); }
-                    ready();
+                        // Some lists contain one serial player, others one player per episode/voice.
+                        if (!title.releases.length) title.embeds = unique(title.embeds.concat(playerRefs(data.response)));
+                    } catch (e) { return title.embeds.length ? expand() : done(e); }
+                    expand();
                 },null,true);
-            } else ready();
+            } else expand();
         });
     }
-    function resolveDirect(movie,catalog,title,release,episode,callback) {
-        cancelPending();
-        var serial = requestSerial;
-        var back = function () { if (title.type === 'tv') episodes(movie,catalog,title,release,episode.season); else releases(movie,catalog,title); };
-        var retry = function () { resolveDirect(movie,catalog,title,release,episode,callback); };
-        directLoading('отримання потоку Ashdi',back);
-        directRequest(serial,'Плеєр Ashdi',episode.embed,function (error,body) {
-            if (error) return directError('Плеєр Ashdi',error,retry,back);
-            var parsed;
-            try { parsed = parseEmbed(body); } catch (e) { return directError('Плеєр Ashdi',e,retry,back); }
-            directLoading('перевірка доступної якості',back);
-            directRequest(serial,'HLS-маніфест',parsed.master,function (err,manifest) {
-                if (err) return directError('HLS-маніфест',err,retry,back);
-                try { episode.qualities = parseMaster(manifest,parsed.master); } catch (e) { return directError('HLS-маніфест',e,retry,back); }
-                episode.master = parsed.master; episode.subtitles = parsed.subtitles;
-                episode.resolvedAt = Date.now(); episode.state = 'resolved';
-                trace('Доступна якість',qualityNames(episode).join(' / ') || 'Авто');
-                callback();
+    function mergeTitle(session, title) {
+        title.releases.forEach(function (r) {
+            var existing = session.title.releases.filter(function (v) { return v.source === r.source && v.voice === r.voice; })[0];
+            if (!existing) { session.title.releases.push(r); existing = r; }
+            else r.episodes.forEach(function (e) {
+                if (!existing.episodes.some(function (v) { return v.season === e.season && v.episode === e.episode; })) existing.episodes.push(e);
             });
         });
+        (title.seasonPages || []).forEach(function (p) {
+            var season = seasonNumber(p.title);
+            if (season && !session.seasonPages.some(function (v) { return v.url === p.url; })) session.seasonPages.push({url:p.url,season:season,source:title.source || 'uakino'});
+        });
+    }
+    function discoverProvider(serial,session,provider,done) {
+        var movie = session.movie;
+        var queries = unique([movie.title || movie.name,movie.original_title || movie.original_name].map(function (s) { return text(s).replace(/[«»“”"'’]/g,'').trim().substr(0,100); }));
+        var index = 0;
+        function searchNext() {
+            if (index >= queries.length) return done('Назву не знайдено');
+            var query = queries[index++];
+            publicRequest(serial,provider.name+' · пошук',provider.origin+provider.search,function (err,body) {
+                if (err) return done(err.message);
+                var results;
+                try { results = providerSearch(body,provider).filter(function (r) { return sameTitle(movie,r,false); }); } catch (e) { return done(e.message); }
+                if (!results.length) return searchNext();
+                var count = 0, lastError = '';
+                parallel(results.slice(0,6),2,function (row,next) {
+                    getTitle(serial,provider,movie,row.url,function (error,title) {
+                        if (error) lastError = error.message;
+                        else { mergeTitle(session,title); count += title.releases.length; }
+                        next();
+                    });
+                },function () {
+                    if (!count && index < queries.length && /не збігаються/.test(lastError)) return searchNext();
+                    done(count ? 'Знайдено' : lastError || 'Немає підтримуваного плеєра');
+                });
+            },'do=search&subaction=search&from_page=1&story='+encodeURIComponent(query));
+        }
+        searchNext();
+    }
+    function loading(session,label) {
+        select(NAME+' · '+label,[{title:'Шукаю доступне відео…',subtitle:'UAKino · UASerials · UAFix · Назад — скасувати',action:'wait'}],function () { loading(session,label); },restore);
+    }
+    function open(movie) {
+        rememberController();
+        startDiscovery(movie || {});
+    }
+    function startDiscovery(movie) {
+        cancelPending();
+        var serial = requestSerial, tv = Boolean(movie.name || movie.first_air_date || movie.media_type === 'tv');
+        var title = {id:'tmdb-'+(tv ? 'tv-' : 'movie-')+(movie.id || normalize(movie.original_title || movie.original_name || movie.title || movie.name)),title:movie.title || movie.name || movie.original_title || movie.original_name || NAME,originalTitle:movie.original_title || movie.original_name || '',year:parseInt(text(movie.release_date || movie.first_air_date).substr(0,4),10) || 0,type:tv ? 'tv' : 'movie',releases:[]};
+        var last = storage('position_'+title.id,{});
+        var session = {movie:movie,title:title,season:tv ? +last.season || 1 : 0,episode:tv ? +last.episode || 1 : 0,seasonPages:[],visited:{},status:{},ready:false};
+        session.catalog = {direct:true,unified:true,titles:[title],session:session};
+        activeSession = session; directTrace = []; save('direct_trace',[]); lastDiagnostic = '';
+        loading(session,'пошук');
+        var remaining = PROVIDERS.length + 1;
+        function finished() {
+            remaining--;
+            if (serial !== requestSerial || remaining) return;
+            prepareSelection(session);
+        }
+        // A deadline covers the whole discovery, not just each XHR. Late replies are invalidated.
+        discoveryTimer = root.setTimeout(function () {
+            if (serial !== requestSerial) return;
+            trace('Пошук','Досягнуто ліміт очікування; показуємо отримані результати');
+            prepareSelection(session);
+        },24000);
+        var completed = false, req = loadCatalog(false,function (error,catalog) {
+            completed = true;
+            if (serial !== requestSerial) return;
+            if (!error) catalog.titles.filter(function (t) { return sameTitle(movie,t,true); }).forEach(function (t) {
+                // Keep the known working streams as a fallback; resolve fresh links on selection.
+                var copy = JSON.parse(JSON.stringify(t)); mergeTitle(session,copy);
+            });
+            finished();
+        });
+        if (!completed) requests.push(req);
+        PROVIDERS.forEach(function (provider) {
+            session.status[provider.id] = 'Очікування відповіді';
+            discoverProvider(serial,session,provider,function (status) { session.status[provider.id] = status; finished(); });
+        });
+    }
+    function resolveEpisode(serial,title,release,episode,done,force) {
+        if (!force && episode.resolvedAt && Date.now()-episode.resolvedAt < 60000) return done();
+        function verify(entry) {
+            publicRequest(serial,sourceName(release.source)+' · якість',entry.master,function (err,body) {
+                if (err) {
+                    if (episode.embed && entry === episode && !force) { force = true; return embed(episode.embed); }
+                    return done(err);
+                }
+                try {
+                    var qualities = parseMaster(body,entry.master);
+                    if (Object.keys(qualities).length) entry.qualities = qualities;
+                    episode.master = entry.master; episode.qualities = entry.qualities || {};
+                    episode.subtitles = entry.subtitles || []; episode.resolvedAt = Date.now(); episode.state = 'resolved'; episode.error = '';
+                    done();
+                } catch (e) { done(e); }
+            });
+        }
+        function embed(url) {
+            publicRequest(serial,sourceName(release.source)+' · плеєр',url,function (err,body) {
+                if (err) return done(err);
+                try {
+                    var entries = playerEntries(body,{type:title.type,season:episode.season,episode:episode.episode,voice:release.voice});
+                    var candidates = entries.filter(function (e) { return e.season === episode.season && e.episode === episode.episode; });
+                    var entry = candidates.filter(function (e) { return e.voice === (episode.voice || release.voice); })[0] || (candidates.length === 1 ? candidates[0] : null);
+                    if (!entry) throw new Error('Цю серію або озвучення не знайдено в плеєрі.');
+                    episode.embed = url; verify(entry);
+                } catch (e) { done(e); }
+            });
+        }
+        if (episode.page) {
+            publicRequest(serial,sourceName(release.source)+' · серія',episode.page,function (err,body) {
+                if (err) return done(err);
+                var refs = playerRefs(text(body).split(/<[^>]+id=["']dle-comments/i)[0]);
+                if (!refs.length) return done(new Error('На сторінці серії немає підтримуваного плеєра.'));
+                embed(refs[0]);
+            });
+        } else if (episode.embed && (!episode.master || force)) embed(episode.embed);
+        else if (episode.master) verify(episode);
+        else done(new Error('Джерело не віддало посилання на відео.'));
+    }
+    function prepareSelection(session) {
+        cancelPending();
+        var serial = requestSerial;
+        activeSession = session; session.ready = false;
+        loading(session,'перевірка джерел');
+        var pages = session.seasonPages.filter(function (p) { return p.season === session.season && !session.visited[p.url]; });
+        function resolveRows() {
+            var tasks = [];
+            session.title.releases.forEach(function (r) {
+                r.episodes.filter(function (e) { return e.season === session.season && e.episode === session.episode; }).forEach(function (e) { tasks.push({release:r,episode:e}); });
+            });
+            parallel(tasks,4,function (task,next) {
+                resolveEpisode(serial,session.title,task.release,task.episode,function (err) {
+                    if (err) { task.episode.error = err.message; task.episode.resolvedAt = 0; trace(sourceName(task.release.source)+' · потік',err.message); }
+                    next();
+                });
+            },complete);
+        }
+        function complete() {
+            if (serial !== requestSerial) return;
+            cancelPending(); session.ready = true;
+            if (session.afterPrepare) { session.afterPrepare = false; chooseEpisode(session); }
+            else renderSources(session);
+        }
+        discoveryTimer = root.setTimeout(function () {
+            if (serial !== requestSerial) return;
+            trace('Джерела','Час перевірки вичерпано'); complete();
+        },20000);
+        parallel(pages,3,function (p,next) {
+            session.visited[p.url] = true;
+            var provider = PROVIDERS.filter(function (v) { return v.id === p.source; })[0];
+            if (p.source === 'uafix') {
+                publicRequest(serial,'UAFix · сезон',p.url,function (error,html) {
+                    if (!error) {
+                        var t = {id:'uafix-season-'+p.season,source:'uafix',sourcePage:p.url.replace(/sezon-\d+\/$/,''),voice:'Українське озвучення',audioEvidence:'Українські серії на сторінці серіалу',releases:[],seasonPages:[]};
+                        addFixEpisodes(t,cleanMarkup(html)); mergeTitle(session,t);
+                    }
+                    next();
+                });
+            } else getTitle(serial,provider,session.movie,p.url,function (error,t) { if (!error) mergeTitle(session,t); next(); });
+        },resolveRows);
+    }
+    function sourceName(id) {
+        var p = PROVIDERS.filter(function (v) { return v.id === id; })[0];
+        return p ? p.name : id === 'kinoukr' ? 'KinoUkr' : id;
+    }
+    function renderSources(session) {
+        if (activeSession !== session) return;
+        var rows = [], count = 0, preferred = storage('quality','best'), preferredSource = storage('source','uakino');
+        var status = Object.keys(session.status).map(function (id) {
+            var errors = [];
+            session.title.releases.filter(function (r) { return r.source === id; }).forEach(function (r) {
+                r.episodes.filter(function (e) { return e.season === session.season && e.episode === session.episode && e.error; }).forEach(function (e) { errors.push(e.error); });
+            });
+            return sourceName(id)+': '+(unique(errors).join('; ') || session.status[id]);
+        });
+        save('source_status',status);
+        if (session.title.type === 'tv') rows.push({title:'Сезон '+session.season+' · Серія '+session.episode,subtitle:'Змінити сезон або серію',action:'episode'});
+        session.title.releases.slice().sort(function (a,b) { return (b.source === preferredSource ? 1 : 0)-(a.source === preferredSource ? 1 : 0); }).forEach(function (r) {
+            r.episodes.forEach(function (e) {
+                if (e.season !== session.season || e.episode !== session.episode || !e.resolvedAt || e.error) return;
+                var qualities = qualityNames(e); if (!qualities.length) qualities = ['auto'];
+                qualities.forEach(function (q,i) {
+                    rows.push({title:sourceName(r.source)+' · '+(q === '2160p' ? '4K · 2160p' : q === 'auto' ? 'Авто' : q),subtitle:'Українська · '+r.voice,action:'play',release:r,episode:e,value:q,selected:!count && (preferred === q || preferred === 'best' && i === 0)});
+                });
+                count++;
+            });
+        });
+        if (!count) rows.push({title:'Для цієї назви немає доступного потоку',subtitle:'Можна повторити пошук. Причини: Налаштування → ukr by Faborn → Версія та діагностика.',action:'retry'});
+        rows.push({title:'Оновити джерела',action:'retry'});
+        select(NAME+(session.title.type === 'tv' ? ' · S'+session.season+'E'+session.episode : ' · '+session.title.title),rows,function (row) {
+            if (row.action === 'episode') return chooseSeason(session);
+            if (row.action === 'retry') return startDiscovery(session.movie);
+            save('source',row.release.source); save('quality',row.value);
+            launch(session.movie,session.catalog,session.title,row.release,row.episode,row.value);
+        },restore);
+    }
+    function chooseSeason(session) {
+        var values = unique(session.title.releases.reduce(function (all,r) { return all.concat(r.episodes.map(function (e) { return e.season; })); },[]).concat(session.seasonPages.map(function (p) { return p.season; }))).sort(function (a,b) { return a-b; });
+        select('Оберіть сезон',values.map(function (s) { return {title:'Сезон '+s,value:s,selected:s === session.season}; }),function (row) {
+            session.season = row.value;
+            session.episode = 1; session.afterPrepare = true; prepareSelection(session);
+        },function () { renderSources(session); });
+    }
+    function chooseEpisode(session) {
+        var values = unique(session.title.releases.reduce(function (all,r) { return all.concat(r.episodes.filter(function (e) { return e.season === session.season; }).map(function (e) { return e.episode; })); },[])).sort(function (a,b) { return a-b; });
+        if (!values.length) return renderSources(session);
+        select('Сезон '+session.season,values.map(function (e) { return {title:'Серія '+e,value:e,selected:e === session.episode}; }),function (row) { session.episode = row.value; prepareSelection(session); },function () { chooseSeason(session); });
+    }
+    function releases(movie,catalog) { if (catalog.session) renderSources(catalog.session); else restore(); }
+    function quality(movie,catalog) { if (catalog.session) renderSources(catalog.session); else restore(); }
+    function resolveDirect(movie,catalog,title,release,episode,callback) {
+        cancelPending(); var serial = requestSerial;
+        loading(catalog.session,'оновлення посилання');
+        resolveEpisode(serial,title,release,episode,function (err) {
+            if (err) { episode.error = err.message; lastDiagnostic = err.message; notify(err.message); renderSources(catalog.session); }
+            else callback();
+        },true);
     }
     function validCatalog(catalog) {
         if (!catalog || catalog.schema !== 1 || !Array.isArray(catalog.titles)) return false;
@@ -447,87 +770,6 @@
             return { title: item, score: score };
         }).filter(function (row) { return row.score > 0; }).sort(function (a, b) { return b.score - a.score; }).map(function (row) { return row.title; });
     }
-    function sourceName(id) { return id === 'uakino' ? 'UAKino' : 'KinoUkr'; }
-    function titleRows(titles) {
-        return titles.map(function (item) {
-            return { title: item.title + (item.year ? ' (' + item.year + ')' : ''), subtitle: (item.type === 'tv' ? 'Серіал' : 'Фільм') + ' · ' + unique(item.releases.map(function (r) { return sourceName(r.source); })).join(' / '), value: item };
-        });
-    }
-    function search(movie, catalog) {
-        if (!L.Input || !L.Input.edit) return browse(movie, catalog);
-        L.Input.edit({title: 'Пошук у бета-індексі', value: movie.title || movie.name || '', free: true}, function (value) {
-            var matches = matchTitles(catalog, {}, value);
-            showMatches(movie, catalog, matches, value);
-        });
-    }
-    function browse(movie, catalog) {
-        select('Бета-індекс · ' + catalog.titles.length + ' назв', titleRows(catalog.titles), function (item) { releases(movie, catalog, item.value); });
-    }
-    function showMatches(movie, catalog, matches, query) {
-        var rows = titleRows(matches);
-        rows.unshift({title: 'Знайти на UAKino', subtitle: 'Пошук за назвою картки · поза тестовим індексом', action: 'uakino'});
-        if (!matches.length) rows.push({title: 'Не знайдено: ' + (query || movie.title || movie.name || movie.original_title || movie.original_name || 'назва картки не передана'), subtitle: 'У тестовому індексі ' + catalog.titles.length + ' назви. Натисни, щоб відкрити їхній список.', action: 'browse'});
-        rows.push({title: 'Змінити пошукову назву', action: 'search'});
-        rows.push({title: 'Усі назви бета-індексу', action: 'browse'});
-        rows.push({title: 'Версія та діагностика', subtitle: VERSION, action: 'diagnostics'});
-        select(NAME + ' · ' + VERSION + (query ? ' · ' + query : ''), rows, function (row) {
-            if (row.action === 'uakino') directSearch(movie);
-            else if (row.action === 'search') search(movie, catalog);
-            else if (row.action === 'browse') browse(movie, catalog);
-            else if (row.action === 'diagnostics') diagnostics();
-            else releases(movie, catalog, row.value);
-        });
-    }
-    function open(movie) {
-        cancelPending();
-        var serial = requestSerial;
-        rememberController();
-        movie = movie || {};
-        select(NAME + ' · ' + VERSION, [
-            {title: 'Знайти на UAKino', subtitle: 'Пошук за назвою картки', action:'uakino'},
-            {title: 'Завантаження тестового індексу…', action:'waiting'},
-            {title: 'Версія та діагностика', action:'diagnostics'}
-        ], function (row) { if (row.action === 'uakino') directSearch(movie); else if (row.action === 'diagnostics') { cancelPending(); diagnostics(); } else open(movie); }, function () { cancelPending(); restore(); });
-        var completed = false;
-        var req = loadCatalog(false, function (error, catalog) {
-            completed = true;
-            if (serial !== requestSerial) return;
-            pendingRequest = null;
-            L.Select.hide();
-            if (error) { notify(error.message); catalog = {titles: []}; }
-            showMatches(movie, catalog, matchTitles(catalog, movie));
-        });
-        if (!completed) pendingRequest = req;
-    }
-    function releases(movie, catalog, title) {
-        var preferred = storage('source', 'uakino');
-        var list = title.releases.filter(function (r) { return r.audioLanguage === 'uk' && r.episodes.length; }).slice();
-        list.sort(function (a, b) { return (b.source === preferred ? 1 : 0) - (a.source === preferred ? 1 : 0); });
-        if (!list.length) return notify('В індексі немає доступного українського релізу.');
-        var rows = list.map(function (release) {
-            return {title: sourceName(release.source) + ' · ' + release.voice, subtitle: 'Українська · ' + release.episodes.length + (title.type === 'tv' ? ' серій' : ' відео'), value: release};
-        });
-        if (catalog.direct && title.seasonPages.length) rows.push({title:'Інші сезони на UAKino',action:'seasons'});
-        select(title.title + ' · джерело й озвучення', rows, function (row) {
-            if (row.action === 'seasons') return select('Сезони UAKino',title.seasonPages.map(function (p) { return {title:p.title,value:p}; }),function (p) { directPage(movie,p.value.url,catalog.context); },function () { releases(movie,catalog,title); });
-            save('source', row.value.source);
-            if (title.type === 'tv') seasons(movie, catalog, title, row.value);
-            else quality(movie, catalog, title, row.value, row.value.episodes[0]);
-        }, function () { if (catalog.direct) directResults(catalog.context); else showMatches(movie, catalog, matchTitles(catalog, movie)); });
-    }
-    function seasons(movie, catalog, title, release) {
-        var values = unique(release.episodes.map(function (e) { return e.season; })).sort(function (a, b) { return a - b; });
-        select(title.title + ' · сезони', values.map(function (n) { return {title: 'Сезон ' + n, value: n}; }), function (row) {
-            episodes(movie, catalog, title, release, row.value);
-        }, function () { releases(movie, catalog, title); });
-    }
-    function episodes(movie, catalog, title, release, season) {
-        var list = release.episodes.filter(function (e) { return e.season === season; }).sort(function (a, b) { return a.episode - b.episode; });
-        var last = storage('last_' + title.id, '');
-        select(title.title + ' · сезон ' + season, list.map(function (episode) {
-            return {title: episode.title || 'Серія ' + episode.episode, subtitle: episode.state === 'unavailable' ? 'Недоступна в цьому озвученні · обери інший реліз' : release.voice + ' · ' + (qualityNames(episode).join(' / ') || 'якість після вибору серії') + (episode.state === 'stale' ? ' · дані не оновлено' : ''), ghost: episode.state === 'unavailable', selected: episode.id === last, value: episode};
-        }), function (row) { quality(movie, catalog, title, release, row.value); }, function () { seasons(movie, catalog, title, release); });
-    }
     function qualityNames(episode) {
         return Object.keys(episode.qualities || {}).filter(function (q) { return mediaURL(episode.qualities[q]); }).sort(function (a, b) { return parseInt(b, 10) - parseInt(a, 10); });
     }
@@ -537,26 +779,6 @@
         if (!limit) return episode.qualities[keys[0]];
         for (i = 0; i < keys.length; i++) if (parseInt(keys[i], 10) <= limit) return episode.qualities[keys[i]];
         return episode.qualities[keys[keys.length - 1]];
-    }
-    function quality(movie, catalog, title, release, episode) {
-        if (catalog.direct && (!episode.resolvedAt || Date.now() - episode.resolvedAt > 60000)) return resolveDirect(movie,catalog,title,release,episode,function () { quality(movie,catalog,title,release,episode); });
-        if (episode.state === 'unavailable') {
-            return select('Ця версія зараз недоступна', [{title: 'Обрати інше озвучення або джерело', subtitle: 'Джерело повернуло HTTP 404 під час перевірки.'}], function () {
-                releases(movie, catalog, title);
-            }, function () { releases(movie, catalog, title); });
-        }
-        var selected = storage('quality', 'best');
-        var rows = qualityNames(episode).map(function (q, index) {
-            return {title: q === '2160p' ? '4K · 2160p' : q, value: q, selected: selected === q || (selected === 'best' && index === 0)};
-        });
-        rows.push({title: 'Авто · адаптивна якість', value: 'auto', selected: selected === 'auto'});
-        select('Якість · ' + title.title, rows, function (row) {
-            save('quality', row.value);
-            launch(movie, catalog, title, release, episode, row.value);
-        }, function () {
-            if (title.type === 'tv') episodes(movie, catalog, title, release, episode.season);
-            else releases(movie, catalog, title);
-        });
     }
     function timelineKey(title, episode) { return 'faborn|' + title.id + '|' + (episode.season || 0) + '|' + (episode.episode || 0); }
     function availablePlaylist(release, episode) {
@@ -601,6 +823,10 @@
     }
     function cancelPending() {
         requestSerial++;
+        if (discoveryTimer) root.clearTimeout(discoveryTimer);
+        discoveryTimer = null;
+        requests.forEach(function (req) { if (req && req.abort) req.abort(); });
+        requests = [];
         if (pendingRequest && pendingRequest.abort) pendingRequest.abort();
         pendingRequest = null;
     }
@@ -619,6 +845,7 @@
         save('last_error', message);
         if (L.Player.close) L.Player.close();
         if (!context || !found) { restore(); notify(message); return; }
+        activeSession = catalog.session;
         select('Відео не запустилося', [
             {title: 'Оновити посилання й повторити', subtitle: message, action: 'retry'},
             {title: 'Обрати іншу якість', subtitle: 'Для перевірки спробуй 1080p або 720p.', action: 'quality'},
@@ -655,63 +882,24 @@
             if (video && video.addEventListener) video.addEventListener('error', function (event) { playbackError(event, data); });
         } catch (ignore) { /* The startup timeout still covers an unavailable adapter. */ }
     }
-    function launch(movie, catalog, title, release, episode, preference) {
+    function launch(movie,catalog,title,release,episode,preference) {
+        var session = catalog.session;
         var isTizen = L.Platform && L.Platform.is && L.Platform.is('tizen');
-        if (L.Platform && !isTizen) {
-            return select('Тестова бета для Samsung Tizen', [{title: 'Потрібен телевізор із плеєром Tizen / AVPlay', subtitle: 'Ashdi обмежує CORS відеосегментів. У браузерному плеєрі Lampa цей потік не працює.'}], function () {
-                quality(movie, catalog, title, release, episode);
-            }, function () { quality(movie, catalog, title, release, episode); });
+        if (!isTizen || L.Storage.field && L.Storage.field('player') !== 'tizen') {
+            return select('Потрібен плеєр Tizen', [{title:'Lampa → Налаштування → Плеєр → Tizen',subtitle:'Потік відтворюється штатним плеєром телевізора.'}],function () { renderSources(session); },function () { renderSources(session); });
         }
-        if (isTizen && L.Storage.field && L.Storage.field('player') !== 'tizen') {
-            return select('Обери штатний плеєр Tizen', [{title: 'Lampa → Налаштування → Плеєр → Tizen', subtitle: 'Після зміни налаштування повтори запуск. Сумісність AVPlay перевіряється цією бетою на телевізорі.'}], function () { restore(); }, restore);
-        }
-        if (catalog.direct) {
-            if (!episode.resolvedAt || Date.now() - episode.resolvedAt > 60000) return resolveDirect(movie,catalog,title,release,episode,function () { launch(movie,catalog,title,release,episode,preference); });
-            cancelPending();
-            var directSerial = requestSerial, back = function () { quality(movie,catalog,title,release,episode); };
-            directLoading('підготовка відео',back);
-            return directRequest(directSerial,'Вибрана якість',pickURL(episode,preference),function (err,body) {
-                if (err || !/^\s*#EXTM3U/.test(body)) return directError('Вибрана якість',err || new Error('Некоректний HLS'),function () { episode.resolvedAt = 0; launch(movie,catalog,title,release,episode,preference); },back);
-                L.Select.hide();
-                // Only the selected episode is resolved; never queue unresolved or expired URLs.
-                handoff(movie,catalog,title,release,episode,preference,[]);
-            });
-        }
-        cancelPending();
-        var serial = requestSerial;
-        select('Оновлюю посилання перед переглядом…', [{title: 'Назад — скасувати', subtitle: title.title}], function () { cancelPending(); restore(); }, function () { cancelPending(); quality(movie, catalog, title, release, episode); });
-        pendingRequest = loadCatalog(true, function (catalogError, fresh) {
-            if (serial !== requestSerial) return;
-            var found = !catalogError && locate(fresh, title.id, release.id, episode.id);
-            if (catalogError || !found) {
-                lastDiagnostic = catalogError ? catalogError.message : 'Цього релізу більше немає в індексі.';
-                L.Select.hide(); restore(); notify(lastDiagnostic); return;
+        if (!episode.resolvedAt || Date.now()-episode.resolvedAt > 60000) return resolveDirect(movie,catalog,title,release,episode,function () { launch(movie,catalog,title,release,episode,preference); });
+        cancelPending(); var serial = requestSerial;
+        loading(session,'запуск відео');
+        publicRequest(serial,'Вибрана якість',pickURL(episode,preference),function (err,body) {
+            if (err || !/^\s*#EXTM3U/.test(body)) {
+                episode.error = err ? err.message : 'Некоректний HLS'; episode.resolvedAt = 0;
+                lastDiagnostic = episode.error; notify(episode.error); renderSources(session); return;
             }
-            title = found.title; release = found.release; episode = found.episode; catalog = fresh;
-            if (episode.state === 'unavailable') { L.Select.hide(); quality(movie, fresh, title, release, episode); return; }
-            var url = pickURL(episode, preference);
-            pendingRequest = xhr(url, function (error, body) {
-                if (serial !== requestSerial) return;
-                pendingRequest = null;
-                L.Select.hide();
-                if (error || text(body).indexOf('#EXTM3U') < 0) {
-                    lastDiagnostic = 'Потік: ' + (error ? error.message : 'Некоректний HLS');
-                    return select('Потік зараз недоступний', [
-                        {title: 'Оновити індекс із GitHub', action: 'refresh'},
-                        {title: 'Обрати інший реліз', action: 'release'}
-                    ], function (row) {
-                        if (row.action === 'release') releases(movie, catalog, title);
-                        else loadCatalog(true, function (err, fresh) {
-                            if (err) notify(err.message);
-                            else showMatches(movie, fresh, matchTitles(fresh, movie));
-                        });
-                    }, function () { quality(movie, catalog, title, release, episode); });
-                }
-                var playlist = title.type === 'tv' ? availablePlaylist(release, episode).map(function (e) {
-                    return playData(movie, title, release, e, preference);
-                }) : [];
-                handoff(movie,catalog,title,release,episode,preference,playlist);
-            });
+            save('position_'+title.id,{season:episode.season,episode:episode.episode});
+            L.Select.hide(); L.Controller.toggle(returnController);
+            // Only the selected episode has been checked. Never enqueue unresolved streams.
+            handoff(movie,catalog,title,release,episode,preference,[]);
         });
     }
     function handoff(movie,catalog,title,release,episode,preference,playlist) {
@@ -732,6 +920,7 @@
             if (storage('last_error', '')) lines.push('Остання помилка плеєра: ' + storage('last_error', ''));
             if (storage('last_launch', '')) lines.push('Останній запуск: ' + storage('last_launch', ''));
             if (lastDiagnostic) lines.push(lastDiagnostic);
+            storage('source_status',[]).forEach(function (line) { lines.push(line); });
             var sourceTrace = storage('direct_trace', []);
             if (Array.isArray(sourceTrace)) sourceTrace.forEach(function (line) { lines.push('Прямий пошук · ' + line); });
             lines.push('GitHub Pages: ' + (baseURL() || 'не визначено'));
@@ -745,12 +934,11 @@
         var api = L.SettingsApi;
         if (!api || !api.addComponent || !api.addParam) return;
         api.addComponent({component: 'faborn_ukr', name: NAME, icon: ICON});
-        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino: 'UAKino', kinoukr: 'KinoUkr'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом.'}});
-        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найвища доступна', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: 'Підсвічує варіант у меню перед запуском.'}});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinoukr:'KinoUkr'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом.'}});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найвища доступна', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: 'Підсвічує варіант у списку джерел.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_refresh', type: 'button'}, field: {name: 'Оновити індекс із GitHub'}, onChange: function () {
             loadCatalog(true, function (error, catalog) { notify(error ? error.message : 'Індекс оновлено: ' + catalog.titles.length + ' назв'); });
         }});
-        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_browse', type: 'button'}, field: {name: 'Відкрити бета-індекс'}, onChange: function () { rememberController(); loadCatalog(false, function (error, catalog) { if (error) notify(error.message); else browse({}, catalog); }); }});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_diagnostic', type: 'button'}, field: {name: 'Версія та діагностика', description: VERSION}, onChange: function () { rememberController(); diagnostics(); }});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_pages', type: 'input', values: '', default: '', placeholder: 'Визначається автоматично'}, field: {name: 'Адреса GitHub Pages', description: 'Зазвичай визначається автоматично. Резерв: https://USERNAME.github.io/REPOSITORY/'}});
     }
@@ -818,6 +1006,6 @@
         normalize: normalize, matchTitles: matchTitles, mediaURL: mediaURL,
         safeBase: safeBase, validCatalog: validCatalog, qualityNames: qualityNames,
         pickURL: pickURL, timelineKey: timelineKey, availablePlaylist: availablePlaylist, escapeHTML: escapeHTML,
-        parseSearch:parseSearch, parseSource:parseSource, addEpisodeRefs:addEpisodeRefs, parseEmbed:parseEmbed, parseMaster:parseMaster, uakinoURL:uakinoURL, embedURL:embedURL
+        providers:PROVIDERS, providerSearch:providerSearch, providerPage:providerPage, playerEntries:playerEntries, sameTitle:sameTitle, parseSearch:parseSearch, parseSource:parseSource, addEpisodeRefs:addEpisodeRefs, parseEmbed:parseEmbed, parseMaster:parseMaster, uakinoURL:uakinoURL, embedURL:embedURL
     };
 }));
