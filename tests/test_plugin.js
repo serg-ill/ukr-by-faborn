@@ -57,7 +57,7 @@ test('escapes source labels before Lampa templates', () => {
 });
 
 function environment(options = {}) {
-    const state = {storage: {}, follows: {}, playerEvents: {}, videoEvents: {}, nativeEvents: {}, timers: {}, timerId: 0, params: [], notices: [], controller: 'full_start', menu: null, played: null, requests: [], catalog: catalog};
+    const state = {storage: {}, timelines: {}, history: [], follows: {}, playerEvents: {}, videoEvents: {}, nativeEvents: {}, timers: {}, timerId: 0, params: [], notices: [], controller: 'full_start', menu: null, played: null, requests: [], catalog: catalog};
     const jq = () => ({length: 0, append() { return this; }});
     function XHR() { state.requests.push(this); }
     XHR.prototype.open = function (method, url) { if (options.openError) throw new Error('Request blocked'); this.url = url; this.method = method; this.headers = {}; };
@@ -83,7 +83,8 @@ function environment(options = {}) {
         Listener: {follow(k, fn) { state.follows[k] = fn; }},
         Controller: {enabled() { return {name: state.controller}; }, toggle(n) { state.controller = n; }},
         SettingsApi: {addComponent() {}, addParam(p) { state.params.push(p); }},
-        Timeline: {view(hash) { return {hash, time: 17, percent: 1}; }},
+        Timeline: {view(hash) { return {hash, time: 0, percent: 0, duration: 0, ...state.timelines[hash], handler(percent,time,duration) { state.timelines[hash]={percent,time,duration,updated:Date.now()}; }}; }},
+        Favorite: {add(folder,card) { state.history.push({folder,card}); }},
         Utils: {hash(s) { return s; }},
         Player: {
             listener: {follow(k, fn) { state.playerEvents[k] = fn; }},
@@ -114,6 +115,10 @@ function environment(options = {}) {
         const id = Object.keys(state.timers).find(id => state.timers[id].ms === ms);
         assert.ok(id, 'Expected timer: ' + ms);
         const callback = state.timers[id].fn; delete state.timers[id]; callback();
+    };
+    state.progress = function (current,duration) {
+        Object.assign(state.played.timeline,{time:current,duration,percent:Math.round(current/duration*100)});
+        state.videoEvents.timeupdate({current,duration});
     };
     return {state, root, instance};
 }
@@ -314,10 +319,10 @@ test('UAKino results preserve year, ignore recommendations, decode text and reje
     assert.throws(() => api.parseSearch(searchHTML.replace(/Пошук по сайту|За Вашим запитом/g,'Новинки')),/іншу сторінку/);
     assert.deepEqual(api.parseSearch('<h1>Пошук по сайту</h1><p>За Вашим запитом нічого не знайдено</p>'),[]);
 });
-test('UAKino challenge, unknown markup and missing Ukrainian evidence fail explicitly', () => {
+test('UAKino challenge, unknown markup and missing audio evidence fail explicitly', () => {
     assert.throws(() => api.parseSearch('<title>Just a moment...</title>'),/Cloudflare/);
     assert.throws(() => api.parseSource('<title>Just a moment...</title>',djangoURL),/Cloudflare/);
-    assert.throws(() => api.parseSource(movieHTML.replace('Український дубляж','English'),djangoURL),/українське/);
+    assert.throws(() => api.parseSource(movieHTML.replace('Український дубляж','Невідомо'),djangoURL),/мову/);
     assert.throws(() => api.parseSearch('<h1>Service error</h1>'),/іншу сторінку/);
 });
 test('film metadata and season metadata are taken from the page, not nav dates or TMDB', () => {
@@ -328,10 +333,10 @@ test('film metadata and season metadata are taken from the page, not nav dates o
     assert.equal(show.season,3); assert.equal(show.title,'Джек Річер'); assert.equal(show.type,'tv'); assert.equal(show.year,2025);
     assert.equal(show.playlistURL,'https://uakino.best/engine/ajax/playlists.php?news_id=26631&xfield=playlist');
 });
-test('episode references preserve voice and season, ignore trailers, duplicate and foreign audio', () => {
+test('episode references preserve UA/EN voices and seasons without duplicates or trailers', () => {
     const show = api.parseSource(seriesHTML,seriesURL);
     api.addEpisodeRefs(show,seriesPlaylist + seriesPlaylist + '<li data-file="https://ashdi.vip/vod/123" data-voice="English">Серія 3</li>');
-    assert.equal(show.releases.length,2); assert.deepEqual(show.releases[0].episodes.map(e=>e.episode),[1,2]);
+    assert.equal(show.releases.length,3); assert.equal(show.releases[2].audioLanguage,'en'); assert.deepEqual(show.releases[0].episodes.map(e=>e.episode),[1,2]);
     assert.ok(show.releases[0].episodes.every(e=>e.season===3 && !e.master));
 });
 test('only literal HLS is parsed from the player, source code is not evaluated', () => {
@@ -451,7 +456,7 @@ test('real UAFix markup supports films, season links and separate episode pages'
 test('UAKino movie playlists no longer require a series number',()=>{
     const title=api.parseSource(movieHTML,djangoURL);
     api.addEpisodeRefs(title,'<li data-file="//ashdi.vip/vod/3306" data-voice="Дубляж">1080p</li><li data-file="https://zetvideo.net/vod/1" data-voice="English">HD</li>');
-    assert.equal(title.releases.length,1); assert.equal(title.releases[0].episodes[0].episode,0);
+    assert.equal(title.releases.length,2); assert.equal(title.releases[1].audioLanguage,'en'); assert.equal(title.releases[0].episodes[0].episode,0);
     assert.equal(title.releases[0].episodes[0].embed,'https://ashdi.vip/vod/3306');
 });
 test('real HDVB nested playlists retain all four seasons and distinct Ukrainian voices',()=>{
@@ -462,10 +467,10 @@ test('real HDVB nested playlists retain all four seasons and distinct Ukrainian 
     assert.equal(entries.filter(e=>e.season===2 && e.episode===1).length,2);
     assert.ok(entries.every(e=>api.mediaURL(e.master)));
 });
-test('nested player folders work in voice-first order and exclude foreign audio',()=>{
+test('nested player folders retain Ukrainian and English audio in voice-first order',()=>{
     const tree=[{title:'Український дубляж',folder:[{title:'Сезон 2',folder:[{title:'Серія 7',file:masterURL}]}]},{title:'English',folder:[{title:'Season 1',folder:[{title:'Episode 1',file:masterURL}]}]}];
     const entries=api.playerEntries('new Playerjs({file:'+JSON.stringify(JSON.stringify(tree))+'})',{type:'tv'});
-    assert.equal(entries.length,1); assert.equal(entries[0].season,2); assert.equal(entries[0].episode,7);
+    assert.equal(entries.length,2); assert.equal(entries[1].audioLanguage,'en'); assert.equal(entries[1].season,1); assert.equal(entries[0].season,2); assert.equal(entries[0].episode,7);
     assert.equal(entries[0].voice,'Український дубляж');
 });
 test('matching rejects remakes, other titles and a movie/series mismatch',()=>{
@@ -591,19 +596,22 @@ test('appearance settings expose both layouts, fallback, reversible global theme
 
 const kinoFixture=require('./fixtures/kinobase-protocol');
 const kinoReader=require('../lib/kinobase');
-const kinoMovie={id:280,title:'Термінатор 2: Судний день',original_title:'Terminator 2: Judgment Day',release_date:'1991-07-03'};
-const kinoSeries={id:1668,name:'Друзі',original_name:'Friends',first_air_date:'1994-09-22'};
+const kinoMovie={id:280,title:'Термінатор 2: Судний день',original_title:'Terminator 2: Judgment Day',original_language:'en',release_date:'1991-07-03'};
+const kinoSeries={id:1668,name:'Друзі',original_name:'Friends',original_language:'en',first_air_date:'1994-09-22'};
 function kinoEnvironment(options={}) {
     const data=kinoFixture(),stateData={version:1,missingUA:false,pending:null};
-    const file=(s=0,e=0)=>['720','1080','2160'].map(q=>'['+q+'p]'+['Paramount (Русский)','1+1 (Украинский)'].filter(v=>!stateData.missingUA||!v.includes('1+1')).map((voice,i)=>'{'+voice+'}https://primary.redcdn.org/'+q+'/s'+s+'e'+e+'/v'+stateData.version+'/master-v1-a'+(i+1)+'.m3u8 or https://mirror.threnet.xyz/'+q+'/s'+s+'e'+e+'/v'+stateData.version+'/master-v1-a'+(i+1)+'.m3u8').join(';')).join(',');
+    const file=(s=0,e=0)=>['720','1080','2160'].map(q=>'['+q+'p]'+['Paramount (Русский)','1+1 (Украинский)'].concat(options.english?['Оригинал']:[]).filter(v=>!stateData.missingEN||v!=='Оригинал').filter(v=>!stateData.missingUA||!v.includes('1+1')).map((voice,i)=>'{'+voice+'}https://primary.redcdn.org/'+q+'/s'+s+'e'+e+'/v'+stateData.version+'/master-v1-a'+(i+1)+'.m3u8 or https://mirror.threnet.xyz/'+q+'/s'+s+'e'+e+'/v'+stateData.version+'/master-v1-a'+(i+1)+'.m3u8').join(';')).join(',');
     const env=environment({respond(req){
         req.status=200;
         if(req.url.includes('catalog.json')) req.responseText=JSON.stringify({schema:1,titles:[]});
-        else if(req.url.startsWith('https://kinobase.org/search?')) req.responseText=fixture('kinobase-search.html');
+        else if(req.url.startsWith('https://kinobase.org/search?')) req.responseText=fixture('kinobase-search.html')+(options.secondCandidate?'<a href="/film/208162-documentary" title="Терминатор 2: документальний фільм (1991)">Документальний</a>':'');
         else if(req.url.startsWith('https://kinobase.org/film/')) req.responseText=fixture('kinobase-movie.html');
         else if(req.url.startsWith('https://kinobase.org/serial/')) req.responseText=fixture('kinobase-series.html');
         else if(req.url.startsWith('https://kinobase.org/static/')) req.responseText=data.source;
-        else if(req.url.startsWith('https://kinobase.org/user_data?')) req.responseText=data.encode(['AnonymousToken12345','1900000000','','','1'],true);
+        else if(req.url.startsWith('https://kinobase.org/user_data?')) {
+            req.responseText=data.encode(['AnonymousToken12345','1900000000','','','1'],true);
+            if(options.delayUser){stateData.pending=req;return;}
+        }
         else if(req.url.startsWith('https://kinobase.org/vod/')) {
             const parts=options.series?['p',JSON.stringify([1,2].map(s=>({title:s+' сезон',folder:[1,2].map(e=>({title:e+' серия',file:file(s,e)}))})))]:['f',file()];
             req.responseText=data.encode(parts,false);
@@ -628,6 +636,14 @@ test('KinoBase is searched permanently by original title and launches selected R
     env.state.play('2160p',i=>i.release.audioLanguage==='ru');
     assert.ok(env.state.played.url.endsWith('/master-v1-a1.m3u8'));assert.equal(env.state.played.voice_name,'Paramount (Русский)');
     assert.equal(env.state.played.quality['2160p'],env.state.played.url);assert.equal(env.state.playerReturn,'full_start');
+});
+test('KinoBase completes the first player session before another title can replace its cookie',()=>{
+ const env=kinoEnvironment({secondCandidate:true,delayUser:true});env.instance.open(kinoMovie);
+ assert.ok(env.kino.pending);assert.equal(env.state.requests.filter(r=>r.url.startsWith('https://kinobase.org/film/')).length,1);
+ env.kino.pending.onload();
+ assert.equal(env.state.requests.filter(r=>r.url.startsWith('https://kinobase.org/film/')).length,2);
+ assert.ok(env.state.requests.some(r=>r.url.includes('/vod/208161?')));
+ assert.ok(env.state.menu.items.some(i=>i.group&&i.group.language==='uk'));
 });
 test('KinoBase seasons, episodes and UA audio survive switching and URL renewal',t=>{
     let now=Date.now();t.mock.method(Date,'now',()=>now);
@@ -658,4 +674,113 @@ test('closing during the KinoBase playlist request ignores its late response and
 test('KinoBase original metadata is checked before requesting streams',()=>{
     const env=kinoEnvironment();env.instance.open({...kinoMovie,title:'Чужий фільм',original_title:'Another Film'});
     assert.ok(!env.state.requests.some(r=>r.url.includes('/user_data?')));assert.ok(!env.state.menu.items.some(i=>i.group));
+});
+test('English-only source metadata is accepted and not relabeled Ukrainian',()=>{
+ const title=api.parseSource(movieHTML.replace('Український дубляж','English'),djangoURL);
+ assert.equal(title.audioLanguage,'en');assert.equal(title.voice,'English');
+ const html=fixture('uaserials-hail.html').replace('content="uk-UA"','content="en-US"');
+ assert.equal(api.providerPage(html,hailSource).audioLanguage,'en');
+});
+test('KinoBase English original is shown between UA/RU and keeps 4K audio on handoff',()=>{
+ const env=kinoEnvironment({english:true});env.instance.open(kinoMovie);
+ assert.deepEqual(env.state.menu.items.filter(i=>i.group).map(i=>i.group.language),['uk','en','ru']);
+ assert.ok(env.state.menu.items.some(i=>i.title==='EN · Оригинал'));
+ env.state.play('2160p',i=>i.release.audioLanguage==='en');
+ assert.match(env.state.played.url,/\/2160\/s0e0\/v1\/master-v1-a3.m3u8$/);assert.equal(env.state.played.voice_name,'Оригинал');
+});
+test('English original survives season, episode, quality and signed URL renewal',t=>{
+ let now=Date.now();t.mock.method(Date,'now',()=>now);
+ const env=kinoEnvironment({series:true,english:true});env.instance.open(kinoSeries);
+ env.state.choose(i=>i.action==='episode');env.state.choose(i=>i.value===2);env.state.choose(i=>i.value===2);
+ env.kino.version=2;now+=61000;env.state.play('1080p',i=>i.release.audioLanguage==='en');
+ assert.match(env.state.played.url,/\/1080\/s2e2\/v2\/master-v1-a3.m3u8$/);assert.equal(env.state.played.season,2);assert.equal(env.state.played.episode,2);
+});
+test('a removed English original is never replaced with another language',t=>{
+ let now=Date.now();t.mock.method(Date,'now',()=>now);
+ const env=kinoEnvironment({english:true});env.instance.open(kinoMovie);env.kino.missingEN=true;now+=61000;
+ env.state.play('1080p',i=>i.release.audioLanguage==='en');assert.equal(env.state.played,null);assert.match(env.state.notices.join(' '),/Вибране озвучення/);
+});
+test('Playerjs cannot switch an English choice to the sole remaining Russian track',t=>{
+ let now=Date.now();t.mock.method(Date,'now',()=>now);let removed=false;
+ const env=multiSourceEnvironment(false,req=>{
+  if(req.url.startsWith('https://hdvbua.pro/embed/')){
+   const tree=[{title:removed?'Русский':'Original (English)',file:masterURL}];
+   req.status=200;req.responseText='new Playerjs({file:'+JSON.stringify(JSON.stringify(tree))+'})';req.onload();return true;
+  }
+  if(req.url===masterURL){req.status=200;req.responseText=masterHTML;req.onload();return true;}
+ });
+ env.instance.open({...hailCard,original_language:'en'});assert.ok(env.state.menu.items.some(i=>i.group&&i.group.language==='en'));
+ removed=true;now+=61000;env.state.play('1080p',i=>i.release.audioLanguage==='en');
+ assert.equal(env.state.played,null);assert.match(env.state.notices.join(' '),/озвучення не знайдено/);
+});
+
+test('real playback saves every episode, standard Lampa marks and history; browsing keeps the last watched episode',()=>{
+ const env=kinoEnvironment({series:true});env.instance.open(kinoSeries);
+ env.state.play('1080p',i=>i.release.audioLanguage==='uk');
+ assert.equal(env.state.history.length,0);
+ env.state.progress(800,2400);env.root.Lampa.Player.close();
+ assert.equal(env.state.history.length,1);assert.equal(env.state.history[0].folder,'history');assert.equal(env.state.history[0].card.id,1668);
+ assert.equal(env.state.timelines['11Friends'].time,800);
+ assert.equal(env.state.timelines['faborn|tmdb-tv-1668|1|1'].time,800);
+ env.instance.open(kinoSeries);
+ assert.ok(env.state.menu.items.some(i=>i.action==='last'&&i.title.includes('S1E1')));
+ env.state.choose(i=>i.action==='episode');env.state.choose(i=>i.value===1);
+ assert.match(env.state.menu.items.find(i=>i.value===1).subtitle,/13:20/);
+ assert.equal(env.state.menu.items.find(i=>i.value===2).subtitle,'Ще не дивилися');
+ env.state.choose(i=>i.value===2);
+ assert.equal(env.state.storage['faborn_ukr_position_tmdb-tv-1668'].episode,1);
+ env.state.play('1080p',i=>i.release.audioLanguage==='ru');env.state.progress(2300,2400);env.state.videoEvents.ended();env.root.Lampa.Player.close();
+ assert.equal(env.state.timelines['12Friends'].percent,100);
+ assert.equal(env.state.timelines['11Friends'].time,800);
+ env.instance.open(kinoSeries);env.state.choose(i=>i.action==='episode');env.state.choose(i=>i.value===1);
+ assert.equal(env.state.menu.items.find(i=>i.value===2).subtitle,'Переглянуто');
+ assert.match(env.state.menu.items.find(i=>i.value===1).subtitle,/13:20/);
+});
+test('failure or an unanswered resume prompt never records a new watch',()=>{
+ const env=kinoEnvironment();env.state.timelines['faborn|tmdb-movie-280|0|0']={time:100,duration:7000,percent:1};env.instance.open(kinoMovie);env.state.play('1080p');env.root.Lampa.Player.close();
+ assert.equal(env.state.history.length,0);assert.equal(env.state.storage['faborn_ukr_position_tmdb-movie-280'],undefined);
+ env.instance.open(kinoMovie);env.state.play('1080p');env.state.played.timeline.waiting_for_user=true;env.state.progress(100,7000);env.root.Lampa.Player.close();assert.equal(env.state.history.length,0);
+});
+test('newer standard Lampa progress is read without losing the beta.9 resume point',()=>{
+ const env=kinoEnvironment({series:true});
+ env.state.timelines['faborn|tmdb-tv-1668|1|1']={time:600,duration:2400,percent:25,updated:100};
+ env.state.timelines['11Friends']={time:900,duration:2400,percent:38,updated:200};
+ env.instance.open(kinoSeries);env.state.play('1080p');assert.equal(env.state.played.timeline.time,900);
+ env.root.Lampa.Player.close();env.state.timelines['11Friends']={time:100,duration:2400,percent:4,updated:50};
+ env.instance.open(kinoSeries);env.state.play('1080p');assert.equal(env.state.played.timeline.time,600);
+});
+test('episode metadata enriches titles but cannot reopen a closed episode window',()=>{
+ const env=kinoEnvironment({series:true});let callbacks=[];
+ env.root.Lampa.Api={sources:{tmdb:{get(url,params,success,failure){callbacks.push({url,success,failure});}}}};
+ env.instance.open(kinoSeries);env.state.choose(i=>i.action==='episode');env.state.choose(i=>i.value===1);
+ assert.equal(callbacks[0].url,'tv/1668/season/1');
+ callbacks[0].success({episodes:[{season_number:1,episode_number:1,name:'Пілот',still_path:'/photo.jpg',overview:'Короткий опис'}]});
+ assert.match(env.state.menu.items[0].title,/Пілот/);
+ env.state.choose(i=>i.value===2);env.state.choose(i=>i.action==='episode');env.state.choose(i=>i.value===2);
+ assert.equal(callbacks[1].url,'tv/1668/season/2');env.state.menu.onBack();env.state.menu.onBack();env.state.menu.onBack();
+ callbacks[1].success({episodes:[{episode_number:1,name:'Запізніла відповідь'}]});
+ assert.equal(env.state.menu,null);assert.equal(env.state.controller,'full_start');
+});
+test('unavailable metadata does not block episode selection or playback',()=>{
+ const env=kinoEnvironment({series:true});env.root.Lampa.Api={sources:{tmdb:{get(){}}}};
+ env.instance.open(kinoSeries);env.state.choose(i=>i.action==='episode');env.state.choose(i=>i.value===1);env.state.fireTimer(6000);
+ assert.ok(env.state.menu.items.some(i=>i.value===2));env.state.choose(i=>i.value===2);env.state.play('1080p');assert.equal(env.state.played.episode,2);
+});
+test('empty external subtitles are omitted so Tizen can expose native tracks',()=>{
+ const env=kinoEnvironment();env.instance.open(kinoMovie);env.state.play('1080p');assert.ok(!Object.hasOwn(env.state.played,'subtitles'));
+});
+test('Playerjs subtitle inheritance is per folder and explicit episode tracks override it',()=>{
+ const uk='[Українські]//ashdi.vip/sub/uk.vtt',en='[English]https://ashdi.vip/sub/en.srt';
+ const tree=[{title:'Season 1',subtitle:uk,folder:[{title:'Episode 1',file:masterURL},{title:'Episode 2',file:masterURL,subtitle:en},{title:'Episode 3',file:masterURL,subtitle:''}]}];
+ const entries=api.playerEntries('new Playerjs({file:'+JSON.stringify(JSON.stringify(tree))+'})',{type:'tv',voice:'Українська'});
+ assert.equal(entries[0].subtitles[0].url,'https://ashdi.vip/sub/uk.vtt');assert.equal(entries[1].subtitles[0].language,'en');assert.equal(entries[2].subtitles.length,0);
+});
+test('structured subtitles are normalized and reject unsafe URLs',()=>{
+ const tree=[{file:masterURL,subtitle:[{label:'English',url:'https://ashdi.vip/en.srt'},{label:'duplicate',url:'https://ashdi.vip/en.srt'},{label:'bad',url:'javascript:alert(1)'}]}];
+ const entries=api.playerEntries('new Playerjs({file:'+JSON.stringify(JSON.stringify(tree))+'})',{type:'movie',voice:'English'});
+ assert.equal(entries[0].subtitles.length,1);assert.equal(entries[0].subtitles[0].language,'en');
+});
+test('HLS subtitle playlists stay attached when selecting a quality',()=>{
+ const body='#EXTM3U\n#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",URI="subs.m3u8"\n#EXT-X-STREAM-INF:RESOLUTION=1920x1080,SUBTITLES="subs"\nvideo.m3u8';
+ assert.deepEqual(api.parseMaster(body,masterURL),{'1080p':masterURL});
 });
