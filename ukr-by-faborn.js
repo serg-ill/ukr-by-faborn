@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.7 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.8 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.7';
+    var VERSION = '0.1.0-beta.8';
     var NAME = 'ukr by Faborn';
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
@@ -106,7 +106,7 @@
         if (presentation) { presentation.html.remove(); presentation = null; }
     }
     function palette(value) {
-        var colors = {blue:['#91bdff','#1d304b'],amber:['#ffd078','#3b3020'],mint:['#82dfc1','#1d3835'],violet:['#c2a5ff','#302640']};
+        var colors = {blue:['#91bdff','#1d304b'],amber:['#ffd078','#3b3020'],mint:['#82dfc1','#1d3835'],violet:['#c2a5ff','#302640'],aurora:['#91bdff','#292e48','#c2a5ff'],lagoon:['#82dfd6','#1d343f','#91bdff']};
         return colors[value] || colors.blue;
     }
     function putStyle(id, css) {
@@ -117,13 +117,14 @@
     function applyAppearance() {
         if (!root.document || !root.document.createElement) return;
         var colors = palette(storage('accent','blue')), accent = colors[0], tint = colors[1];
-        putStyle('faborn-ukr-ui', presentationCSS(accent,tint));
+        var fill = colors[2] ? 'linear-gradient(120deg,'+accent+' 0%,'+colors[2]+' 100%)' : 'none';
+        putStyle('faborn-ukr-ui', presentationCSS(accent,tint,fill));
         var enabled = storage('theme','on') !== 'off';
         $('body').toggleClass('faborn-theme',enabled);
         // Removing our CSS restores the user's existing theme without changing any Lampa preference.
-        putStyle('faborn-ukr-theme',enabled ? themeCSS(accent,tint) : '');
+        putStyle('faborn-ukr-theme',enabled ? themeCSS(accent,tint,fill) : '');
     }
-    function themeCSS(accent,tint) {
+    function themeCSS(accent,tint,fill) {
         var base = 'body.faborn-theme', css = base+':not(.player--viewing){background:#0e131e!important;color:#f3f5fa}';
         css += base+' .menu__item,'+base+' .head__action,'+base+' .full-start__button,'+base+' .settings-folder,'+base+' .settings-param,'+base+' .selectbox-item,'+base+' .modal__button{border-radius:.75em}';
         css += base+' .settings__content,'+base+' .selectbox__content,'+base+' .modal__content,'+base+' .settings-input__content{background:#171e2c!important;color:#f3f5fa;border:1px solid #354056;box-shadow:0 1em 3em rgba(0,0,0,.42);border-radius:1.1em}';
@@ -139,26 +140,26 @@
         css += base+' .menu__item.traverse .menu__ico [stroke]{stroke:#f3f5fa}';
         css += base+' .menu__item.traverse .menu__ico path[fill]{fill:#f3f5fa}';
         ['.menu__item.focus','.menu__item.hover','.head__action.focus','.full-start__button.focus','.settings-folder.focus','.settings-param.focus','.selectbox-item.focus','.modal__button.focus','.navigation-tabs__button.focus','.filter__item.focus','.simple-button.focus','.player-panel .button.focus'].forEach(function (s) {
-            css += base+' '+s+'{background:'+accent+'!important;color:#101827!important;box-shadow:0 0 0 .12em #f6f8ff}';
+            css += base+' '+s+'{background:'+accent+'!important;background-image:'+fill+'!important;color:#101827!important;box-shadow:0 0 0 .12em #f6f8ff}';
         });
         css += base+' .menu__item.focus .menu__ico [stroke]{stroke:#101827}'+base+' .menu__item.focus .menu__ico path[fill]:not([fill="none"]){fill:#101827}';
         css += base+' .settings-param.focus .settings-param__value,'+base+' .settings-param.focus .settings-param__descr,'+base+' .selectbox-item.focus .selectbox-item__subtitle{color:#1a2a40}';
         css += base+' .selectbox-item.selected:not(.nomark)::after{border-color:'+accent+'}'+base+' .selectbox-item.selected.focus::after{border-color:#101827}';
         css += base+' .card.focus .card__view::after,'+base+' .card-episode.focus .full-episode::after{border-color:'+accent+';box-shadow:0 0 1.1em '+tint+'}';
         css += base+' .full-start__button:not(.focus){background:#222d40;color:#f3f5fa}';
-        css += base+' .timeline__line,'+base+' .player-panel__position{background:'+accent+'}';
+        css += base+' .timeline__line,'+base+' .player-panel__position{background:'+accent+';background-image:'+fill+'}';
         return css;
     }
-    function presentationCSS(accent,tint) {
+    function presentationCSS(accent,tint,fill) {
         return '.fbr-overlay{position:fixed;top:0;right:0;bottom:0;left:0;z-index:54;background:rgba(3,7,15,.72);color:#f4f6fb;font-size:1em;line-height:1.4;text-align:left}' +
         '.fbr-overlay *{box-sizing:border-box}.fbr-window{position:absolute;top:3vh;bottom:3vh;right:3vw;width:43vw;min-width:25em;background:#141c2a;border:1px solid #354158;border-radius:1.35em;box-shadow:0 1.5em 4em rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden}' +
         '.fbr-header{display:flex;align-items:center;justify-content:space-between;padding:1.15em 1.45em;border-bottom:1px solid #303b50;flex-shrink:0}.fbr-brand{display:flex;align-items:center;font-size:1.05em;font-weight:700;letter-spacing:.015em}.fbr-brand svg{width:1.8em;height:1.8em;margin-right:.65em}.fbr-brand small{font-size:.67em;color:#adbad1;font-weight:400;display:block;letter-spacing:.1em;text-transform:uppercase}' +
         '.fbr-close{width:2.3em;height:2.3em;display:flex;align-items:center;justify-content:center;font-size:1.15em}.fbr-layout{display:flex;flex:1;min-height:0}.fbr-story{display:none}.fbr-content{flex:1;min-width:0;overflow-y:auto;padding:1.45em;scrollbar-width:thin;scrollbar-color:#50617c transparent}.fbr-content::-webkit-scrollbar{width:.3em}.fbr-content::-webkit-scrollbar-thumb{background:#50617c;border-radius:1em}' +
         '.fbr-title{font-size:1.85em;font-weight:700;line-height:1.1;margin:0 0 .35em;word-wrap:break-word}.fbr-meta{color:#adbad1;font-size:.86em;margin-bottom:1.35em}.fbr-label{color:#b7c4d8;font-size:.72em;letter-spacing:.12em;text-transform:uppercase;margin:1.4em 0 .7em}.fbr-controls{display:flex;flex-wrap:wrap;margin:-.22em}.fbr-control{padding:.55em .85em;margin:.22em;min-width:3.8em;text-align:center}' +
-        '.fbr-btn{background:#222e42;border:1px solid #3b4a64;color:#f4f6fb;border-radius:.65em;cursor:pointer;position:relative}.fbr-btn.chosen{border-color:'+accent+';background:'+tint+';color:'+accent+'}.fbr-btn.focus{background:'+accent+'!important;color:#101827!important;border-color:'+accent+';box-shadow:0 0 0 .15em #f6f8ff;z-index:1}.fbr-btn.focus .fbr-small{color:#21334c}.fbr-btn:focus{outline:none}' +
+        '.fbr-btn{background:#222e42;border:1px solid #3b4a64;color:#f4f6fb;border-radius:.65em;cursor:pointer;position:relative}.fbr-btn.chosen{border-color:'+accent+';background:'+tint+';color:'+accent+'}.fbr-btn.focus{background:'+accent+'!important;background-image:'+fill+'!important;color:#101827!important;border-color:'+accent+';box-shadow:0 0 0 .15em #f6f8ff;z-index:1}.fbr-btn.focus .fbr-small{color:#21334c}.fbr-btn:focus{outline:none}' +
         '.fbr-voice{margin:.65em 0}.fbr-voice-main{padding:.8em 1em;display:flex;align-items:center;justify-content:space-between}.fbr-voice-name{font-size:1.02em;font-weight:600;word-wrap:break-word;min-width:0}.fbr-small{display:block;color:#b0bdd2;font-size:.76em;margin-top:.2em;font-weight:400}.fbr-mark{margin-left:.7em;font-size:1.2em;flex-shrink:0}.fbr-sources{display:flex;flex-wrap:wrap;padding:.45em .3em 0;margin:0 -.25em}.fbr-source{font-size:.8em;padding:.65em .85em;margin:.25em}' +
-        '.fbr-footer{padding:1.1em 1.45em;border-top:1px solid #303b50;flex-shrink:0}.fbr-play{padding:.85em 1em;background:'+accent+';color:#101827;border-color:'+accent+';text-align:center;font-size:1.05em;font-weight:700}.fbr-play.focus{box-shadow:0 0 0 .2em #fff,0 0 0 .4em '+tint+'}.fbr-hint{color:#adbad1;font-size:.72em;margin-top:.8em;text-align:center}.fbr-refresh{font-size:.8em;text-align:center;padding:.65em .8em;margin-top:1.5em;background:transparent}' +
-        '.fbr-progress{margin:.9em 0;color:#b7c4d8;font-size:.76em}.fbr-progress-track{height:.28em;background:#354158;border-radius:1em;margin:.65em 0;overflow:hidden}.fbr-progress-track i{display:block;height:100%;background:'+accent+'}.fbr-empty{padding:2em .5em;color:#b7c4d8}.fbr-empty strong{display:block;color:#f3f5fa;font-size:1.2em;margin-bottom:.6em}.fbr-loading{padding:2em 0}.fbr-loading i{display:block;height:.55em;margin:.85em 0;background:#29374e;border-radius:1em;width:82%}.fbr-loading i:nth-child(2){width:64%}.fbr-loading i:nth-child(3){width:72%}' +
+        '.fbr-footer{padding:1.1em 1.45em;border-top:1px solid #303b50;flex-shrink:0}.fbr-play{padding:.85em 1em;background:'+accent+';background-image:'+fill+';color:#101827;border-color:'+accent+';text-align:center;font-size:1.05em;font-weight:700}.fbr-play.focus{box-shadow:0 0 0 .2em #fff,0 0 0 .4em '+tint+'}.fbr-hint{color:#adbad1;font-size:.72em;margin-top:.8em;text-align:center}.fbr-refresh{font-size:.8em;text-align:center;padding:.65em .8em;margin-top:1.5em;background:transparent}' +
+        '.fbr-progress{margin:.9em 0;color:#b7c4d8;font-size:.76em}.fbr-progress-track{height:.28em;background:#354158;border-radius:1em;margin:.65em 0;overflow:hidden}.fbr-progress-track i{display:block;height:100%;background:'+accent+';background-image:'+fill+'}.fbr-empty{padding:2em .5em;color:#b7c4d8}.fbr-empty strong{display:block;color:#f3f5fa;font-size:1.2em;margin-bottom:.6em}.fbr-loading{padding:2em 0}.fbr-loading i{display:block;height:.55em;margin:.85em 0;background:#29374e;border-radius:1em;width:82%}.fbr-loading i:nth-child(2){width:64%}.fbr-loading i:nth-child(3){width:72%}' +
         '.fbr-cinema .fbr-window{left:5vw;right:5vw;top:5vh;bottom:5vh;width:auto;min-width:0}.fbr-cinema .fbr-story{display:flex;flex-direction:column;justify-content:flex-end;width:43%;flex-shrink:0;padding:2.2em;background:#1b2a40;position:relative;overflow:hidden}.fbr-art{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;object-fit:cover;opacity:.36}.fbr-story:after{content:"";position:absolute;top:0;right:0;bottom:0;left:0;background:linear-gradient(180deg,rgba(14,22,36,.05),#111b2c 88%)}.fbr-story-info{position:relative;z-index:1}.fbr-story .fbr-title{font-size:2.7em}.fbr-overview{color:#b7c4d8;font-size:.9em;line-height:1.65;max-height:8.2em;overflow:hidden}.fbr-cinema .fbr-content{padding:1.8em 2em}.fbr-cinema .fbr-mini-title{display:none}.fbr-cinema .fbr-footer{padding:1em 2em 1em 46%}.fbr-cinema .fbr-controls{margin-bottom:.4em}' +
         '@media(max-width:800px){.fbr-window{width:57vw;min-width:23em}.fbr-cinema .fbr-story{width:38%;padding:1.4em}.fbr-cinema .fbr-story .fbr-title{font-size:2em}.fbr-cinema .fbr-content{padding:1.3em}.fbr-cinema .fbr-footer{padding-left:41%}}' +
         '@media(max-width:560px){.fbr-overlay{font-size:16px}.fbr-window,.fbr-cinema .fbr-window{left:3vw;right:3vw;top:2vh;bottom:2vh;width:auto;min-width:0}.fbr-cinema .fbr-story{display:none}.fbr-cinema .fbr-mini-title{display:block}.fbr-cinema .fbr-footer{padding:1em 1.45em}.fbr-content,.fbr-cinema .fbr-content{padding:1.1em}.fbr-title{font-size:1.5em}}';
@@ -1142,7 +1143,7 @@
         api.addComponent({component: 'faborn_ukr', name: NAME, icon: ICON});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_layout', type: 'select', values: {panel:'Панель', cinema:'Кінозал', classic:'Стандартний список'}, default: 'panel'}, field: {name: 'Оформлення модуля', description: 'Компактна панель або велике вікно з інформацією про фільм.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_theme', type: 'select', values: {on:'Faborn', off:'Стандартна Lampa'}, default: 'on'}, field: {name: 'Тема всієї Lampa', description: 'Меню, картки, налаштування та вікна. Застосовується одразу.'}, onChange: applyAppearance});
-        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_accent', type: 'select', values: {blue:'Синій', amber:'Бурштиновий', mint:'М’ятний', violet:'Фіолетовий'}, default: 'blue'}, field: {name: 'Колір акценту', description: 'Колір кнопок, вибраних пунктів і фокуса пульта.'}, onChange: applyAppearance});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_accent', type: 'select', values: {blue:'Синій', amber:'Бурштиновий', mint:'М’ятний', violet:'Фіолетовий', aurora:'Синій → фіолетовий', lagoon:'Бірюзовий → синій'}, default: 'blue'}, field: {name: 'Колір акценту', description: 'Суцільний колір або градієнт для кнопок і фокуса пульта.'}, onChange: applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinoukr:'KinoUkr'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найвища доступна', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: 'Підсвічує варіант у списку джерел.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_refresh', type: 'button'}, field: {name: 'Оновити індекс із GitHub'}, onChange: function () {
