@@ -26,7 +26,9 @@ jobs:
       - name: Check the committed beta
         run: |
           python -m unittest discover -s tests -p 'test_*.py' -v
-          node --test tests/test_plugin.js
+          python scripts/build_resolver.py
+          git diff --exit-code -- lib/
+          node --test tests/test_*.js
           node --check ukr-by-faborn.js
       - name: Refresh reviewed sources and HLS manifests
         run: python scripts/build_catalog.py
@@ -34,10 +36,11 @@ jobs:
         run: python scripts/validate.py
       - name: Assemble static Pages artifact
         run: |
-          mkdir -p _site/assets _site/data
+          mkdir -p _site/assets _site/data _site/lib
           cp ukr-by-faborn.js index.html .nojekyll _site/
           cp assets/icon.svg _site/assets/
           cp data/catalog.json data/status.json _site/data/
+          cp lib/kinobase.js lib/ACORN-LICENSE _site/lib/
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site

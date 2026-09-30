@@ -365,7 +365,7 @@ test('one unavailable provider and failed Pages index do not block another sourc
 });
 test('every pending request is aborted and late replies cannot reopen a closed menu', () => {
     const env=environment({delayed:true}); env.instance.open({title:'Test'});
-    assert.equal(env.state.requests.length,4); env.state.menu.onBack();
+    assert.equal(env.state.requests.length,5); env.state.menu.onBack();
     for (const req of env.state.requests) {assert.equal(req.aborted,true);req.status=200;req.responseText=searchHTML;req.onload();}
     assert.equal(env.state.menu,null); assert.equal(env.state.controller,'full_start');
     assert.equal(Object.keys(env.state.timers).length,0);
@@ -545,7 +545,7 @@ test('24 stream variants become three translations and an independent quality se
     assert.deepEqual(state.menu.items.map(i=>i.value),['2160p','1080p','720p','480p']);
     state.choose(i=>i.value==='720p');
     assert.equal(state.menu.items.filter(i=>i.group).length,3);
-    state.choose(i=>i.title==='BaibaKoTV');
+    state.choose(i=>i.title==='UA · BaibaKoTV');
     assert.deepEqual(state.menu.items.map(i=>i.title),['UAKino','KinoUkr']);
     assert.ok(state.menu.items.every(i=>i.value==='720p' && i.release.voice==='BaibaKoTV'));
     state.choose(i=>i.release.source==='kinoukr');
@@ -554,8 +554,8 @@ test('24 stream variants become three translations and an independent quality se
 test('quality and source submenus return to their translation and finally restore the card',()=>{
     const {state}=groupedEnvironment(); const requests=state.requests.length;
     state.choose(i=>i.action==='quality');state.menu.onBack();
-    state.choose(i=>i.title==='BaibaKoTV');state.menu.onBack();
-    assert.equal(state.menu.items.find(i=>i.selected).title,'BaibaKoTV');
+    state.choose(i=>i.title==='UA · BaibaKoTV');state.menu.onBack();
+    assert.equal(state.menu.items.find(i=>i.selected).title,'UA · BaibaKoTV');
     assert.equal(state.requests.length,requests,'Grouping must not repeat the source search');
     state.menu.onBack();assert.equal(state.controller,'full_start');assert.equal(state.menu,null);
 });
@@ -587,4 +587,75 @@ test('appearance settings expose both layouts, fallback, reversible global theme
     assert.equal(typeof param('theme').onChange, 'function');
     assert.equal(typeof param('accent').onChange, 'function');
     assert.equal(Object.keys(state.storage).filter(k => !k.startsWith('faborn_ukr_')).length, 0);
+});
+
+const kinoFixture=require('./fixtures/kinobase-protocol');
+const kinoReader=require('../lib/kinobase');
+const kinoMovie={id:280,title:'Термінатор 2: Судний день',original_title:'Terminator 2: Judgment Day',release_date:'1991-07-03'};
+const kinoSeries={id:1668,name:'Друзі',original_name:'Friends',first_air_date:'1994-09-22'};
+function kinoEnvironment(options={}) {
+    const data=kinoFixture(),stateData={version:1,missingUA:false,pending:null};
+    const file=(s=0,e=0)=>['720','1080','2160'].map(q=>'['+q+'p]'+['Paramount (Русский)','1+1 (Украинский)'].filter(v=>!stateData.missingUA||!v.includes('1+1')).map((voice,i)=>'{'+voice+'}https://primary.redcdn.org/'+q+'/s'+s+'e'+e+'/v'+stateData.version+'/master-v1-a'+(i+1)+'.m3u8 or https://mirror.threnet.xyz/'+q+'/s'+s+'e'+e+'/v'+stateData.version+'/master-v1-a'+(i+1)+'.m3u8').join(';')).join(',');
+    const env=environment({respond(req){
+        req.status=200;
+        if(req.url.includes('catalog.json')) req.responseText=JSON.stringify({schema:1,titles:[]});
+        else if(req.url.startsWith('https://kinobase.org/search?')) req.responseText=fixture('kinobase-search.html');
+        else if(req.url.startsWith('https://kinobase.org/film/')) req.responseText=fixture('kinobase-movie.html');
+        else if(req.url.startsWith('https://kinobase.org/serial/')) req.responseText=fixture('kinobase-series.html');
+        else if(req.url.startsWith('https://kinobase.org/static/')) req.responseText=data.source;
+        else if(req.url.startsWith('https://kinobase.org/user_data?')) req.responseText=data.encode(['AnonymousToken12345','1900000000','','','1'],true);
+        else if(req.url.startsWith('https://kinobase.org/vod/')) {
+            const parts=options.series?['p',JSON.stringify([1,2].map(s=>({title:s+' сезон',folder:[1,2].map(e=>({title:e+' серия',file:file(s,e)}))})))]:['f',file()];
+            req.responseText=data.encode(parts,false);
+            if(options.delayVod){stateData.pending=req;return;}
+        } else if(/https:\/\/(?:primary.redcdn.org|mirror.threnet.xyz)\//.test(req.url)) {
+            const q=+new URL(req.url).pathname.split('/')[1],width=({'2160':3840,'1080':1920,'720':1280})[q];
+            req.responseText='#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="track",URI="audio.m3u8"\n#EXT-X-STREAM-INF:RESOLUTION='+width+'x'+q+',AUDIO="track"\nvideo.m3u8';
+            if(options.failPrimary&&req.url.includes('primary.redcdn.org'))req.status=404;
+        } else {req.status=403;req.responseText='';}
+        req.onload();
+    }});
+    env.root.FabornKinoBase=kinoReader;env.kino=stateData;return env;
+}
+test('KinoBase is searched permanently by original title and launches selected RU 4K with audio',()=>{
+    const env=kinoEnvironment();env.instance.open(kinoMovie);
+    const rows=env.state.menu.items.filter(i=>i.group);
+    assert.equal(rows.length,2);assert.ok(rows[0].title.startsWith('UA · '));assert.ok(rows[1].title.startsWith('🐷 RU · '));
+    assert.ok(env.state.requests.some(r=>r.url.includes('/search?query=Terminator%202')));
+    assert.ok(env.state.requests.some(r=>r.url.includes('/vod/208161?')));
+    assert.ok(!env.state.requests.some(r=>r.url.includes('/vod/20208161')));
+    assert.ok(env.state.requests.filter(r=>r.url.startsWith('https://kinobase.org/')).every(r=>r.withCredentials===true));
+    env.state.play('2160p',i=>i.release.audioLanguage==='ru');
+    assert.ok(env.state.played.url.endsWith('/master-v1-a1.m3u8'));assert.equal(env.state.played.voice_name,'Paramount (Русский)');
+    assert.equal(env.state.played.quality['2160p'],env.state.played.url);assert.equal(env.state.playerReturn,'full_start');
+});
+test('KinoBase seasons, episodes and UA audio survive switching and URL renewal',t=>{
+    let now=Date.now();t.mock.method(Date,'now',()=>now);
+    const env=kinoEnvironment({series:true});env.instance.open(kinoSeries);
+    env.state.choose(i=>i.action==='episode');env.state.choose(i=>i.value===2);env.state.choose(i=>i.value===2);
+    env.kino.version=2;now+=61000;
+    env.state.play('1080p',i=>i.release.audioLanguage==='uk');
+    assert.match(env.state.played.url,/\/1080\/s2e2\/v2\/master-v1-a2.m3u8$/);
+    assert.equal(env.state.played.episode,2);assert.equal(env.state.played.season,2);
+    assert.equal(env.state.requests.filter(r=>r.url.includes('/vod/246004?')).length,2);
+});
+test('an unavailable mirror retries the same quality, episode and voice',()=>{
+    const env=kinoEnvironment({failPrimary:true});env.instance.open(kinoMovie);
+    env.state.play('720p',i=>i.release.audioLanguage==='uk');
+    assert.match(env.state.played.url,/^https:\/\/mirror.threnet.xyz\/720\/s0e0\/v1\/master-v1-a2.m3u8$/);
+});
+test('a vanished Ukrainian voice is never silently replaced by Russian on refresh',t=>{
+    let now=Date.now();t.mock.method(Date,'now',()=>now);
+    const env=kinoEnvironment();env.instance.open(kinoMovie);env.kino.missingUA=true;now+=61000;
+    env.state.play('1080p',i=>i.release.audioLanguage==='uk');
+    assert.equal(env.state.played,null);assert.match(env.state.notices.join(' '),/Вибране озвучення/);
+});
+test('closing during the KinoBase playlist request ignores its late response and restores navigation',()=>{
+    const env=kinoEnvironment({delayVod:true});env.instance.open(kinoMovie);
+    assert.ok(env.kino.pending);env.state.menu.onBack();assert.equal(env.kino.pending.aborted,true);
+    env.kino.pending.onload();assert.equal(env.state.menu,null);assert.equal(env.state.controller,'full_start');
+});
+test('KinoBase original metadata is checked before requesting streams',()=>{
+    const env=kinoEnvironment();env.instance.open({...kinoMovie,title:'Чужий фільм',original_title:'Another Film'});
+    assert.ok(!env.state.requests.some(r=>r.url.includes('/user_data?')));assert.ok(!env.state.menu.items.some(i=>i.group));
 });
