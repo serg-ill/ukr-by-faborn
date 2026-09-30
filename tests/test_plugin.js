@@ -603,6 +603,9 @@ function kinoEnvironment(options={}) {
     const file=(s=0,e=0)=>['720','1080','2160'].map(q=>'['+q+'p]'+['Paramount (Русский)','1+1 (Украинский)'].concat(options.english?['Оригинал']:[]).filter(v=>!stateData.missingEN||v!=='Оригинал').filter(v=>!stateData.missingUA||!v.includes('1+1')).map((voice,i)=>'{'+voice+'}https://primary.redcdn.org/'+q+'/s'+s+'e'+e+'/v'+stateData.version+'/master-v1-a'+(i+1)+'.m3u8 or https://mirror.threnet.xyz/'+q+'/s'+s+'e'+e+'/v'+stateData.version+'/master-v1-a'+(i+1)+'.m3u8').join(';')).join(',');
     const env=environment({respond(req){
         req.status=200;
+        if(options.failEndpoint && req.url.startsWith('https://kinobase.org'+options.failEndpoint)) {
+            req.status=404;req.responseText='';req.onload();return;
+        }
         if(req.url.includes('catalog.json')) req.responseText=JSON.stringify({schema:1,titles:[]});
         else if(req.url.startsWith('https://kinobase.org/search?')) req.responseText=fixture('kinobase-search.html')+(options.secondCandidate?'<a href="/film/208162-documentary" title="Терминатор 2: документальний фільм (1991)">Документальний</a>':'');
         else if(req.url.startsWith('https://kinobase.org/film/')) req.responseText=fixture('kinobase-movie.html');
@@ -644,6 +647,21 @@ test('KinoBase completes the first player session before another title can repla
  assert.equal(env.state.requests.filter(r=>r.url.startsWith('https://kinobase.org/film/')).length,2);
  assert.ok(env.state.requests.some(r=>r.url.includes('/vod/208161?')));
  assert.ok(env.state.menu.items.some(i=>i.group&&i.group.language==='uk'));
+});
+for(const endpoint of ['/search?', '/film/208161-', '/static/js/hs.js?', '/user_data?', '/vod/208161?']) test('KinoBase 404 diagnostics identify the failed endpoint: '+endpoint,()=>{
+ const env=kinoEnvironment({failEndpoint:endpoint});env.instance.open(kinoMovie);
+ const status=env.state.storage.faborn_ukr_source_status.find(s=>s.startsWith('KinoBase:'));
+ assert.ok(status.includes('HTTP 404'),status);
+ assert.ok(status.includes(endpoint.split('?')[0]),status);
+ assert.equal(status.includes('можливе блокування cookie'),endpoint==='/user_data?',status);
+ assert.ok(!/[?&](cuid|chk|st|identifier)=/.test(status));
+ assert.ok(!env.state.menu.items.some(i=>i.group));assert.equal(env.state.played,null);
+});
+test('a second unrelated KinoBase candidate cannot erase the player-session 404',()=>{
+ const env=kinoEnvironment({secondCandidate:true,failEndpoint:'/user_data?'});env.instance.open(kinoMovie);
+ const status=env.state.storage.faborn_ukr_source_status.find(s=>s.startsWith('KinoBase:'));
+ assert.ok(status.includes('/user_data'),status);assert.ok(status.includes('HTTP 404'),status);
+ assert.equal(env.state.requests.filter(r=>r.url.startsWith('https://kinobase.org/search?')).length,1);
 });
 test('KinoBase seasons, episodes and UA audio survive switching and URL renewal',t=>{
     let now=Date.now();t.mock.method(Date,'now',()=>now);

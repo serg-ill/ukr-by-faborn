@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.10 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.11 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.10';
+    var VERSION = '0.1.0-beta.11';
     var NAME = 'ukr by Faborn';
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
@@ -117,10 +117,12 @@
     }
     function applyAppearance() {
         if (!root.document || !root.document.createElement) return;
+        var standard = storage('layout','panel') === 'classic';
         var colors = palette(storage('accent','blue')), accent = colors[0], tint = colors[1];
         var fill = colors[2] ? 'linear-gradient(120deg,'+colors[3]+' 0%,'+colors[2]+' 100%)' : 'none', ink = colors[4] || '#101827';
-        putStyle('faborn-ukr-ui', presentationCSS(accent,tint,fill,ink));
-        var enabled = storage('theme','on') !== 'off';
+        // Keep the saved Faborn palette so switching back restores the user's choice.
+        putStyle('faborn-ukr-ui',standard ? '' : '.full-start__button.view--faborn-ukr{border:0!important;outline:0!important;box-shadow:none!important}'+presentationCSS(accent,tint,fill,ink));
+        var enabled = !standard && storage('theme','on') !== 'off';
         $('body').toggleClass('faborn-theme',enabled);
         // Removing our CSS restores the user's existing theme without changing any Lampa preference.
         putStyle('faborn-ukr-theme',enabled ? themeCSS(accent,tint,fill,ink) : '');
@@ -860,6 +862,15 @@
             completed = true;
             var i = requests.indexOf(req); if (i >= 0) requests.splice(i,1);
             if (serial !== requestSerial) return;
+            if (error && /^https:\/\/kinobase\.org\//i.test(url)) {
+                // A 404 can mean a rejected anonymous player session, not a missing title.
+                // Keep the exact endpoint, but never include its session query parameters.
+                var endpoint = url.replace(/^https:\/\/kinobase\.org/i,'').split(/[?#]/)[0];
+                var detail = error.message;
+                error = new Error(stage.replace(/^KinoBase\s*·\s*/,'')+' ('+endpoint+'): '+detail);
+                error.kinoTransport = true;
+                if (status === 404 && endpoint === '/user_data') error.message += ' — сесію плеєра не прийнято; можливе блокування cookie.';
+            }
             trace(stage,error ? error.message : 'HTTP '+status);
             callback(error,body);
         },12000,post,ajax);
@@ -936,18 +947,21 @@
                 var results;
                 try { results = providerSearch(body,provider).filter(function (r) { return provider.id === 'kinobase' ? kinoCandidate(movie,r) : sameTitle(movie,r,false); }); } catch (e) { return done(e.message); }
                 if (!results.length) return searchNext();
-                var count = 0, lastError = '';
+                var count = 0, lastError = '', transportError = '';
                 // KinoBase replaces its anonymous player cookie on every title page.
                 // Parallel candidates can invalidate the first film's /user_data request.
                 parallel(results.slice(0,6),provider.id === 'kinobase' ? 1 : 2,function (row,next) {
                     getTitle(serial,provider,movie,row.url,function (error,title) {
-                        if (error) lastError = error.message;
+                        if (error) {
+                            if (error.kinoTransport && !transportError) transportError = error.message;
+                            if (!lastError || /не збігаються/.test(lastError)) lastError = error.message;
+                        }
                         else { mergeTitle(session,title); count += title.releases.length; }
                         next();
                     });
                 },function () {
-                    if (!count && index < queries.length && /не збігаються/.test(lastError)) return searchNext();
-                    done(count ? 'Знайдено' : lastError || 'Немає підтримуваного плеєра');
+                    if (!count && !transportError && index < queries.length && /не збігаються/.test(lastError)) return searchNext();
+                    done(count ? 'Знайдено' : transportError || lastError || 'Немає підтримуваного плеєра');
                 });
             },provider.id === 'kinobase' ? null : 'do=search&subaction=search&from_page=1&story='+encodeURIComponent(query));
         }
@@ -1518,9 +1532,9 @@
         var api = L.SettingsApi;
         if (!api || !api.addComponent || !api.addParam) return;
         api.addComponent({component: 'faborn_ukr', name: NAME, icon: ICON});
-        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_layout', type: 'select', values: {panel:'Панель', cinema:'Кінозал', classic:'Стандартний список'}, default: 'panel'}, field: {name: 'Оформлення модуля', description: 'Компактна панель або велике вікно з інформацією про фільм.'}});
-        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_theme', type: 'select', values: {on:'Faborn', off:'Стандартна Lampa'}, default: 'on'}, field: {name: 'Тема всієї Lampa', description: 'Меню, картки, налаштування та вікна. Застосовується одразу.'}, onChange: applyAppearance});
-        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_accent', type: 'select', values: {blue:'Синій', amber:'Бурштиновий', mint:'М’ятний', violet:'Фіолетовий', aurora:'Синій → фіолетовий', lagoon:'Бірюзовий → синій'}, default: 'blue'}, field: {name: 'Колір акценту', description: 'Суцільний колір або градієнт для кнопок і фокуса пульта.'}, onChange: applyAppearance});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_layout', type: 'select', values: {panel:'Панель', cinema:'Кінозал', classic:'Стандартне Lampa'}, default: 'panel'}, field: {name: 'Оформлення модуля', description: '«Стандартне Lampa» — штатні вікна та фокус, без кольорових акцентів Faborn у всій системі.'}, onChange: applyAppearance});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_theme', type: 'select', values: {on:'Faborn', off:'Стандартна Lampa'}, default: 'on'}, field: {name: 'Тема всієї Lampa', description: 'Для «Панелі» та «Кінозалу»: оформлення меню, карток і налаштувань. Застосовується одразу.'}, onChange: applyAppearance});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_accent', type: 'select', values: {blue:'Синій', amber:'Бурштиновий', mint:'М’ятний', violet:'Фіолетовий', aurora:'Синій → фіолетовий', lagoon:'Бірюзовий → синій'}, default: 'blue'}, field: {name: 'Колір акценту', description: 'Колір або градієнт для «Панелі» та «Кінозалу». У стандартному оформленні не застосовується.'}, onChange: applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinobase:'KinoBase', kinoukr:'KinoUkr'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найвища доступна', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: 'Підсвічує варіант у списку джерел.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_refresh', type: 'button'}, field: {name: 'Оновити індекс із GitHub'}, onChange: function () {
@@ -1554,7 +1568,7 @@
         L = root.Lampa; $ = root.jQuery;
         if (!L.Listener || !L.Select || !L.Player) return;
         installed = true;
-        if (!$('#faborn-ukr-style').length) $('body').append('<style id="faborn-ukr-style">.full-start__button.view--faborn-ukr{justify-content:center;min-width:3.7em;border:0!important;outline:0!important;box-shadow:none!important}.view--faborn-ukr svg{width:1.65em;height:1.65em;flex-shrink:0}</style>');
+        if (!$('#faborn-ukr-style').length) $('body').append('<style id="faborn-ukr-style">.full-start__button.view--faborn-ukr{justify-content:center;min-width:3.7em}.view--faborn-ukr svg{width:1.65em;height:1.65em;flex-shrink:0}</style>');
         L.Listener.follow('full', attach);
         if (L.Player.listener) {
             L.Player.listener.follow('start', function (data) {
