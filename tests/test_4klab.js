@@ -224,3 +224,46 @@ test('switching to a normal source stops the adapter but permits a later card ch
  assert.equal(state.workers.length,2);assert.equal(state.workers[1].messages[0].choice.quality,'1080p');
  assert.equal(state.workers[1].messages[0].movie.title,'Film');
 });
+function playingCard(){
+ const env=harness(),{ui,state}=env;state.prefs.faborn_ukr_lab4k='on';
+ ui.discover({title:'Film'},0,0,{});state.message('resolved',{tracks:[],episodes:[],season:0,episode:0});
+ ui.playChoice({season:0,episode:0,label:'UA',language:'uk',quality:'2160p'});
+ state.message('play',{url:'http://127.0.0.1:12345/'+key+'/0.m3u8',label:'UA',quality:'2160p',codecs:'av01'});
+ state.emitVideo('timeupdate',{current:5});return env;
+}
+test('in-player translation reuses the worker and returns a fresh URL without reopening Lampa.Player',()=>{
+ const {ui,state}=playingCard(),data=state.played;let result;
+ ui.switchChoice({season:0,episode:0,label:'EN',language:'en',quality:'2160p'},(err,value)=>result={err,value});
+ state.message('stage',{message:'Loading translation'});assert.equal(state.menu,null);
+ state.message('play',{url:'http://127.0.0.1:12345/'+key+'/9.m3u8',label:'EN',quality:'2160p'});
+ assert.equal(result.err,null);assert.match(result.value.url,/9\.m3u8$/);
+ assert.equal(state.played,data);assert.equal(state.workers.length,1);assert.equal(state.closes,0);assert.equal(state.controller,'player');
+});
+test('translation request error leaves Alloha and its current stream alive',()=>{
+ const {ui,state}=playingCard(),data=state.played;let error;
+ ui.switchChoice({label:'EN',quality:'2160p'},err=>error=err);
+ state.message('error',{message:'HTTP 404'});
+ assert.match(error.message,/404/);assert.equal(state.played,data);assert.equal(state.closes,0);assert.equal(state.menu,null);
+ assert.notEqual(state.workers[0].messages.at(-1).type,'stop');
+});
+test('a late translation after its timeout cannot restart the player',()=>{
+ const {ui,state}=playingCard(),data=state.played;let calls=0;
+ ui.switchChoice({label:'EN',quality:'2160p'},error=>{assert.match(error.message,/TIMEOUT/);calls++;});
+ const worker=state.workers[0],job=worker.messages.at(-1).job;
+ [...state.timers.values()].find(t=>t.ms===40000).fn();
+ worker.onmessage({data:{type:'play',job,data:{url:'http://127.0.0.1:12345/'+key+'/9.m3u8',label:'EN',quality:'2160p'}}});
+ assert.equal(calls,1);assert.equal(state.played,data);assert.equal(state.closes,0);assert.equal(state.menu,null);
+});
+test('late Alloha translation after switching to another player is ignored',()=>{
+ const {ui,state}=playingCard();let called=false;const late=state.workers[0].onmessage;
+ ui.switchChoice({label:'EN',quality:'2160p'},()=>called=true);
+ state.played={url:'https://other.test/film'};state.emitPlayer('start',state.played);
+ late({data:{type:'play',data:{url:'http://127.0.0.1:12345/'+key+'/9.m3u8'}}});
+ assert.equal(called,false);assert.equal(state.closes,0);assert.equal(state.played.url,'https://other.test/film');
+});
+test('prepared Alloha stream kept paused after translation does not trigger a startup timeout',()=>{
+ const {ui,state}=playingCard();
+ ui.switchChoice({label:'EN',quality:'2160p'},()=>{});
+ state.message('play',{url:'http://127.0.0.1:12345/'+key+'/9.m3u8',label:'EN',quality:'2160p'});
+ state.emitVideo('loadeddata');assert.equal(state.timers.size,0);assert.equal(state.closes,0);
+});

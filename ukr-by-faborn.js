@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.13.2 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.13.3 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,11 +8,12 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.13.2';
+    var VERSION = '0.1.0-beta.13.3';
     var NAME = 'ukr by Faborn';
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
     var pendingRequest, playbackTimer, watchedPlayback, playbackContext, historyPlayback;
+    var playbackWatchSerial = 0, playerVoiceContext = null, voiceSwitch = null, voiceResume = null;
     var seasonMetadata = {}, seasonMetadataOrder = [];
     var directTrace = [], presentation = null;
     var capturedBase = detectBase();
@@ -251,7 +252,7 @@
         // White glass marks remote focus; the saved accent marks selection, so they remain distinct.
         if (glass.surface < .6) rule(surfaces+','+chrome,'text-shadow:0 1px 3px rgba(0,0,0,.75)');
         rule(focus,'background:#eff6ff!important;background-image:linear-gradient(145deg,#ffffff,#d3e6fc)!important;color:#132236!important;border:0!important;outline:0!important;box-shadow:0 .35em 1em rgba(0,0,0,.2)!important;text-shadow:none');
-        rule('.fbr-btn.focus','filter:none;transform:scale(1.018)');
+        rule('.fbr-btn.focus','filter:none;transform:none');
         rule('.settings-param.focus .settings-param__value,.settings-param.focus .settings-param__descr,.selectbox-item.focus .selectbox-item__subtitle,.fbr-btn.focus .fbr-small,.fbr-btn.focus .fbr-language,.fbr-episode.focus .fbr-episode-overview,.fbr-episode.focus .fbr-episode-status','color:#243d59');
         rule('.selectbox-item.selected.focus::after','border-color:#243d59');
         rule('.menu__item.focus .menu__ico [stroke],.menu__item.hover .menu__ico [stroke]','stroke:#132236');
@@ -263,6 +264,7 @@
         rule('.full-start__button','background-color:rgba(29,38,54,'+glass.button+');-webkit-backdrop-filter:blur(14px) saturate(130%);backdrop-filter:blur(14px) saturate(130%)');
         css += '}@media(prefers-reduced-motion:no-preference){';
         rule(buttons,'transition:background-color .16s,color .16s,box-shadow .16s');
+        rule('.fbr-btn,.selectbox-item','transition:none');
         css += '}';
         return css;
     }
@@ -273,7 +275,7 @@
         '.fbr-close{width:2.3em;height:2.3em;display:flex;align-items:center;justify-content:center;font-size:1.15em}.fbr-layout{display:flex;flex:1;min-height:0}.fbr-story{display:none}.fbr-content{flex:1;min-width:0;overflow-y:auto;padding:1.45em;scrollbar-width:thin;scrollbar-color:#50617c transparent}.fbr-content::-webkit-scrollbar{width:.3em}.fbr-content::-webkit-scrollbar-thumb{background:#50617c;border-radius:1em}' +
         '.fbr-language{display:inline-flex;align-items:center;margin-right:.5em;font-size:.74em;font-weight:700;white-space:nowrap}.fbr-language svg{width:1.35em;height:1.35em;margin-right:.25em;flex-shrink:0}.fbr-language-uk{color:#82dfc1}.fbr-language-en{color:#91bdff}.fbr-language-original{color:#c3cbd8}.fbr-btn.focus .fbr-language{color:inherit}.fbr-header{border-top:3px solid '+accent+';border-image:'+fill+' 1}.fbr-btn.fbr-control.chosen{background:'+accent+';background-image:'+fill+';color:'+ink+'}' +
         '.fbr-title{font-size:1.85em;font-weight:700;line-height:1.1;margin:0 0 .35em;word-wrap:break-word}.fbr-meta{color:#adbad1;font-size:.86em;margin-bottom:1.35em}.fbr-label{color:#b7c4d8;font-size:.72em;letter-spacing:.12em;text-transform:uppercase;margin:1.4em 0 .7em}.fbr-controls{display:flex;flex-wrap:wrap;margin:-.22em}.fbr-control{padding:.55em .85em;margin:.22em;min-width:3.8em;text-align:center}' +
-        '.fbr-btn{background:#222e42;border:0;color:#f4f6fb;border-radius:.65em;cursor:pointer;position:relative}.fbr-btn.chosen{background:'+tint+';color:'+accent+'}.fbr-btn.focus{background:'+accent+'!important;background-image:'+fill+'!important;color:'+ink+'!important;box-shadow:none;filter:brightness(1.15);transform:scale(1.025);z-index:1}.fbr-btn.focus .fbr-small{color:'+ink+'}.fbr-btn:focus{outline:none}' +
+        '.fbr-btn{background:#222e42;border:0;color:#f4f6fb;border-radius:.65em;cursor:pointer;position:relative;transform:none!important;filter:none!important;transition:none!important}.fbr-btn.chosen{background:'+tint+';color:'+accent+'}.fbr-btn.focus{background:'+accent+'!important;background-image:'+fill+'!important;color:'+ink+'!important;box-shadow:none;z-index:1}.fbr-btn.focus .fbr-small{color:'+ink+'}.fbr-btn:focus{outline:none}' +
         '.fbr-voice{margin:.65em 0}.fbr-voice-main{padding:.8em 1em;display:flex;align-items:center;justify-content:space-between}.fbr-voice-name{font-size:1.02em;font-weight:600;word-wrap:break-word;min-width:0}.fbr-small{display:block;color:#b0bdd2;font-size:.76em;margin-top:.2em;font-weight:400}.fbr-mark{margin-left:.7em;font-size:1.2em;flex-shrink:0}.fbr-sources{display:flex;flex-wrap:wrap;padding:.45em .3em 0;margin:0 -.25em}.fbr-source{font-size:.8em;padding:.65em .85em;margin:.25em}' +
         '.fbr-footer{padding:1.1em 1.45em;border-top:1px solid #303b50;flex-shrink:0}.fbr-play{padding:.85em 1em;background:'+accent+';background-image:'+fill+';color:'+ink+';text-align:center;font-size:1.05em;font-weight:700}.fbr-hint{color:#adbad1;font-size:.72em;margin-top:.8em;text-align:center}.fbr-refresh{font-size:.8em;text-align:center;padding:.65em .8em;margin-top:1.5em;background:transparent}' +
         '.fbr-last{padding:.6em .85em;margin-top:.8em;font-size:.85em}.fbr-episode{display:flex;overflow:hidden;margin:.8em 0;min-height:6.5em}.fbr-episode-image{width:34%;flex-shrink:0;position:relative;background:#30425e;display:flex;align-items:center;justify-content:center;min-height:6.5em}.fbr-episode-image b{font-size:1.4em}.fbr-episode-image img{position:absolute;width:100%;height:100%;object-fit:cover;left:0;top:0}.fbr-episode-body{padding:.7em .9em;min-width:0;flex:1}.fbr-episode-body strong{font-size:1em;display:block}.fbr-episode-status{display:block;font-size:.75em;margin:.4em 0;color:'+accent+'}.fbr-episode.focus .fbr-episode-status{color:inherit}.fbr-episode .fbr-progress-track{display:block;margin:.4em 0}.fbr-episode-overview{display:block;color:#b0bdd2;font-size:.72em;max-height:2.8em;overflow:hidden}.fbr-episode.focus .fbr-episode-overview{display:block;color:inherit}.fbr-episodes .fbr-content{padding-top:.8em}.fbr-episodes.fbr-cinema .fbr-window{left:18vw;right:18vw}.fbr-episodes.fbr-cinema .fbr-footer{padding:1em 2em}.fbr-episodes.fbr-cinema .fbr-episode-image{width:30%}' +
@@ -315,7 +317,7 @@
     function showPresentation(session,view,busy) {
         if (activeSession !== session) return;
         session.screen = busy ? 'loading' : 'sources';
-        closePresentation(); L.Select.hide();
+        L.Select.hide();
         var cinema = storage('layout','panel') === 'cinema', title = session.title;
         var selected = view && (view.groups.filter(function (g) { return g.key === session.focusVoice; })[0] || view.groups[0]);
         var actions = {}, progress = progressFor(session), content = '', meta = (title.year ? title.year+' · ' : '')+(title.type === 'tv' ? 'Серіал' : 'Фільм');
@@ -372,8 +374,20 @@
         mountPresentation(session,html,actions,focusKey,restore,!busy);
     }
     function mountPresentation(session,html,actions,focusKey,onBack,rememberFocus) {
-        presentation = {html:html,session:session};
-        $('body').append(html);
+        var previous = presentation, scrollTop = 0;
+        // Keep the glass surface mounted while a source/quality changes. Replacing
+        // the composited window on every update leaves trails on some TV browsers.
+        if (previous && previous.session === session && previous.html.attr('class') === html.attr('class')) {
+            scrollTop = previous.html.find('.fbr-content')[0].scrollTop;
+            previous.html.find('.fbr-window').html(html.find('.fbr-window').html());
+            html = previous.html;
+        } else {
+            closePresentation();
+            $('body').append(html);
+        }
+        var mounted = {html:html,session:session};
+        presentation = mounted;
+        html.find('.fbr-content')[0].scrollTop = scrollTop;
         html.find('.fbr-art').on('error',function () { $(this).remove(); });
         html.find('[data-fbr]').on('hover:enter',function () {
             if (!presentation || presentation.html !== html || activeSession !== session) return;
@@ -392,7 +406,7 @@
         L.Controller.add('faborn_ukr_view',{
             toggle:function () { if (!presentation || presentation.html !== html) return; var wanted = focusKey; L.Controller.collectionSet(html); var target = html.find('[data-fbr]').filter(function () { return $(this).attr('data-fbr') === wanted; }); L.Controller.collectionFocus(target.length ? target[0] : false,html); },
             up:function () { root.Navigator.move('up'); },down:function () { root.Navigator.move('down'); },left:function () { root.Navigator.move('left'); },right:function () { root.Navigator.move('right'); },back:onBack,
-            gone:function () { if (presentation && presentation.html === html) { closePresentation(); cancelCardLab(); stopKinoSession(); cancelPending(); activeSession = null; } }
+            gone:function () { if (presentation === mounted) { closePresentation(); cancelCardLab(); stopKinoSession(); cancelPending(); activeSession = null; } }
         });
         L.Controller.toggle('faborn_ukr_view');
     }
@@ -1638,6 +1652,144 @@
         if (cardNames.some(function (n) { return indexedNames.indexOf(n) >= 0; }) && (!cardYear || title.year === cardYear)) result.card = movie;
         return result;
     }
+    function playerVoiceRows(title,release,episode,quality) {
+        var rows = [], seen = {};
+        title.releases.forEach(function (r) {
+            if (r.source !== release.source) return;
+            r.episodes.some(function (e) {
+                if (e.season !== episode.season || e.episode !== episode.episode || e.error || !e.resolvedAt || qualityNames(e).indexOf(quality) < 0) return false;
+                var key = (r.audioLanguage || 'uk')+'|'+voiceLabel(r,e);
+                if (!seen[key]) { rows.push({release:r,episode:e,value:quality}); seen[key] = rows.length; }
+                else if (r.id === release.id) rows[seen[key]-1] = {release:r,episode:e,value:quality};
+                return true;
+            });
+        });
+        return rows;
+    }
+    function setPlayerVoices(data,movie,catalog,title,release,episode) {
+        var context = {data:data,movie:movie,catalog:catalog,title:title,release:release,episode:episode};
+        playerVoiceContext = context;
+        var rows = playerVoiceRows(title,release,episode,data.quality_switched || data.faborn_quality);
+        if (rows.length < 2) { delete data.voiceovers; delete data.translate; return; }
+        data.voiceovers = rows.map(function (row) {
+            return {name:escapeHTML(voiceLabel(row.release,row.episode)),language:({uk:'UA',en:'EN',ru:'RU',original:'Оригінал'})[row.release.audioLanguage] || 'UA',
+                label:escapeHTML(voiceLabel(row.release,row.episode)),selected:row.release.id === release.id,enabled:row.release.id === release.id,
+                onSelect:function () {
+                    if (playerVoiceContext !== context || !L.Player.playdata || L.Player.playdata() !== data) return;
+                    if (voiceSwitch) return;
+                    if (row.release.id === release.id) return updateVoiceSelection(context);
+                    switchPlayerVoice(context,row);
+                }};
+        });
+        // Lampa's HLS parser otherwise replaces the first source name with the
+        // embedded stream's generic audio label (often "Unknown").
+        data.translate = {tracks:data.voiceovers.map(function (voice) { return {language:voice.language,label:voice.label}; })};
+    }
+    function updateVoiceSelection(context) {
+        if (!context || !L.Player.playdata || L.Player.playdata() !== context.data) return;
+        setPlayerVoices(context.data,context.movie,context.catalog,context.title,context.release,context.episode);
+        if (L.PlayerPanel && L.PlayerPanel.setTracks) {
+            var video = L.PlayerVideo && L.PlayerVideo.video && L.PlayerVideo.video();
+            if (L.PlayerPanel.setTranslate) L.PlayerPanel.setTranslate(context.data.translate || {});
+            L.PlayerPanel.setTracks(context.data.voiceovers || video && video.audioTracks || []);
+        }
+    }
+    function cancelVoiceSwitch() {
+        var pending = voiceSwitch;
+        voiceSwitch = null;
+        if (pending) {
+            if (pending.data.timeline) pending.data.timeline.stop_recording = pending.stopRecording;
+            cancelPending();
+        }
+        if (voiceResume && voiceResume.data.timeline) voiceResume.data.timeline.stop_recording = voiceResume.stopRecording;
+        voiceResume = null;
+    }
+    function resumePlayerVoice() {
+        var pending = voiceResume;
+        if (!pending || !L.Player.playdata || L.Player.playdata() !== pending.data) return;
+        var video = L.PlayerVideo.video();
+        if (!video || !(video.duration > 0)) return;
+        voiceResume = null;
+        try {
+            if (pending.time > 0 && L.PlayerVideo.to) L.PlayerVideo.to(Math.min(pending.time,Math.max(0,video.duration-1)));
+            if (pending.paused && L.PlayerVideo.pause) L.PlayerVideo.pause();
+        } finally {
+            if (pending.data.timeline) pending.data.timeline.stop_recording = pending.stopRecording;
+        }
+    }
+    function switchPlayerVoice(context,row) {
+        var data = context.data, video = L.PlayerVideo && L.PlayerVideo.video && L.PlayerVideo.video();
+        var quality = data.quality_switched || data.faborn_quality;
+        if (!video || !L.PlayerVideo.url || !L.PlayerVideo.destroy || qualityNames(row.episode).indexOf(quality) < 0) return updateVoiceSelection(context);
+        savePlaybackProgress(true);
+        var pending = {data:data,time:isFinite(video.currentTime) ? +video.currentTime : +(data.timeline && data.timeline.time) || 0,
+            paused:Boolean(video.paused),stopRecording:data.timeline && data.timeline.stop_recording};
+        voiceSwitch = pending;
+        if (data.timeline) data.timeline.stop_recording = true;
+        if (!pending.paused && L.PlayerVideo.pause) L.PlayerVideo.pause();
+        notify('Змінюю озвучення…');
+        function current() { return voiceSwitch === pending && L.Player.playdata() === data && playerVoiceContext === context; }
+        function fail(error) {
+            if (!current()) return;
+            voiceSwitch = null;
+            if (data.timeline) data.timeline.stop_recording = pending.stopRecording;
+            updateVoiceSelection(context);
+            if (!pending.paused && L.PlayerVideo.play) L.PlayerVideo.play();
+            notify('Не вдалося змінити озвучення: '+text(error && error.message || error));
+        }
+        function commit(lab) {
+            if (!current()) return;
+            var next = playData(context.movie,context.title,row.release,row.episode,quality);
+            if (lab) { next.url = next.faborn_url = lab.url; next.quality = {}; next.quality[quality] = lab.url; }
+            if (!next.url) return fail(new Error('Джерело не віддало вибрану якість.'));
+            clearPlaybackWatch();
+            voiceSwitch = null;
+            L.PlayerVideo.destroy(true);
+            ['url','faborn_url','faborn_episode','faborn_release','faborn_quality','quality','title','voice_name'].forEach(function (key) { data[key] = next[key]; });
+            data.quality_switched = quality;
+            delete data.translate;
+            delete data.subtitles;
+            if (next.subtitles) data.subtitles = next.subtitles;
+            if (data.timeline) { data.timeline.time = pending.time; data.timeline.continued = true; data.timeline.waiting_for_user = false; }
+            voiceResume = pending;
+            setPlayerVoices(data,context.movie,context.catalog,context.title,row.release,row.episode);
+            if (L.PlayerVideo.clearParamas) L.PlayerVideo.clearParamas();
+            if (L.PlayerPanel) {
+                if (L.PlayerPanel.setTranslate) L.PlayerPanel.setTranslate(data.translate || {});
+                if (L.PlayerPanel.setTracks) L.PlayerPanel.setTracks(data.voiceovers || []);
+                if (L.PlayerPanel.quality) L.PlayerPanel.quality(data.quality,data.url);
+                if (L.PlayerPanel.render) L.PlayerPanel.render().find('.player-panel__filename').text(data.title);
+            }
+            if (L.PlayerInfo && L.PlayerInfo.set) L.PlayerInfo.set('name',data.title);
+            if (context.catalog.session) {
+                context.catalog.session.focusVoice = (row.release.audioLanguage || 'uk')+':'+normalize(voiceLabel(row.release,row.episode));
+                if (lab) context.catalog.session.labChosen = row;
+            }
+            save('last_launch',context.title.title+' · '+quality+' · '+sourceName(row.release.source)+' · '+row.release.voice);
+            // Reload only the video inside the existing player; its timeline and controller remain alive.
+            if (!lab) watchPlayback(data);
+            try { L.PlayerVideo.url(data.url,true); if (!lab) watchNativeError(data); }
+            catch (error) { if (!lab) playbackError({error:error.message},data); }
+        }
+        if (row.episode.lab) {
+            if (!lab4k || !lab4k.switchChoice) return fail(new Error('Онови модуль 4K та перезапусти Lampa.'));
+            lab4k.switchChoice({season:row.episode.season,episode:row.episode.episode,label:row.release.voice,language:row.release.audioLanguage,quality:quality},function (error,stream) {
+                if (error) fail(error); else commit(stream);
+            });
+            return;
+        }
+        cancelPending(); var serial = requestSerial;
+        resolveEpisode(serial,context.title,row.release,row.episode,function (error) {
+            if (!current()) return;
+            if (error) return fail(error);
+            if (qualityNames(row.episode).indexOf(quality) < 0) return fail(new Error('Вибрана якість більше не доступна.'));
+            episodeRequest(serial,row.episode,row.episode.qualities[quality],'Зміна озвучення',function (error) {
+                if (!current()) return;
+                if (error) return fail(error);
+                stopKinoSession(); commit();
+            });
+        });
+    }
     function locate(catalog, titleId, releaseId, episodeId) {
         var found;
         catalog.titles.forEach(function (title) {
@@ -1662,6 +1814,7 @@
         pendingRequest = null;
     }
     function clearPlaybackWatch() {
+        playbackWatchSerial++;
         if (playbackTimer) root.clearTimeout(playbackTimer);
         playbackTimer = null;
         watchedPlayback = null;
@@ -1700,17 +1853,19 @@
     }
     function playbackError(event, data) {
         if (!data || watchedPlayback !== data || !event) return;
+        var run = playbackWatchSerial;
         var detail = event.error || event;
         if (typeof detail === 'object') detail = detail.message || detail.code;
-        root.setTimeout(function () { playbackProblem('Помилка плеєра: ' + text(detail || 'невідома помилка'), data); }, 0);
+        root.setTimeout(function () { if (run === playbackWatchSerial) playbackProblem('Помилка плеєра: ' + text(detail || 'невідома помилка'), data); }, 0);
     }
     function watchNativeError(data) {
         if (!data || watchedPlayback !== data || !L.PlayerVideo || !L.PlayerVideo.video) return;
+        var run = playbackWatchSerial;
         try {
             var video = L.PlayerVideo.video();
             // Lampa's Tizen adapter puts the native error in event.error, not video.error.
             // Its own listener is destroyed together with this video object.
-            if (video && video.addEventListener) video.addEventListener('error', function (event) { playbackError(event, data); });
+            if (video && video.addEventListener) video.addEventListener('error', function (event) { if (run === playbackWatchSerial) playbackError(event, data); });
         } catch (ignore) { /* The startup timeout still covers an unavailable adapter. */ }
     }
     function launch(movie,catalog,title,release,episode,preference) {
@@ -1735,9 +1890,10 @@
     }
     function handoff(movie,catalog,title,release,episode,preference,playlist) {
         var data = playData(movie,title,release,episode,preference);
+        setPlayerVoices(data,movie,catalog,title,release,episode);
         data.playlist = playlist;
         playbackContext = {movie:movie,catalog:catalog};
-        save('last_launch',title.title + ' · ' + preference + ' · передано плеєру');
+        save('last_launch',title.title+' · '+preference+' · '+sourceName(release.source)+' · '+release.voice+' · передано плеєру');
         save('last_' + title.id,episode.id);
         if (catalog.direct) trace('Плеєр Lampa','передано ' + preference);
         if (L.Player.playlist) L.Player.playlist(playlist);
@@ -1856,6 +2012,7 @@
                     var chosen = session.labChosen;
                     var item = playData(session.movie,session.title,chosen.release,chosen.episode,chosen.value);
                     item.url = item.faborn_url = data.url; labPlaybackData = item;
+                    setPlayerVoices(item,session.movie,session.catalog,session.title,chosen.release,chosen.episode);
                     save('last_launch',session.title.title+' · '+chosen.value+' · UAKinogo / Alloha · передано плеєру');
                     return item;
                 },
@@ -1904,7 +2061,7 @@
         if (!event || event.type !== 'complite' || !event.object || !event.object.activity || !event.data || !event.data.movie) return;
         var render = event.object.activity.render(), button, anchor;
         if (!render || render.find('.view--faborn-ukr').length) return;
-        button = $('<div class="full-start__button selector view--faborn-ukr" role="button" aria-label="' + NAME + '" data-subtitle="' + NAME + ' · ' + VERSION + '">' + ICON + '</div>');
+        button = $('<div class="full-start__button selector view--faborn-ukr" role="button" aria-label="' + NAME + '" data-title="' + NAME + '" data-subtitle="' + NAME + ' · ' + VERSION + '">' + ICON + '<span class="fbr-button-title">' + NAME + '</span></div>');
         button.on('hover:enter', function () { open(event.data.movie); });
         // Modern Lampa keeps .view--torrent inside a hidden source group. The requested icon belongs on the visible card row.
         anchor = render.find('.full-start-new__buttons .button--play').first();
@@ -1925,12 +2082,14 @@
         L = root.Lampa; $ = root.jQuery;
         if (!L.Listener || !L.Select || !L.Player) return;
         installed = true;
-        if (!$('#faborn-ukr-style').length) $('body').append('<style id="faborn-ukr-style">.full-start__button.view--faborn-ukr{justify-content:center;min-width:3.7em}.view--faborn-ukr svg{width:1.65em;height:1.65em;flex-shrink:0}</style>');
+        if (!$('#faborn-ukr-style').length) $('body').append('<style id="faborn-ukr-style">.full-start__button.view--faborn-ukr{justify-content:center;min-width:3.7em}.view--faborn-ukr svg{width:1.65em;height:1.65em;flex-shrink:0}.view--faborn-ukr .fbr-button-title{display:none!important}</style>');
         L.Listener.follow('full', attach);
         if (L.Player.listener) {
             L.Player.listener.follow('start', function (data) {
                 // Lampa applies its global quality preference before this event. Preserve the explicit selection only for our streams.
                 clearPlaybackWatch();
+                cancelVoiceSwitch();
+                if (playerVoiceContext && playerVoiceContext.data !== data) playerVoiceContext = null;
                 finishHistory();
                 var labOwned = data && data === labPlaybackData && data.faborn_4klab === true;
                 if (!data || !data.faborn_title || (!labOwned && !mediaURL(data.faborn_url))) return;
@@ -1940,11 +2099,18 @@
                 if (!labOwned) watchPlayback(data);
             });
             L.Player.listener.follow('ready', watchNativeError);
-            L.Player.listener.follow('destroy', function () { clearPlaybackWatch(); finishHistory(); });
+            L.Player.listener.follow('destroy', function () { cancelVoiceSwitch(); playerVoiceContext = null; clearPlaybackWatch(); finishHistory(); });
         }
+        if (L.PlayerPanel && L.PlayerPanel.listener) L.PlayerPanel.listener.follow('quality',function (event) {
+            var context = playerVoiceContext;
+            if (!context || !event || L.Player.playdata() !== context.data) return;
+            context.data.faborn_quality = event.name; context.data.faborn_url = event.url;
+            updateVoiceSelection(context);
+        });
         if (L.PlayerVideo && L.PlayerVideo.listener) {
-            L.PlayerVideo.listener.follow('loadeddata', clearPlaybackWatch);
+            L.PlayerVideo.listener.follow('loadeddata', function () { clearPlaybackWatch(); resumePlayerVoice(); });
             L.PlayerVideo.listener.follow('timeupdate', function (event) {
+                resumePlayerVoice();
                 if (watchedPlayback && event && event.current > 0) clearPlaybackWatch();
                 if (historyPlayback && event && event.current > 0 && event.duration > 0 && historyPlayback.timeline && !historyPlayback.timeline.waiting_for_user) {
                     historyPlayback.faborn_watched = true; savePlaybackProgress(false);
@@ -1977,7 +2143,7 @@
         normalize: normalize, matchTitles: matchTitles, mediaURL: mediaURL,
         safeBase: safeBase, validCatalog: validCatalog, qualityNames: qualityNames,
         pickURL: pickURL, timelineKey: timelineKey, availablePlaylist: availablePlaylist, escapeHTML: escapeHTML,
-        audioLanguage:audioLanguage, sourceGroups:sourceGroups, kinoPage:kinoPage, kinoEntries:kinoEntries, kinoDecode:kinoDecode, kinoCandidate:kinoCandidate,
+        audioLanguage:audioLanguage, sourceGroups:sourceGroups, playerVoiceRows:playerVoiceRows, kinoPage:kinoPage, kinoEntries:kinoEntries, kinoDecode:kinoDecode, kinoCandidate:kinoCandidate,
         providers:PROVIDERS, providerSearch:providerSearch, providerPage:providerPage, playerEntries:playerEntries, sameTitle:sameTitle, parseSearch:parseSearch, parseSource:parseSource, addEpisodeRefs:addEpisodeRefs, parseEmbed:parseEmbed, parseMaster:parseMaster, uakinoURL:uakinoURL, embedURL:embedURL
     };
 }));

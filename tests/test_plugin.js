@@ -978,6 +978,101 @@ test('experimental episode metadata participates in existing season and episode 
 test('a video server soft 404 is diagnosed as unavailable, not as a Playerjs parsing error',()=>{
  assert.throws(()=>api.playerEntries('<html><title>404 Not Found</title><h1>404 Not Found</h1></html>',{}),/404: відео недоступне/);
 });
+
+function voicePlayer(env) {
+ const {state,root}=env;
+ state.nativeVideo={currentTime:510,duration:1440,paused:false,audioTracks:[],addEventListener(k,fn){state.nativeEvents[k]=fn;}};
+ Object.assign(root.Lampa.PlayerVideo,{
+  video(){return state.nativeVideo;},pause(){state.nativeVideo.paused=true;state.pauses=(state.pauses||0)+1;},
+  play(){state.nativeVideo.paused=false;},destroy(){state.videoDestroyed=(state.videoDestroyed||0)+1;},
+  url(url,change){state.changedURL=url;state.changeFlag=change;state.nativeVideo.currentTime=0;state.nativeVideo.paused=false;},
+  to(time){state.seeked=time;state.nativeVideo.currentTime=time;},clearParamas(){}
+ });
+ root.Lampa.PlayerPanel={setTracks(rows){state.panelTracks=rows;},quality(q,url){state.panelQuality=q;},setTranslate(){}};
+ return env;
+}
+test('player translations contain only the same source, episode and exact quality, with mirrors grouped',()=>{
+ const make=(id,source,language,q,ep=2)=>({id,source,voice:id,audioLanguage:language,episodes:[{id,season:1,episode:ep,resolvedAt:1,qualities:{[q]:'https://ashdi.vip/'+id+'.m3u8'}}]});
+ const ua=make('UA','uaserials','uk','1080p');
+ const title={releases:[ua,make('EN','uaserials','en','1080p'),make('Other source','kinobase','ru','1080p'),make('Lower','uaserials','ru','720p'),make('Other episode','uaserials','uk','1080p',3),{...ua,id:'mirror'}]};
+ assert.deepEqual(api.playerVoiceRows(title,ua,ua.episodes[0],'1080p').map(r=>r.release.id),['UA','EN']);
+ const mirror=title.releases[title.releases.length-1];
+ assert.deepEqual(api.playerVoiceRows(title,mirror,mirror.episodes[0],'1080p').map(r=>r.release.id),['mirror','EN']);
+});
+test('switching UA to EN in the player retains series, quality, history identity, timestamp and pause',()=>{
+ const env=voicePlayer(kinoEnvironment({series:true,english:true})),{state}=env;
+ env.instance.open(kinoSeries);state.play('1080p',r=>r.release.audioLanguage==='uk');
+ const data=state.played,hash=data.timeline.hash;state.progress(510,1440);state.nativeVideo.paused=true;
+ assert.equal(data.voiceovers.length,3);
+ data.voiceovers.find(v=>v.language==='EN').onSelect();
+ assert.equal(state.played,data);assert.equal(state.controller,'player');assert.equal(state.closed,undefined);
+ assert.match(state.changedURL,/1080\/s1e1\/v1\/master-v1-a3/);assert.equal(data.season,1);assert.equal(data.episode,1);
+ assert.equal(data.faborn_quality,'1080p');assert.equal(data.timeline.hash,hash);assert.equal(data.timeline.stop_recording,true);
+ state.videoEvents.loadeddata();assert.equal(state.seeked,510);assert.equal(state.nativeVideo.paused,true);
+ assert.equal(data.timeline.stop_recording,undefined);assert.equal(data.voice_name,'Оригинал');
+ assert.equal(state.panelTracks.filter(t=>t.selected).length,1);assert.equal(state.panelTracks.find(t=>t.selected).language,'EN');
+});
+test('failed translation fetch keeps the original stream, selection and playback running',()=>{
+ const env=voicePlayer(kinoEnvironment({english:true})),{state}=env;
+ env.instance.open(kinoMovie);state.play('2160p',r=>r.release.audioLanguage==='uk');
+ const data=state.played,url=data.url;
+ env.root.XMLHttpRequest.prototype.send=function(){this.status=404;this.responseText='Not found';this.onload();};
+ data.voiceovers.find(v=>v.language==='EN').onSelect();
+ assert.equal(data.url,url);assert.equal(state.changedURL,undefined);assert.equal(state.nativeVideo.paused,false);
+ assert.match(state.notices.at(-1),/Не вдалося змінити/);assert.equal(state.panelTracks.find(t=>t.selected).language,'UA');
+ assert.equal(data.timeline.stop_recording,undefined);
+});
+test('a delayed translation response or stale native error cannot change or close a different player',()=>{
+ const env=voicePlayer(kinoEnvironment({english:true})),{state}=env;
+ env.instance.open(kinoMovie);state.play('2160p',r=>r.release.audioLanguage==='uk');
+ const oldError=state.nativeEvents.error;let request;
+ env.root.XMLHttpRequest.prototype.send=function(){request=this;};
+ state.played.voiceovers.find(v=>v.language==='EN').onSelect();
+ env.root.Lampa.Player.play({url:'https://other.test/film.m3u8'});
+ request.status=200;request.responseText='#EXTM3U\n#EXTINF:6,\na.ts';request.onload();oldError({error:'old error'});
+ assert.ok(request.aborted);assert.equal(state.changedURL,undefined);assert.equal(state.closed,undefined);
+ assert.equal(state.played.url,'https://other.test/film.m3u8');
+});
+test('old native video errors are ignored after an in-player voice switch',()=>{
+ const env=voicePlayer(kinoEnvironment({english:true})),{state}=env;
+ env.instance.open(kinoMovie);state.play('2160p',r=>r.release.audioLanguage==='uk');
+ const oldError=state.nativeEvents.error;
+ state.played.voiceovers.find(v=>v.language==='EN').onSelect();
+ oldError({error:'old video failed'});assert.ok(!Object.values(state.timers).some(t=>t.ms===0));
+ state.nativeEvents.error({error:'new video failed'});state.fireTimer(0);
+ assert.match(state.menu.title,/Відео не запустилося/);
+});
+test('an already queued old error cannot close the new voice using the same play data',()=>{
+ const env=voicePlayer(kinoEnvironment({english:true})),{state}=env;
+ env.instance.open(kinoMovie);state.play('2160p',r=>r.release.audioLanguage==='uk');
+ state.nativeEvents.error({error:'queued old error'});
+ state.played.voiceovers.find(v=>v.language==='EN').onSelect();state.fireTimer(0);
+ assert.equal(state.closed,undefined);assert.equal(state.played.voice_name,'Оригинал');
+});
+test('repeated audio clicks during a pending switch do not invalidate the pending result',()=>{
+ const env=voicePlayer(kinoEnvironment({english:true})),{state}=env;
+ env.instance.open(kinoMovie);state.play('2160p',r=>r.release.audioLanguage==='uk');
+ let request;env.root.XMLHttpRequest.prototype.send=function(){request=this;};
+ const voices=state.played.voiceovers;voices.find(v=>v.language==='EN').onSelect();voices.find(v=>v.language==='UA').onSelect();
+ request.status=200;request.responseText='#EXTM3U\n#EXTINF:6,\na.ts';request.onload();
+ assert.equal(state.played.voice_name,'Оригинал');assert.ok(state.changedURL);state.videoEvents.loadeddata();
+ assert.equal(state.seeked,510);assert.equal(state.played.timeline.stop_recording,undefined);
+});
+test('Alloha switches through its existing adapter without closing the player or bypassing loopback',()=>{
+ const env=voicePlayer(cardLabEnvironment()),{state}=env;let selection,done;
+ // Replace only the adapter switch; real main-plugin callbacks still populate the player.
+ const factory=env.root.Faborn4KLab;
+ env.root.Faborn4KLab=()=>Object.assign(factory(),{switchChoice(value,cb){selection=value;done=cb;}});
+ env.instance.open({id:1,name:'Friends',original_name:'Friends',first_air_date:'1994-09-22'});env.resolved(1,1);
+ state.play('2160p',r=>r.release.source==='uakinogo'&&r.release.audioLanguage==='uk');
+ const data=env.handlers.playerData({url:'http://127.0.0.1:12345/0123456789abcdef0123456789abcdef/0.m3u8'});
+ data.faborn_4klab=true;data.quality={'2160p':data.url};env.handlers.beforePlay();env.root.Lampa.Player.play(data);
+ data.voiceovers.find(v=>v.language==='EN').onSelect();
+ assert.deepEqual(selection,{season:1,episode:1,label:'(English) Original',language:'en',quality:'2160p'});
+ done(null,{url:'http://127.0.0.1:12345/0123456789abcdef0123456789abcdef/9.m3u8'});
+ state.videoEvents.loadeddata();assert.equal(state.seeked,510);assert.equal(state.played,data);assert.equal(state.closed,undefined);
+ assert.match(state.changedURL,/127\.0\.0\.1.*\/9.m3u8$/);assert.equal(data.faborn_4klab,true);
+});
 test('a soft 404 in the first episode iframe falls through to its second supported player',()=>{
  const page='https://uafix.net/serials/dzhentlmeni/',ep=page+'season-01-episode-01/';
  const env=environment({respond(req){req.status=200;
