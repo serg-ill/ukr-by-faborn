@@ -575,3 +575,16 @@ test('a quality missing from a new title falls back without inventing streams',(
     env.state.menu.onBack();env.state.menu.onBack();env.state.storage.faborn_ukr_quality='360p';env.instance.open(hailCard);
     assert.equal(env.state.menu.items.find(i=>i.group).value,'720p');
 });
+
+// The presentation preferences must remain separate from Lampa's player/theme settings.
+test('appearance settings expose both layouts, fallback, reversible global theme and four accents', () => {
+    const {state} = environment();
+    const param = key => state.params.find(p => p.param.name === 'faborn_ukr_' + key);
+    assert.deepEqual(Object.keys(param('layout').param.values), ['panel', 'cinema', 'classic']);
+    assert.equal(param('layout').param.default, 'panel');
+    assert.deepEqual(Object.keys(param('theme').param.values), ['on', 'off']);
+    assert.equal(Object.keys(param('accent').param.values).length, 4);
+    assert.equal(typeof param('theme').onChange, 'function');
+    assert.equal(typeof param('accent').onChange, 'function');
+    assert.equal(Object.keys(state.storage).filter(k => !k.startsWith('faborn_ukr_')).length, 0);
+});

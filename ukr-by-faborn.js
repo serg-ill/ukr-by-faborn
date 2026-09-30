@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.6 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.7 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,12 +8,12 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.6';
+    var VERSION = '0.1.0-beta.7';
     var NAME = 'ukr by Faborn';
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
     var pendingRequest, playbackTimer, watchedPlayback, playbackContext;
-    var directTrace = [];
+    var directTrace = [], presentation = null;
     var capturedBase = detectBase();
 
     function text(value) { return value === undefined || value === null ? '' : String(value); }
@@ -74,15 +74,17 @@
     function rememberController() {
         try {
             var name = L.Controller.enabled().name;
-            if (name && ['select','keyboard','player','player_panel'].indexOf(name) < 0) returnController = name;
+            if (name && ['select','keyboard','player','player_panel','faborn_ukr_view'].indexOf(name) < 0) returnController = name;
         } catch (ignore) { returnController = 'content'; }
     }
     function restore() {
         cancelPending(); activeSession = null;
+        closePresentation();
         if (L && L.Select) L.Select.hide();
         if (L && L.Controller) L.Controller.toggle(returnController);
     }
     function select(title, items, onSelect, onBack) {
+        closePresentation();
         L.Select.show({
             title: title,
             items: items.map(function (item) {
@@ -95,6 +97,157 @@
             onSelect: function (item) { L.Select.hide(); onSelect(item); },
             onBack: function () { L.Select.hide(); (onBack || restore)(); }
         });
+    }
+    // Presentation owns only its overlay and controller; Lampa still owns the player and timeline.
+    function canPresent() {
+        return storage('layout','panel') !== 'classic' && root.document && root.document.createElement && L.Controller && L.Controller.add && L.Controller.collectionSet && root.Navigator && root.Navigator.move;
+    }
+    function closePresentation() {
+        if (presentation) { presentation.html.remove(); presentation = null; }
+    }
+    function palette(value) {
+        var colors = {blue:['#91bdff','#1d304b'],amber:['#ffd078','#3b3020'],mint:['#82dfc1','#1d3835'],violet:['#c2a5ff','#302640']};
+        return colors[value] || colors.blue;
+    }
+    function putStyle(id, css) {
+        var doc = root.document, node = doc.getElementById(id);
+        if (!node) { node = doc.createElement('style'); node.id = id; doc.body.appendChild(node); }
+        node.textContent = css;
+    }
+    function applyAppearance() {
+        if (!root.document || !root.document.createElement) return;
+        var colors = palette(storage('accent','blue')), accent = colors[0], tint = colors[1];
+        putStyle('faborn-ukr-ui', presentationCSS(accent,tint));
+        var enabled = storage('theme','on') !== 'off';
+        $('body').toggleClass('faborn-theme',enabled);
+        // Removing our CSS restores the user's existing theme without changing any Lampa preference.
+        putStyle('faborn-ukr-theme',enabled ? themeCSS(accent,tint) : '');
+    }
+    function themeCSS(accent,tint) {
+        var base = 'body.faborn-theme', css = base+':not(.player--viewing){background:#0e131e!important;color:#f3f5fa}';
+        css += base+' .menu__item,'+base+' .head__action,'+base+' .full-start__button,'+base+' .settings-folder,'+base+' .settings-param,'+base+' .selectbox-item,'+base+' .modal__button{border-radius:.75em}';
+        css += base+' .settings__content,'+base+' .selectbox__content,'+base+' .modal__content,'+base+' .settings-input__content{background:#171e2c!important;color:#f3f5fa;border:1px solid #354056;box-shadow:0 1em 3em rgba(0,0,0,.42);border-radius:1.1em}';
+        css += base+' .settings__content,'+base+' .selectbox__content{border-radius:1.1em 0 0 1.1em}';
+        css += base+' .navigation-bar__body{background:#171e2c;border:1px solid #354056}';
+        css += base+' .navigation-tabs__button.active{background:'+tint+';color:'+accent+'}';
+        css += base+' .settings__layer,'+base+' .selectbox__layer{background:rgba(3,7,15,.6)}';
+        css += base+' .modal{background-color:rgba(3,7,15,.72)}';
+        css += base+' .settings-param,'+base+' .settings-folder,'+base+' .selectbox-item{margin-bottom:.2em}';
+        css += base+' .settings-param__value,'+base+' .settings-param__descr,'+base+' .selectbox-item__subtitle{color:#b7c4d8;opacity:1}';
+        css += base+' .settings-param-title > span,'+base+' .selectbox-item.selected:not(.nomark){color:'+accent+'}';
+        css += base+' .menu__item.traverse{background:'+tint+';color:#f3f5fa}';
+        css += base+' .menu__item.traverse .menu__ico [stroke]{stroke:#f3f5fa}';
+        css += base+' .menu__item.traverse .menu__ico path[fill]{fill:#f3f5fa}';
+        ['.menu__item.focus','.menu__item.hover','.head__action.focus','.full-start__button.focus','.settings-folder.focus','.settings-param.focus','.selectbox-item.focus','.modal__button.focus','.navigation-tabs__button.focus','.filter__item.focus','.simple-button.focus','.player-panel .button.focus'].forEach(function (s) {
+            css += base+' '+s+'{background:'+accent+'!important;color:#101827!important;box-shadow:0 0 0 .12em #f6f8ff}';
+        });
+        css += base+' .menu__item.focus .menu__ico [stroke]{stroke:#101827}'+base+' .menu__item.focus .menu__ico path[fill]:not([fill="none"]){fill:#101827}';
+        css += base+' .settings-param.focus .settings-param__value,'+base+' .settings-param.focus .settings-param__descr,'+base+' .selectbox-item.focus .selectbox-item__subtitle{color:#1a2a40}';
+        css += base+' .selectbox-item.selected:not(.nomark)::after{border-color:'+accent+'}'+base+' .selectbox-item.selected.focus::after{border-color:#101827}';
+        css += base+' .card.focus .card__view::after,'+base+' .card-episode.focus .full-episode::after{border-color:'+accent+';box-shadow:0 0 1.1em '+tint+'}';
+        css += base+' .full-start__button:not(.focus){background:#222d40;color:#f3f5fa}';
+        css += base+' .timeline__line,'+base+' .player-panel__position{background:'+accent+'}';
+        return css;
+    }
+    function presentationCSS(accent,tint) {
+        return '.fbr-overlay{position:fixed;top:0;right:0;bottom:0;left:0;z-index:54;background:rgba(3,7,15,.72);color:#f4f6fb;font-size:1em;line-height:1.4;text-align:left}' +
+        '.fbr-overlay *{box-sizing:border-box}.fbr-window{position:absolute;top:3vh;bottom:3vh;right:3vw;width:43vw;min-width:25em;background:#141c2a;border:1px solid #354158;border-radius:1.35em;box-shadow:0 1.5em 4em rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden}' +
+        '.fbr-header{display:flex;align-items:center;justify-content:space-between;padding:1.15em 1.45em;border-bottom:1px solid #303b50;flex-shrink:0}.fbr-brand{display:flex;align-items:center;font-size:1.05em;font-weight:700;letter-spacing:.015em}.fbr-brand svg{width:1.8em;height:1.8em;margin-right:.65em}.fbr-brand small{font-size:.67em;color:#adbad1;font-weight:400;display:block;letter-spacing:.1em;text-transform:uppercase}' +
+        '.fbr-close{width:2.3em;height:2.3em;display:flex;align-items:center;justify-content:center;font-size:1.15em}.fbr-layout{display:flex;flex:1;min-height:0}.fbr-story{display:none}.fbr-content{flex:1;min-width:0;overflow-y:auto;padding:1.45em;scrollbar-width:thin;scrollbar-color:#50617c transparent}.fbr-content::-webkit-scrollbar{width:.3em}.fbr-content::-webkit-scrollbar-thumb{background:#50617c;border-radius:1em}' +
+        '.fbr-title{font-size:1.85em;font-weight:700;line-height:1.1;margin:0 0 .35em;word-wrap:break-word}.fbr-meta{color:#adbad1;font-size:.86em;margin-bottom:1.35em}.fbr-label{color:#b7c4d8;font-size:.72em;letter-spacing:.12em;text-transform:uppercase;margin:1.4em 0 .7em}.fbr-controls{display:flex;flex-wrap:wrap;margin:-.22em}.fbr-control{padding:.55em .85em;margin:.22em;min-width:3.8em;text-align:center}' +
+        '.fbr-btn{background:#222e42;border:1px solid #3b4a64;color:#f4f6fb;border-radius:.65em;cursor:pointer;position:relative}.fbr-btn.chosen{border-color:'+accent+';background:'+tint+';color:'+accent+'}.fbr-btn.focus{background:'+accent+'!important;color:#101827!important;border-color:'+accent+';box-shadow:0 0 0 .15em #f6f8ff;z-index:1}.fbr-btn.focus .fbr-small{color:#21334c}.fbr-btn:focus{outline:none}' +
+        '.fbr-voice{margin:.65em 0}.fbr-voice-main{padding:.8em 1em;display:flex;align-items:center;justify-content:space-between}.fbr-voice-name{font-size:1.02em;font-weight:600;word-wrap:break-word;min-width:0}.fbr-small{display:block;color:#b0bdd2;font-size:.76em;margin-top:.2em;font-weight:400}.fbr-mark{margin-left:.7em;font-size:1.2em;flex-shrink:0}.fbr-sources{display:flex;flex-wrap:wrap;padding:.45em .3em 0;margin:0 -.25em}.fbr-source{font-size:.8em;padding:.65em .85em;margin:.25em}' +
+        '.fbr-footer{padding:1.1em 1.45em;border-top:1px solid #303b50;flex-shrink:0}.fbr-play{padding:.85em 1em;background:'+accent+';color:#101827;border-color:'+accent+';text-align:center;font-size:1.05em;font-weight:700}.fbr-play.focus{box-shadow:0 0 0 .2em #fff,0 0 0 .4em '+tint+'}.fbr-hint{color:#adbad1;font-size:.72em;margin-top:.8em;text-align:center}.fbr-refresh{font-size:.8em;text-align:center;padding:.65em .8em;margin-top:1.5em;background:transparent}' +
+        '.fbr-progress{margin:.9em 0;color:#b7c4d8;font-size:.76em}.fbr-progress-track{height:.28em;background:#354158;border-radius:1em;margin:.65em 0;overflow:hidden}.fbr-progress-track i{display:block;height:100%;background:'+accent+'}.fbr-empty{padding:2em .5em;color:#b7c4d8}.fbr-empty strong{display:block;color:#f3f5fa;font-size:1.2em;margin-bottom:.6em}.fbr-loading{padding:2em 0}.fbr-loading i{display:block;height:.55em;margin:.85em 0;background:#29374e;border-radius:1em;width:82%}.fbr-loading i:nth-child(2){width:64%}.fbr-loading i:nth-child(3){width:72%}' +
+        '.fbr-cinema .fbr-window{left:5vw;right:5vw;top:5vh;bottom:5vh;width:auto;min-width:0}.fbr-cinema .fbr-story{display:flex;flex-direction:column;justify-content:flex-end;width:43%;flex-shrink:0;padding:2.2em;background:#1b2a40;position:relative;overflow:hidden}.fbr-art{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;object-fit:cover;opacity:.36}.fbr-story:after{content:"";position:absolute;top:0;right:0;bottom:0;left:0;background:linear-gradient(180deg,rgba(14,22,36,.05),#111b2c 88%)}.fbr-story-info{position:relative;z-index:1}.fbr-story .fbr-title{font-size:2.7em}.fbr-overview{color:#b7c4d8;font-size:.9em;line-height:1.65;max-height:8.2em;overflow:hidden}.fbr-cinema .fbr-content{padding:1.8em 2em}.fbr-cinema .fbr-mini-title{display:none}.fbr-cinema .fbr-footer{padding:1em 2em 1em 46%}.fbr-cinema .fbr-controls{margin-bottom:.4em}' +
+        '@media(max-width:800px){.fbr-window{width:57vw;min-width:23em}.fbr-cinema .fbr-story{width:38%;padding:1.4em}.fbr-cinema .fbr-story .fbr-title{font-size:2em}.fbr-cinema .fbr-content{padding:1.3em}.fbr-cinema .fbr-footer{padding-left:41%}}' +
+        '@media(max-width:560px){.fbr-overlay{font-size:16px}.fbr-window,.fbr-cinema .fbr-window{left:3vw;right:3vw;top:2vh;bottom:2vh;width:auto;min-width:0}.fbr-cinema .fbr-story{display:none}.fbr-cinema .fbr-mini-title{display:block}.fbr-cinema .fbr-footer{padding:1em 1.45em}.fbr-content,.fbr-cinema .fbr-content{padding:1.1em}.fbr-title{font-size:1.5em}}';
+    }
+    function buttonHTML(key,label,extra,chosen) {
+        return '<div role="button" tabindex="0" class="selector fbr-btn '+(extra || '')+(chosen ? ' chosen' : '')+'" data-fbr="'+escapeHTML(key)+'"'+(key === 'close' ? ' aria-label="Закрити"' : '')+(chosen ? ' aria-pressed="true"' : '')+'>'+label+'</div>';
+    }
+    function posterURL(movie) {
+        var path = movie.backdrop_path || movie.poster_path;
+        return /^\/[a-zA-Z0-9_-]+\.(jpg|png|webp)$/.test(text(path)) ? 'https://image.tmdb.org/t/p/w780'+path : '';
+    }
+    function clockLabel(seconds) {
+        var n = Math.max(0,Math.floor(+seconds || 0)), h = Math.floor(n/3600), m = Math.floor(n/60)%60, s = n%60;
+        return (h ? h+':'+(m < 10 ? '0' : '') : '')+m+':'+(s < 10 ? '0' : '')+s;
+    }
+    function progressFor(session) {
+        try { return L.Timeline.view(L.Utils.hash(timelineKey(session.title,{season:session.season,episode:session.episode}))); }
+        catch (ignore) { return {}; }
+    }
+    function showPresentation(session,view,busy) {
+        if (activeSession !== session) return;
+        closePresentation(); L.Select.hide();
+        var cinema = storage('layout','panel') === 'cinema', title = session.title;
+        var selected = view && (view.groups.filter(function (g) { return g.key === session.focusVoice; })[0] || view.groups[0]);
+        var actions = {}, progress = progressFor(session), content = '', meta = (title.year ? title.year+' · ' : '')+(title.type === 'tv' ? 'Серіал' : 'Фільм')+' · Українською';
+        var heading = '<h2 class="fbr-title">'+escapeHTML(title.title)+'</h2><div class="fbr-meta">'+escapeHTML(meta)+'</div>';
+        function btn(key,label,extra,chosen,handler) { actions[key] = handler; return buttonHTML(key,label,extra,chosen); }
+        var close = btn('close','&#215;','fbr-close',false,restore);
+        var track = +progress.percent > 0 ? '<div class="fbr-progress">Збережено '+clockLabel(progress.time)+'<div class="fbr-progress-track"><i style="width:'+Math.max(0,Math.min(100,+progress.percent || 0))+'%"></i></div></div>' : '';
+        content += '<div class="fbr-mini-title">'+heading+track+'</div>';
+        if (busy) content += '<div class="fbr-loading"><strong>'+escapeHTML(busy.charAt(0).toUpperCase()+busy.slice(1))+'…</strong><i></i><i></i><i></i><div class="fbr-small">UAKino · UASerials · UAFix</div></div>';
+        else {
+            if (title.type === 'tv') content += '<div class="fbr-controls">'+btn('season','Сезон '+session.season,'fbr-control',false,function () { session.uiFocus = 'season'; chooseSeason(session); })+btn('episode','Серія '+session.episode,'fbr-control',false,function () { session.uiFocus = 'episode'; chooseEpisode(session,true); })+'</div>';
+            if (view.qualities.length) {
+                content += '<div class="fbr-label">Якість</div><div class="fbr-controls">';
+                view.qualities.forEach(function (q) { content += btn('q-'+q,escapeHTML(qualityLabel(q)),'fbr-control',q === view.quality,function () { session.uiFocus = 'q-'+q; session.qualityPreference = q; save('quality',q); renderSources(session); }); });
+                content += '</div>';
+            }
+            content += '<div class="fbr-label">Озвучення'+(view.groups.length ? ' · '+view.groups.length : '')+'</div>';
+            view.groups.forEach(function (g,index) {
+                var names = unique(g.entries.map(function (entry) { return sourceName(entry.release.source); })).join(' · '), expanded = selected === g;
+                content += '<div class="fbr-voice">'+btn('voice-'+index,'<span class="fbr-voice-name">'+escapeHTML(g.voice)+'<span class="fbr-small">'+escapeHTML(names)+'</span></span><span class="fbr-mark">'+(g.entries.length === 1 ? '&#9654;' : expanded ? '&#8722;' : '+')+'</span>','fbr-voice-main',expanded,function () {
+                    session.focusVoice = g.key; session.uiFocus = 'voice-'+index;
+                    if (g.entries.length === 1) selectStream(session,g.entries[0]);
+                    else { session.uiFocus = 'source-'+index+'-0'; renderSources(session); }
+                });
+                if (expanded && g.entries.length > 1) {
+                    var totals = {}, seen = {};
+                    g.entries.forEach(function (e) { totals[e.release.source] = (totals[e.release.source] || 0)+1; });
+                    content += '<div class="fbr-sources">';
+                    g.entries.forEach(function (entry,n) {
+                        var id = entry.release.source; seen[id] = (seen[id] || 0)+1;
+                        content += btn('source-'+index+'-'+n,'&#9654; '+escapeHTML(sourceName(id)+(totals[id] > 1 ? ' · '+seen[id] : '')),'fbr-source',false,function () { session.focusVoice = g.key; selectStream(session,entry); });
+                    });
+                    content += '</div>';
+                }
+                content += '</div>';
+            });
+            if (!selected) content += '<div class="fbr-empty"><strong>Потоку поки немає</strong>Спробуй іншу серію або повтори пошук. Стан джерел доступний у діагностиці модуля.</div>';
+            content += btn('refresh','Оновити джерела','fbr-refresh',false,function () { startDiscovery(session.movie); });
+        }
+        var play = '', resume = +progress.time > 10 && +progress.percent > 0 && +progress.percent < 90 && L.Storage.field && L.Storage.field('player_timecode') === 'continue';
+        if (!busy && selected) play = btn('play','&#9654; '+(resume ? 'Продовжити з '+clockLabel(progress.time) : 'Дивитися'),'fbr-play',false,function () { session.focusVoice = selected.key; selectStream(session,selected.entries[0]); });
+        var hint = busy ? 'Назад — скасувати' : selected ? selected.voice+' · '+qualityLabel(view.quality)+' · '+sourceName(selected.entries[0].release.source) : 'Назад — повернутися до картки';
+        var art = posterURL(session.movie), story = '<div class="fbr-story">'+(art ? '<img class="fbr-art" alt="" src="'+escapeHTML(art)+'">' : '')+'<div class="fbr-story-info">'+heading+'<p class="fbr-overview">'+escapeHTML(plain(session.movie.overview || ''))+'</p>'+track+'</div></div>';
+        var html = $('<div class="fbr-overlay'+(cinema ? ' fbr-cinema' : ' fbr-panel')+'"><section class="fbr-window" role="dialog" aria-modal="true" aria-label="'+escapeHTML(NAME+' · '+title.title)+'"><div class="fbr-header"><div class="fbr-brand">'+ICON+'<span>'+NAME+'<small>'+(cinema ? 'Кінозал' : 'Панель')+'</small></span></div>'+close+'</div><div class="fbr-layout">'+story+'<div class="fbr-content">'+content+'</div></div><div class="fbr-footer">'+play+'<div class="fbr-hint">'+escapeHTML(hint)+'</div></div></section></div>');
+        var focusKey = busy ? 'close' : session.uiFocus || (selected ? 'voice-'+view.groups.indexOf(selected) : 'refresh');
+        presentation = {html:html,session:session};
+        $('body').append(html);
+        html.find('.fbr-art').on('error',function () { $(this).remove(); });
+        html.find('[data-fbr]').on('hover:enter',function () {
+            if (!presentation || presentation.html !== html || activeSession !== session) return;
+            var key = $(this).attr('data-fbr'); if (actions[key]) actions[key]();
+        }).on('hover:focus',function () {
+            if (!presentation || presentation.html !== html) return;
+            focusKey = $(this).attr('data-fbr');
+            if (!busy) session.uiFocus = focusKey;
+            var box = html.find('.fbr-content')[0];
+            if (!box.contains(this)) return;
+            var outer = box.getBoundingClientRect(), inner = this.getBoundingClientRect(), pad = 12;
+            if (inner.top < outer.top+pad) box.scrollTop -= outer.top+pad-inner.top;
+            else if (inner.bottom > outer.bottom-pad) box.scrollTop += inner.bottom-outer.bottom+pad;
+        });
+        L.Controller.add('faborn_ukr_view',{
+            toggle:function () { if (!presentation || presentation.html !== html) return; L.Controller.collectionSet(html); var target = html.find('[data-fbr]').filter(function () { return $(this).attr('data-fbr') === focusKey; }); L.Controller.collectionFocus(target.length ? target[0] : false,html); },
+            up:function () { root.Navigator.move('up'); },down:function () { root.Navigator.move('down'); },left:function () { root.Navigator.move('left'); },right:function () { root.Navigator.move('right'); },back:restore,
+            gone:function () { if (presentation && presentation.html === html) { closePresentation(); cancelPending(); activeSession = null; } }
+        });
+        L.Controller.toggle('faborn_ukr_view');
     }
     function xhr(url, callback, timeout, post, ajax) {
         var req = new root.XMLHttpRequest(), finished = false;
@@ -541,6 +694,7 @@
         searchNext();
     }
     function loading(session,label) {
+        if (canPresent() && session) return showPresentation(session,null,label);
         select(NAME+' · '+label,[{title:'Шукаю доступне відео…',subtitle:'UAKino · UASerials · UAFix · Назад — скасувати',action:'wait'}],function () { loading(session,label); },restore);
     }
     function open(movie) {
@@ -732,6 +886,7 @@
             return sourceName(id)+': '+(unique(errors).join('; ') || session.status[id]);
         });
         save('source_status',status);
+        if (canPresent()) return showPresentation(session,view);
         if (view.qualities.length > 1) rows.push({title:'Якість: '+qualityLabel(view.quality),subtitle:'Змінити якість',action:'quality'});
         if (session.title.type === 'tv') rows.push({title:'Сезон '+session.season+' · Серія '+session.episode,subtitle:'Змінити сезон або серію',action:'episode'});
         var focused = view.groups.filter(function (group) { return group.key === session.focusVoice; })[0] || view.groups[0];
@@ -758,10 +913,10 @@
             session.episode = 1; session.afterPrepare = true; prepareSelection(session);
         },function () { renderSources(session); });
     }
-    function chooseEpisode(session) {
+    function chooseEpisode(session, direct) {
         var values = unique(session.title.releases.reduce(function (all,r) { return all.concat(r.episodes.filter(function (e) { return e.season === session.season; }).map(function (e) { return e.episode; })); },[])).sort(function (a,b) { return a-b; });
         if (!values.length) return renderSources(session);
-        select('Сезон '+session.season,values.map(function (e) { return {title:'Серія '+e,value:e,selected:e === session.episode}; }),function (row) { session.episode = row.value; prepareSelection(session); },function () { chooseSeason(session); });
+        select('Сезон '+session.season,values.map(function (e) { return {title:'Серія '+e,value:e,selected:e === session.episode}; }),function (row) { session.episode = row.value; prepareSelection(session); },function () { if (direct) renderSources(session); else chooseSeason(session); });
     }
     function releases(movie,catalog) { if (catalog.session) renderSources(catalog.session); else restore(); }
     function quality(movie,catalog) { if (catalog.session) renderSources(catalog.session); else restore(); }
@@ -948,7 +1103,7 @@
                 lastDiagnostic = episode.error; notify(episode.error); renderSources(session); return;
             }
             save('position_'+title.id,{season:episode.season,episode:episode.episode});
-            L.Select.hide(); L.Controller.toggle(returnController);
+            closePresentation(); L.Select.hide(); L.Controller.toggle(returnController);
             // Only the selected episode has been checked. Never enqueue unresolved streams.
             handoff(movie,catalog,title,release,episode,preference,[]);
         });
@@ -985,6 +1140,9 @@
         var api = L.SettingsApi;
         if (!api || !api.addComponent || !api.addParam) return;
         api.addComponent({component: 'faborn_ukr', name: NAME, icon: ICON});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_layout', type: 'select', values: {panel:'Панель', cinema:'Кінозал', classic:'Стандартний список'}, default: 'panel'}, field: {name: 'Оформлення модуля', description: 'Компактна панель або велике вікно з інформацією про фільм.'}});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_theme', type: 'select', values: {on:'Faborn', off:'Стандартна Lampa'}, default: 'on'}, field: {name: 'Тема всієї Lampa', description: 'Меню, картки, налаштування та вікна. Застосовується одразу.'}, onChange: applyAppearance});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_accent', type: 'select', values: {blue:'Синій', amber:'Бурштиновий', mint:'М’ятний', violet:'Фіолетовий'}, default: 'blue'}, field: {name: 'Колір акценту', description: 'Колір кнопок, вибраних пунктів і фокуса пульта.'}, onChange: applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinoukr:'KinoUkr'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найвища доступна', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: 'Підсвічує варіант у списку джерел.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_refresh', type: 'button'}, field: {name: 'Оновити індекс із GitHub'}, onChange: function () {
@@ -1042,6 +1200,7 @@
             });
         }
         settings();
+        applyAppearance();
     }
     function boot() {
         var tries = 0;
