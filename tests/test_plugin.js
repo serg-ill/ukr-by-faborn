@@ -600,6 +600,9 @@ test('appearance settings expose both layouts, fallback, reversible global theme
     const param = key => state.params.find(p => p.param.name === 'faborn_ukr_' + key);
     assert.deepEqual(Object.keys(param('layout').param.values), ['panel', 'cinema', 'classic']);
     assert.equal(param('layout').param.default, 'panel');
+    assert.deepEqual(param('studios').param.values, {on:'Показувати',off:'Приховати'});
+    assert.equal(param('studios').param.default, 'on');
+    assert.equal(typeof param('studios').onChange, 'function');
     assert.deepEqual(Object.keys(param('theme').param.values), ['on', 'ios', 'off']);
     assert.equal(Object.keys(param('accent').param.values).length, 6);
     assert.equal(typeof param('theme').onChange, 'function');

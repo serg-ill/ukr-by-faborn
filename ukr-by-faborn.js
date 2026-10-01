@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.18 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.19 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.18';
+    var VERSION = '0.1.0-beta.19';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null;
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
@@ -1988,7 +1988,7 @@
         if (!root.document || !root.document.querySelector || interfaceUI || interfaceScript || !baseURL()) return;
         function ready() {
             if (typeof root.FabornInterface !== 'function') return;
-            interfaceUI = root.FabornInterface(root,L,$,{torrentRequest:torrentRequest}); interfaceUI.install();
+            interfaceUI = root.FabornInterface(root,L,$,{torrentRequest:torrentRequest,studioAssets:baseURL()+'assets/studios/'}); interfaceUI.install();
             if (lastFullEvent) interfaceUI.full(lastFullEvent);
         }
         if (typeof root.FabornInterface === 'function') return ready();
@@ -2033,6 +2033,7 @@
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_button',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Кнопка торрентів',description:'Штатний пошук Lampa з твоїми налаштуваннями парсера і TorrServer.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_style',type:'select',values:{on:'Faborn',off:'Стандартна Lampa'},default:'on'},field:{name:'Оформлення торрентів',description:'Бейджі релізу, пріоритет Toloka та «Рекомендуємо» від 50 сідів за даними парсера.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_home',type:'select',values:{on:'Faborn · чотири постери',off:'Стандартна Lampa'},default:'on'},field:{name:'Головний екран',description:'Чотири постери, IMDb / TMDB та один опис вибраного фільму. Після зміни повторно відкрий головну.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_studios',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Студії під постерами',description:'Netflix, Apple TV, Prime Video та інші добірки фільмів і серіалів. Для головної Faborn.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_ratings',type:'select',values:{on:'Faborn',off:'Стандартні'},default:'on'},field:{name:'Рейтинги Faborn',description:'IMDb / TMDB на головній і компактна панель у картці. Доступні RT / Metacritic завантажуються автоматично. Твоя оцінка зберігається на цьому пристрої.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_badges',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Бейджі якості Faborn',description:'Кольорові позначки онлайн-джерел і знайдених торрентів. Формат береться з даних конкретного релізу.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_quality',type:'select',values:{auto:'Автоматично в картці',search:'Лише після пошуку торрентів'},default:'auto'},field:{name:'Якість із торрентів',description:'Шукає метадані через налаштований парсер Lampa. Кеш на добу; завантаження відео не починається.'},onChange:applyAppearance});
