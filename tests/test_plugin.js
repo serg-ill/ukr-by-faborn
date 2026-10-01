@@ -90,9 +90,10 @@ function environment(options = {}) {
         Player: {
             listener: {follow(k, fn) { state.playerEvents[k] = fn; }},
             playlist(p) { state.playlist = p; },
-            play(data) { state.playerReturn = state.controller; state.controller = 'player'; state.playerEvents.start(data); state.played = data; if (state.playerEvents.ready) state.playerEvents.ready(data); },
+            play(data) { state.playerReturn = state.controller; state.controller = 'player'; state.played = data; state.playerEvents.start(data); if (state.playerEvents.ready) state.playerEvents.ready(data); },
             playdata() { return state.played; },
-            close() { state.controller = state.playerReturn; state.closed = true; state.played = null; state.playerEvents.destroy(); }
+            callback(fn) { state.playerCallback=fn; },
+            close() { state.controller = state.playerReturn; state.closed = true; state.played = null; state.playerEvents.destroy(); if(state.playerCallback)state.playerCallback();state.playerCallback=null; }
         },
         PlayerVideo: {listener: {follow(k, fn) { state.videoEvents[k] = fn; }}, video() { return {addEventListener(k, fn) { state.nativeEvents[k] = fn; }}; }}
     };
@@ -142,7 +143,7 @@ test('series uses one episode selector and one source/quality list', () => {
     state.choose(i=>i.action==='episode'); state.choose(i=>i.value===3); state.choose(i=>i.value===2);
     state.play('1080p',i=>i.release.voice==='Uaflix');
     assert.equal(state.played.episode,2); assert.equal(state.played.season,3);
-    assert.equal(state.played.voice_name,'Uaflix'); assert.deepEqual(state.playlist,[]);
+    assert.equal(state.played.voice_name,'Uaflix'); assert.ok(state.playlist.length>1); assert.equal(typeof state.playlist[0].url,'function');
     assert.equal(state.playerReturn,'full_start');
 });
 test('canceling a pending catalog read does not open a stale modal', () => {
@@ -520,7 +521,7 @@ test('From: changing season/episode selects the matching stream and voice',()=>{
     env.state.play('1080p',i=>i.release.voice==='BaibaKoTV');
     assert.equal(env.state.played.season,2);assert.equal(env.state.played.episode,3);
     assert.ok(env.state.played.url.includes('from.s02e03.baibako'));assert.equal(env.state.played.voice_name,'BaibaKoTV');
-    assert.deepEqual(env.state.playlist,[]);
+    assert.ok(env.state.playlist.length>1);assert.ok(env.state.playlist.some(item=>typeof item.url==='function'));
 });
 test('unavailable player status is retained in provider diagnostics',()=>{
     const env=multiSourceEnvironment(false,req=>{
@@ -1160,4 +1161,40 @@ test('page exit flushes the last torrent seconds before the fifteen-second inter
  const env=kinoEnvironment({series:true}),file=torrentEpisode(env);registerFiles(env,[file]);env.root.Lampa.Player.play(file);
  env.state.progress(100,1440);Object.assign(file.timeline,{time:107,duration:1440,percent:7});env.state.pageEvents.pagehide();
  assert.equal(env.state.timelines['faborn|tmdb-tv-1668|1|1'].time,107);assert.equal(env.state.storage['faborn_ukr_position_tmdb-tv-1668'].time,107);
+});
+
+test('Back returns to the existing episode list without another source search',()=>{
+ const {instance,state,root}=environment();instance.open({name:'Річер',original_name:'Reacher',first_air_date:'2022-02-03'});
+ state.choose(i=>i.action==='episode');state.choose(i=>i.value===3);state.choose(i=>i.value===1);state.play('1080p');const before=state.requests.length,voice=state.played.voice_name;
+ root.Lampa.Player.close();assert.equal(state.requests.length,before);assert.equal(state.controller,'select');
+ assert.ok(state.menu.items.find(i=>i.action==='episode'&&i.selected));
+ state.play('1080p');assert.equal(state.played.voice_name,voice);
+});
+function advanceFixture(env){
+ const {state,root}=env,current=state.played,next=state.playlist[state.playlist.indexOf(current)+1];assert.ok(next);
+ const done=()=>{state.playerEvents.destroy();root.Lampa.Player.play(next);};next.url(done);return next;
+}
+test('next episode resolves lazily, retains quality and voice, and marks only the old episode watched',t=>{
+ let now=Date.now();t.mock.method(Date,'now',()=>now);
+ const env=kinoEnvironment({series:true}),{instance,state}=env;instance.open(kinoSeries);state.play('1080p');env.kino.version=2;now+=61000;
+ const old=state.played;state.progress(100,100);const next=advanceFixture(env);
+ state.videoEvents.ended();assert.equal(state.played,old);assert.equal(old.timeline.percent,100);
+ state.fireTimer(0);assert.equal(state.played,next);assert.equal(next.episode,old.episode+1);assert.equal(next.voice_name,old.voice_name);assert.equal(next.faborn_quality,'1080p');
+ assert.match(next.url,/\/v2\//);assert.equal(next.timeline.percent,0);assert.equal(typeof old.url,'function');
+});
+test('closing during next-episode resolution ignores delayed responses and restores sources',()=>{
+ const options={},env=environment(options),{instance,state,root}=env;instance.open({name:'Річер',original_name:'Reacher',first_air_date:'2022-02-03'});state.choose(i=>i.action==='episode');state.choose(i=>i.value===3);state.choose(i=>i.value===1);state.play('1080p');
+ options.delayed=true;advanceFixture(env);const req=state.requests.at(-1);root.Lampa.Player.close();
+ req.status=200;req.responseText='#EXTM3U\n#EXTINF:6,\nvideo.ts';req.onload();assert.equal(state.played,null);assert.equal(state.controller,'select');assert.ok(req.aborted);
+});
+test('failed next episode releases player loading and returns to the cached selector',()=>{
+ const options={},env=environment(options),{instance,state}=env;instance.open({name:'Річер',original_name:'Reacher',first_air_date:'2022-02-03'});state.choose(i=>i.action==='episode');state.choose(i=>i.value===3);state.choose(i=>i.value===1);state.play('1080p');
+ options.failure=true;advanceFixture(env);assert.equal(state.played,null);assert.equal(state.controller,'select');assert.ok(state.notices.some(x=>x.includes('Наступна серія')));
+});
+test('another plugin taking over playback does not reopen the old Faborn sources on Back',()=>{
+ const env=kinoEnvironment({series:true});env.instance.open(kinoSeries);env.state.play('720p');env.root.Lampa.Player.play({url:'https://other.example/movie.m3u8'});env.root.Lampa.Player.close();assert.equal(env.state.controller,'content');assert.equal(env.state.menu,null);
+});
+test('an old ended event cannot mark a newly started resumed episode watched',()=>{
+ const env=kinoEnvironment({series:true}),one=torrentEpisode(env),two=torrentEpisode(env,2);registerFiles(env,[one,two]);env.root.Lampa.Player.play(one);env.state.progress(1400,1440);
+ env.root.Lampa.Player.play(two);Object.assign(two.timeline,{time:200,duration:1440,percent:14});env.state.videoEvents.ended();assert.equal(two.timeline.percent,14);
 });

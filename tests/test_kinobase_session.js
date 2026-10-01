@@ -80,3 +80,11 @@ test('metadata worker forwards a real HTTP 404 without treating it as a ready pl
  const s=worker();s.status=404;s.body='Not found';s.send({type:'request',id:8,url:'https://kinobase.org/user_data?secret=x'});
  assert.equal(s.messages.at(-1).type,'response');assert.equal(s.messages.at(-1).status,404);assert.equal(s.messages.at(-1).id,8);
 });
+
+test('IntroDB metadata is allowed but arbitrary API paths, writes and redirects are rejected',()=>{
+ const url='https://api.introdb.app/segments?imdb_id=tt0903747&season=1&episode=1',s=worker();s.send({type:'request',id:1,url});assert.equal(s.urls[0][0],url);assert.equal(s.listens,0);
+ for(const bad of [url+'&url=https://evil.test',url+'#x','https://api.introdb.app/segments/submit','https://api.introdb.app.evil.test/segments?imdb_id=tt1&is_movie=true','https://api.introdb.app/segments?imdb_id=tt1&is_movie=true\n']){
+ const t=worker();t.send({type:'request',id:1,url:bad});assert.equal(t.urls.length,0);
+ }
+ const c=client();c.state.request(url);assert.equal(c.state.workers.length,1);
+});

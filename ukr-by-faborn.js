@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.22 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.23 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.22';
+    var VERSION = '0.1.0-beta.23';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null;
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
@@ -16,6 +16,7 @@
     var pendingRequest, playbackTimer, watchedPlayback, playbackContext, historyPlayback;
     var torrentRows = [], torrentFiles = [], pendingTorrent = null, torrentListRelease = '', progressPaintTimer, progressWriting = false;
     var playbackWatchSerial = 0, playerVoiceContext = null, voiceSwitch = null, voiceResume = null;
+    var playbackQueue = null, skipUI = null, skipScript = null, lastProgressPlayback = null;
     var seasonMetadata = {}, seasonMetadataOrder = [];
     var directTrace = [], presentation = null;
     var capturedBase = detectBase();
@@ -1421,7 +1422,7 @@
         save('source_status',status);
         if (canPresent()) return showPresentation(session,view);
         if (view.qualities.length > 1) rows.push({title:'Якість: '+qualityLabel(view.quality),subtitle:'Змінити якість',action:'quality'});
-        if (session.title.type === 'tv') rows.push({title:'Сезон '+session.season+' · Серія '+session.episode,subtitle:'Змінити сезон або серію',action:'episode'});
+        if (session.title.type === 'tv') rows.push({title:'Сезон '+session.season+' · Серія '+session.episode,subtitle:'Змінити сезон або серію',action:'episode',selected:session.uiFocus === 'episode'});
         var last = lastPosition(session);
         if (last) rows.push({title:'Ви дивилися S'+last.season+'E'+last.episode,subtitle:progressLabel(last),action:'last'});
         var focused = view.groups.filter(function (group) { return group.key === session.focusVoice; })[0] || view.groups[0];
@@ -1433,7 +1434,7 @@
         view.groups.forEach(function (group) {
             var entry = group.entries[0], many = group.entries.length > 1;
             var names = unique(group.entries.map(function (item) { return sourceName(item.release.source); }));
-            rows.push({title:languageLabel(group.language)+group.voice,subtitle:qualityLabel(view.quality)+' · '+(many ? 'Джерела: ' : '')+names.join(', ')+subtitleHint(entry.episode),action:many ? 'sources' : 'play',group:group,release:entry.release,episode:entry.episode,value:entry.value,selected:group === focused});
+            rows.push({title:languageLabel(group.language)+group.voice,subtitle:qualityLabel(view.quality)+' · '+(many ? 'Джерела: ' : '')+names.join(', ')+subtitleHint(entry.episode),action:many ? 'sources' : 'play',group:group,release:entry.release,episode:entry.episode,value:entry.value,selected:session.uiFocus !== 'episode' && group === focused});
         });
         if (!view.groups.length) rows.push({title:'Для цієї назви немає доступного потоку',subtitle:'Можна повторити пошук. Причини: Налаштування → ukr by Faborn → Версія та діагностика.',action:'retry'});
         var issue = kinoIssue(session,view);
@@ -1486,7 +1487,7 @@
         session.screen = 'episodes'; session.episodeFocus = 'ep-'+session.episode;
         var season = session.season, key = metadataKey(session,season);
         function back() { session.uiFocus = 'episode'; if (direct) renderSources(session); else chooseSeason(session); }
-        function choose(number) { session.episode = number; session.uiFocus = 'episode'; prepareSelection(session); }
+        function choose(number) { session.episode = number; session.uiFocus = 'play'; prepareSelection(session); }
         function draw() {
             if (activeSession !== session || session.screen !== 'episodes' || session.season !== season) return;
             var metadata = seasonMetadata[key] && seasonMetadata[key].items || [];
@@ -1663,6 +1664,13 @@
         }
     }
     function finishHistory() { savePlaybackProgress(true); historyPlayback = null; }
+    function completePlayback(data) {
+        if (!data || data !== historyPlayback || !data.timeline || !(data.timeline.duration > 0)) return;
+        data.faborn_watched=true;
+        data.timeline.percent=100;data.timeline.time=data.timeline.duration;
+        data.timeline.waiting_for_user=true;
+        savePlaybackProgress(true,true);
+    }
 
     function torrentFileKey(data) {
         return data && /^[a-z0-9]{16,64}$/i.test(text(data.torrent_hash)) && /^\d+$/.test(text(data.id)) ? 'faborn-torrent|'+text(data.torrent_hash).toLowerCase()+'|'+data.id : '';
@@ -1839,7 +1847,8 @@
         title.releases.forEach(function (r) {
             if (r.source !== release.source) return;
             r.episodes.some(function (e) {
-                if (e.season !== episode.season || e.episode !== episode.episode || e.error || !e.resolvedAt || qualityNames(e).indexOf(quality) < 0) return false;
+                // Listed alternatives are resolved and checked by switchPlayerVoice on selection.
+                if (e.season !== episode.season || e.episode !== episode.episode || e.error || qualityNames(e).indexOf(quality) < 0) return false;
                 var key = (r.audioLanguage || 'uk')+'|'+voiceLabel(r,e);
                 if (!seen[key]) { rows.push({release:r,episode:e,value:quality}); seen[key] = rows.length; }
                 else if (r.id === release.id) rows[seen[key]-1] = {release:r,episode:e,value:quality};
@@ -1935,6 +1944,9 @@
             if (data.timeline) { data.timeline.time = pending.time; data.timeline.continued = true; data.timeline.waiting_for_user = false; }
             voiceResume = pending;
             setPlayerVoices(data,context.movie,context.catalog,context.title,row.release,row.episode);
+            prepareEpisodeQueue(context.movie,context.catalog,context.title,row.release,row.episode,data,quality);
+            queueStarted(data);
+            if (skipUI) skipUI.start(data);
             if (L.PlayerVideo.clearParamas) L.PlayerVideo.clearParamas();
             if (L.PlayerPanel) {
                 if (L.PlayerPanel.setTranslate) L.PlayerPanel.setTranslate(data.translate || {});
@@ -2066,9 +2078,91 @@
             }
             stopKinoSession();
             closePresentation(); L.Select.hide(); L.Controller.toggle(returnController);
-            // Only the selected episode has been checked. Never enqueue unresolved streams.
+            // Other episodes receive lazy resolvers; each stream is checked before playback.
             handoff(movie,catalog,title,release,episode,preference,[]);
         });
+    }
+    function queueSelection(queue,entry) {
+        var session=queue.catalog.session;
+        if (!session) return;
+        session.season=entry.episode.season;session.episode=entry.episode.episode;
+        session.qualityPreference=entry.data.faborn_quality;
+        session.focusVoice=(entry.release.audioLanguage || 'uk')+':'+normalize(voiceLabel(entry.release,entry.episode));
+        session.uiFocus=queue.title.type === 'tv' ? 'episode' : 'play';
+    }
+    function returnFromPlayer(queue) {
+        // If another extension took over without replacing our callback, use Lampa's normal exit.
+        if (!queue || queue !== playbackQueue) { L.Controller.toggle('content');return; }
+        queue.closed=true;queue.loading=false;queue.serial++;
+        cancelPending();stopKinoSession();
+        var session=queue.catalog.session;
+        if (!session) return restore();
+        activeSession=session;session.ready=true;
+        renderSources(session);
+    }
+    function resolveQueueEntry(queue,entry,done) {
+        if (queue !== playbackQueue || queue.closed || queue.loading) return;
+        var current=L.Player.playdata && L.Player.playdata();
+        if (!current || !queue.entries.some(function (row) { return row.data === current; })) return;
+        queue.loading=true;var run=++queue.serial;
+        cancelPending();var serial=requestSerial;
+        function valid() { return playbackQueue===queue && !queue.closed && run===queue.serial && L.Player.playdata()===current; }
+        function fail(error) {
+            if (!valid()) return;
+            queue.loading=false;entry.episode.error=text(error && error.message || error);
+            notify('Наступна серія не запустилася: '+entry.episode.error);
+            // Closing releases Lampa's lazy-URL loading lock and restores the existing source window.
+            if (L.Player.close) L.Player.close();
+        }
+        resolveEpisode(serial,queue.title,entry.release,entry.episode,function (error) {
+            if (!valid()) return;
+            if (error) return fail(error);
+            var url=pickURL(entry.episode,queue.preference);
+            if (!url) return fail(new Error('Немає потоку для цієї серії.'));
+            episodeRequest(serial,entry.episode,url,'Наступна серія',function (error) {
+                if (!valid()) return;
+                if (error) return fail(error);
+                var quality=Object.keys(entry.episode.qualities || {}).filter(function (q) { return entry.episode.qualities[q] === pickURL(entry.episode,queue.preference); })[0] || queue.preference;
+                var resolved=playData(queue.movie,queue.title,entry.release,entry.episode,quality);
+                // Finish the old video's ended listeners before starting the next one.
+                root.setTimeout(function () {
+                    if (!valid()) return;
+                    Object.keys(resolved).forEach(function (key) { entry.data[key]=resolved[key]; });
+                    queue.loading=false;queue.transition=true;
+                    stopKinoSession();done();queue.transition=false;
+                },0);
+            });
+        },true);
+    }
+    function queueStarted(data) {
+        var queue=playbackQueue;
+        if (!queue) return;
+        var entry=queue.entries.filter(function (row) { return row.data === data; })[0];
+        if (!entry) { queue.closed=true;queue.serial++;playbackQueue=null;return; }
+        queue.closed=false;queue.transition=false;queue.current=entry;
+        queueSelection(queue,entry);
+        queue.entries.forEach(function (row) {
+            if (row !== entry) row.data.url=function (done) { resolveQueueEntry(queue,row,done); };
+        });
+        setPlayerVoices(data,queue.movie,queue.catalog,queue.title,entry.release,entry.episode);
+        playbackContext={movie:queue.movie,catalog:queue.catalog};
+        save('last_launch',queue.title.title+' · '+data.faborn_quality+' · '+sourceName(entry.release.source)+' · '+entry.release.voice+' · S'+data.season+'E'+data.episode);
+        if (L.Player.callback) L.Player.callback(function () { returnFromPlayer(queue); });
+    }
+    function prepareEpisodeQueue(movie,catalog,title,release,episode,data,preference) {
+        if (playbackQueue) { playbackQueue.closed=true;playbackQueue.serial++; }
+        var queue={movie:movie,catalog:catalog,title:title,preference:preference,entries:[],serial:0,closed:false,loading:false,transition:false};
+        var episodes=title.type === 'tv' ? availablePlaylist(release,episode) : [episode];
+        if (!episodes.length) episodes=[episode];
+        episodes.forEach(function (item) {
+            var entry={release:release,episode:item,data:item === episode ? data : playData(movie,title,release,item,preference)};
+            if (item !== episode) entry.data.url=function (done) { resolveQueueEntry(queue,entry,done); };
+            queue.entries.push(entry);
+        });
+        playbackQueue=queue;
+        if (L.Player.callback) L.Player.callback(function () { returnFromPlayer(queue); });
+        if (L.Player.playlist) L.Player.playlist(title.type === 'tv' ? queue.entries.map(function (entry) { return entry.data; }) : []);
+        return queue;
     }
     function handoff(movie,catalog,title,release,episode,preference,playlist) {
         var data = playData(movie,title,release,episode,preference);
@@ -2078,7 +2172,7 @@
         save('last_launch',title.title+' · '+preference+' · '+sourceName(release.source)+' · '+release.voice+' · передано плеєру');
         save('last_' + title.id,episode.id);
         if (catalog.direct) trace('Плеєр Lampa','передано ' + preference);
-        if (L.Player.playlist) L.Player.playlist(playlist);
+        prepareEpisodeQueue(movie,catalog,title,release,episode,data,preference);
         L.Player.play(data);
     }
     function diagnostics() {
@@ -2091,6 +2185,7 @@
 
             if (storage('last_error', '')) lines.push('Остання помилка плеєра: ' + storage('last_error', ''));
             if (storage('last_launch', '')) lines.push('Останній запуск: ' + storage('last_launch', ''));
+            if (skipUI) lines.push('Вступ і титри: '+skipUI.status());
             if (lastDiagnostic) lines.push(lastDiagnostic);
             storage('source_status',[]).forEach(function (line) { lines.push(line); });
             var sourceTrace = storage('direct_trace', []);
@@ -2191,6 +2286,37 @@
         saverScript.onload=ready;saverScript.onerror=function () { saverScript=null; };
         root.document.head.appendChild(saverScript);
     }
+    function markerRequest(url,done) {
+        var cancelled=false,client=null,req;
+        var handle={abort:function () { cancelled=true;if(req && req.abort)req.abort();if(client)client.cancel(); }};
+        req=xhr(url,function (error,body) {
+            if(cancelled)return;
+            if(!error)return done(null,body);
+            if(!L.Platform || !L.Platform.is('tizen'))return done(error);
+            // Some API deployments restrict browser CORS. Samsung requests metadata directly,
+            // using the same bounded HTTPS adapter as KinoBase, in an independent session.
+            ensureKinoSession(function (loadError) {
+                if(cancelled)return;
+                if(loadError)return done(loadError);
+                client=root.FabornKinoSession(root,baseURL()+'lib/4klab/',VERSION);
+                req=client.request(url,function (nativeError,nativeBody) {
+                    client.cancel();client=null;
+                    if(!cancelled)done(nativeError,nativeBody);
+                });
+            });
+        },6000);
+        return handle;
+    }
+    function loadSkip() {
+        if(!root.document || !root.document.createElement || !root.document.head || skipUI || skipScript || !baseURL())return;
+        function ready() {
+            if(typeof root.FabornSkip !== 'function')return;
+            skipUI=root.FabornSkip(root,L,{request:markerRequest,complete:completePlayback});skipUI.install();
+        }
+        if(typeof root.FabornSkip === 'function')return ready();
+        skipScript=root.document.createElement('script');skipScript.src=baseURL()+'lib/faborn-skip.js?v='+VERSION;skipScript.async=true;
+        skipScript.onload=ready;skipScript.onerror=function(){skipScript=null;};root.document.head.appendChild(skipScript);
+    }
     function learnSourceQuality(session) {
         if (!interfaceUI || !session.movie.id) return;
         var qualities = [], languages = [];
@@ -2209,6 +2335,9 @@
         var api = L.SettingsApi;
         if (!api || !api.addComponent || !api.addParam) return;
         api.addComponent({component: 'faborn_ukr', name: NAME, icon: ICON});
+        ['intro','credits'].forEach(function(kind) {
+            api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_skip_'+kind,type:'select',values:{on:'Увімкнено',off:'Вимкнено'},default:'off'},field:{name:kind==='intro' ? 'Пропуск вступу за мітками' : 'Пропуск титрів за мітками',description:'Кнопка з відліком 7 секунд на мітці відео. OK — одразу, Назад — скасувати. Без міток нічого не пропускається.'},onChange:function(){if(skipUI)skipUI.start(L.Player.playdata());}});
+        });
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_buttons',type:'button'},field:{name:'Порядок кнопок у картці',description:'Переміщення іконок зі збереженням після перезапуску. Також доступне довгим натисканням іконки Faborn.'},onChange:function () { if(interfaceUI) interfaceUI.editButtons(); }});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_button',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Кнопка торрентів',description:'Штатний пошук Lampa з твоїми налаштуваннями парсера і TorrServer.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_style',type:'select',values:{on:'Faborn',off:'Стандартна Lampa'},default:'on'},field:{name:'Оформлення торрентів',description:'Бейджі релізу, пріоритет Toloka та «Рекомендуємо» від 50 сідів за даними парсера.'},onChange:applyAppearance});
@@ -2303,6 +2432,7 @@
                 clearPlaybackWatch();
                 cancelVoiceSwitch();
                 if (playerVoiceContext && playerVoiceContext.data !== data) playerVoiceContext = null;
+                queueStarted(data);
                 finishHistory();
                 if (data && prepareTorrentProgress(data)) { historyPlayback = data;return; }
                 var labOwned = data && data === labPlaybackData && data.faborn_4klab === true;
@@ -2313,12 +2443,18 @@
                 if (!labOwned) watchPlayback(data);
             });
             L.Player.listener.follow('ready', watchNativeError);
-            L.Player.listener.follow('destroy', function () { cancelVoiceSwitch(); playerVoiceContext = null; clearPlaybackWatch(); finishHistory(); });
+            L.Player.listener.follow('destroy', function () {
+                if (playbackQueue && !playbackQueue.transition) { playbackQueue.closed=true;playbackQueue.serial++;playbackQueue.loading=false;cancelPending(); }
+                cancelVoiceSwitch(); playerVoiceContext = null; clearPlaybackWatch(); finishHistory();
+            });
         }
         if (L.PlayerPanel && L.PlayerPanel.listener) L.PlayerPanel.listener.follow('quality',function (event) {
             var context = playerVoiceContext;
             if (!context || !event || L.Player.playdata() !== context.data) return;
             context.data.faborn_quality = event.name; context.data.faborn_url = event.url;
+            if(playbackQueue && playbackQueue.current && playbackQueue.current.data === context.data) {
+                playbackQueue.preference=event.name;queueSelection(playbackQueue,playbackQueue.current);
+            }
             updateVoiceSelection(context);
         });
         if (L.PlayerVideo && L.PlayerVideo.listener) {
@@ -2328,14 +2464,11 @@
                 resumePlayerVoice();
                 if (watchedPlayback && event && event.current > 0) clearPlaybackWatch();
                 if (historyPlayback && event && event.current > 0 && event.duration > 0 && historyPlayback.timeline && !historyPlayback.timeline.waiting_for_user) {
-                    historyPlayback.faborn_watched = true; savePlaybackProgress(false);
+                    lastProgressPlayback=historyPlayback;historyPlayback.faborn_watched = true; savePlaybackProgress(false);
                 }
             });
             L.PlayerVideo.listener.follow('ended', function () {
-                if (historyPlayback && historyPlayback.timeline && historyPlayback.timeline.duration > 0) {
-                    historyPlayback.timeline.percent = 100; historyPlayback.timeline.time = historyPlayback.timeline.duration;
-                    savePlaybackProgress(true,true);
-                }
+                if(historyPlayback === lastProgressPlayback)completePlayback(historyPlayback);
             });
             L.PlayerVideo.listener.follow('error', function (event) {
                 playbackError(event, watchedPlayback);
@@ -2345,6 +2478,7 @@
         applyAppearance();
         loadInterface();
         loadScreensaver();
+        loadSkip();
     }
     function boot() {
         var tries = 0;
