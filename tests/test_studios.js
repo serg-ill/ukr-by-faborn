@@ -72,3 +72,9 @@ test('brand names remain as fallback until local logo has loaded',()=>{
  const e=environment();e.api.syncStudios(e.home);const b=e.button(0),name=b.children[0],logo=b.children[1];assert.equal(name.textContent,'Netflix');assert.equal(logo.src,'https://pages.test/assets/studios/netflix.png');assert.ok(!b.classes.has('fbr-studio--loaded'));
  logo.onload();assert.ok(b.classes.has('fbr-studio--loaded'));const second=e.button(1);e.home.studioRow.destroy();second.children[1].onload();assert.ok(!second.classes.has('fbr-studio--loaded'));
 });
+
+test('classic source menus retain studio collections unless explicitly disabled',()=>{
+ const e=environment();e.values.faborn_ukr_layout='classic';e.api.syncStudios(e.home);assert.equal(e.component.items.length,3);
+ e.button(0).events['hover:enter']();e.menus[0].onSelect({kind:'tv'});assert.deepEqual(e.pushes[0],ui.studioRequest('netflix','tv'));
+ e.values.faborn_ukr_studios='off';e.api.syncStudios(e.home);assert.deepEqual(e.component.items,[e.first,e.second]);assert.equal(e.values.faborn_ukr_layout,'classic');
+});

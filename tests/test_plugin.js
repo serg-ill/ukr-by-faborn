@@ -1053,3 +1053,18 @@ test('torrent shortcut explains when its native component is unavailable',()=>{
 test('card button identity excludes release version and retains a nonvisual name for editors',()=>{
  for(const kind of ['online','torrent']){const html=api.buttonMarkup(kind);assert.ok(!html.includes(api.version));assert.match(html,/data-faborn-action=/);assert.match(html,/<span[^>]+display:none!important/);assert.match(html,/font-size:0!important/);assert.match(html,/<svg/);}
 });
+
+test('classic episode menus keep safe thumbnails, titles, synopsis and progress',()=>{
+ const env=kinoEnvironment({series:true});env.state.storage.faborn_ukr_layout='classic';let loaded;
+ env.root.Lampa.Api={sources:{tmdb:{get(url,params,success){loaded=success;}}}};
+ env.state.timelines['faborn|tmdb-tv-1668|1|1']={time:510,duration:1440,percent:35};
+ env.instance.open(kinoSeries);env.state.choose(i=>i.action==='episode');env.state.choose(i=>i.value===1);
+ loaded({episodes:[{episode_number:1,name:'Пілот',still_path:'/photo.jpg',overview:'Короткий <b>опис</b>'},{episode_number:2,name:'Друга',still_path:'javascript:bad',overview:''}]});
+ const rows=env.state.menu.items;assert.equal(rows[0].thumbnail,'https://image.tmdb.org/t/p/w300/photo.jpg');assert.match(rows[0].title,/Пілот/);assert.match(rows[0].subtitle,/8:30/);assert.match(rows[0].subtitle,/Короткий опис/);assert.equal(rows[1].thumbnail,'');
+ env.state.choose(i=>i.value===2);env.state.play('1080p');assert.equal(env.state.played.episode,2);
+});
+test('classic source menus expose the same continue action and preserve the player timecode',()=>{
+ const env=kinoEnvironment();env.state.storage.faborn_ukr_layout='classic';env.state.storage.player_timecode='continue';const field=env.root.Lampa.Storage.field;env.root.Lampa.Storage.field=k=>k==='player_timecode'?env.state.storage.player_timecode:field(k);env.state.timelines['faborn|tmdb-movie-280|0|0']={time:510,duration:7000,percent:7};
+ env.instance.open(kinoMovie);env.state.choose(i=>/^Продовжити з 8:30/.test(i.title));assert.equal(env.state.played.timeline.time,510);assert.equal(env.state.storage.faborn_ukr_layout,'classic');
+ env.root.Lampa.Player.close();env.state.storage.player_timecode='ask';env.instance.open(kinoMovie);assert.ok(!env.state.menu.items.some(i=>/^Продовжити з/.test(i.title)));
+});

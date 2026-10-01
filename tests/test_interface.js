@@ -14,7 +14,7 @@ test('quality cache stays bounded without storing stream URLs',()=>{const {ui,da
 test('personal rating persists locally, is separate for TV and can be removed',()=>{const {ui}=environment(),m={id:3};assert.equal(ui.localRating(m),0);ui.localRating(m,8);assert.equal(ui.localRating(m),8);assert.equal(ui.localRating({id:3,media_type:'tv'}),0);ui.localRating(m,0);assert.equal(ui.localRating(m),0);assert.equal(ui.localRating({},10),0);});
 test('home enhancement ignores actors, trailers and nonmovie utility rows',()=>{const {ui}=environment(),movie={id:1,title:'Film',poster_path:'/p.jpg'};assert.ok(ui.isMovieLine({results:[movie]}));assert.ok(!ui.isMovieLine({type:'shots',results:[movie]}));assert.ok(!ui.isMovieLine({results:[{...movie,known_for_department:'Acting'}]}));assert.ok(!ui.isMovieLine({results:[]}));});
 test('native line pagination and callbacks are retained with four posters per batch',()=>{const {ui}=environment(),data={results:[{id:1,title:'Film',poster_path:'/p.jpg'}]},hooks=[];const line={view:7,params:{items:{view:7}},use(h){hooks.push(h);}};ui.enhanceLine(line,data);assert.equal(line.view,4);assert.equal(line.params.items.view,4);assert.equal(data.results[0].params.style.name,'default');assert.equal(hooks.length,1);});
-test('standard Lampa disables home transformation without rewriting its input',()=>{const {ui,data}=environment();data.faborn_ukr_layout='classic';const line={view:7,use(){throw Error('should not alter native line');}};ui.enhanceLine(line,{results:[{id:1,title:'Film',poster_path:'/p.jpg'}]});assert.equal(line.view,7);});
+test('the explicit home switch disables transformation without rewriting its input',()=>{const {ui,data}=environment();data.faborn_ukr_home='off';const line={view:7,use(){throw Error('should not alter native line');}};ui.enhanceLine(line,{results:[{id:1,title:'Film',poster_path:'/p.jpg'}]});assert.equal(line.view,7);});
 test('button order preserves saved IDs with missing, new or duplicate actions',()=>{
  const {ui}=environment();assert.deepEqual(ui.orderedKeys(['online','torrent','watch','bookmark'],['torrent','missing','online','torrent']),['torrent','online','watch','bookmark']);assert.deepEqual(ui.orderedKeys(['watch','torrent','online'],null),['online','torrent','watch']);
 });
@@ -86,10 +86,21 @@ test('leaving the card or choosing manual quality prevents a delayed background 
 });
 
 test('feed appearance is reversible and hiding is independent of the global theme',()=>{
- const {ui,data}=environment();assert.equal(ui.feedMode(),'compact');data.faborn_ukr_feed='native';assert.equal(ui.feedMode(),'native');data.faborn_ukr_feed='compact';data.faborn_ukr_layout='classic';assert.equal(ui.feedMode(),'native');data.faborn_ukr_feed='off';assert.equal(ui.feedMode(),'off');
+ const {ui,data}=environment();assert.equal(ui.feedMode(),'compact');data.faborn_ukr_feed='native';assert.equal(ui.feedMode(),'native');data.faborn_ukr_feed='compact';data.faborn_ukr_layout='classic';assert.equal(ui.feedMode(),'compact');data.faborn_ukr_feed='off';assert.equal(ui.feedMode(),'off');
 });
 test('feed summaries distinguish episodes from films and preserve missing-data fallback',()=>{
  const {ui}=environment(),fallback={title:'Native title',meta:'IMDb 8.2'};
  assert.deepEqual(ui.feedSummary({card_type:'tv',data:{name:'Series',first_air_date:'2020-03-01'}},fallback),{title:'Series',meta:'2020 · Серіал',movie:{name:'Series',first_air_date:'2020-03-01'}});
  assert.equal(ui.feedSummary({card_type:'movie',data:{title:'Film',release_date:'2023-01-01'}},fallback).meta,'2023 · Фільм');assert.equal(ui.feedSummary(null,fallback).meta,'IMDb 8.2');assert.equal(ui.feedSummary(null,fallback).title,'Native title');
+});
+
+for(const layout of ['panel','cinema','classic'])test('layout '+layout+' preserves enabled features and respects their own switches',()=>{
+ const {ui,data}=environment();data.faborn_ukr_layout=layout;
+ const line={view:7,params:{items:{}},use(){}};
+ ui.enhanceLine(line,{results:[{id:1,title:'Film',poster_path:'/p.jpg'}]});assert.equal(line.view,4);
+ assert.match(ui.homeRatingMarkup({vote_average:8},null,false),/TMDB/);assert.equal(ui.feedMode(),'compact');
+ data.faborn_ukr_ratings='off';assert.equal(ui.homeRatingMarkup({vote_average:8},null,false),'');
+ data.faborn_ukr_home='off';const native={view:7,use(){throw Error('disabled home');}};ui.enhanceLine(native,{results:[{id:1,title:'Film',poster_path:'/p.jpg'}]});assert.equal(native.view,7);
+ data.faborn_ukr_feed='native';assert.equal(ui.feedMode(),'native');data.faborn_ukr_feed='off';assert.equal(ui.feedMode(),'off');
+ assert.equal(data.faborn_ukr_layout,layout);
 });

@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.20 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.20.1 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.20';
+    var VERSION = '0.1.0-beta.20.1';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null;
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
@@ -308,6 +308,9 @@
         if (+progress.time > 0) return clockLabel(progress.time)+(progress.duration ? ' / '+clockLabel(progress.duration) : '');
         return 'Ще не дивилися';
     }
+    function canResume(progress) {
+        return +progress.time > 10 && +progress.percent > 0 && +progress.percent < 90 && L.Storage.field && L.Storage.field('player_timecode') === 'continue';
+    }
     function lastPosition(session) {
         var last = storage('position_'+session.title.id,{});
         return last && last.updated && +last.season > 0 && +last.episode > 0 ? last : null;
@@ -367,7 +370,7 @@
             if (issue) content += btn('kinostatus',escapeHTML(issue.title)+'<span class="fbr-small">'+escapeHTML(issue.message)+'</span>','fbr-last',false,function () { kinoDetails(session); });
             content += btn('refresh','Оновити джерела','fbr-refresh',false,function () { startDiscovery(session.movie); });
         }
-        var play = '', resume = +progress.time > 10 && +progress.percent > 0 && +progress.percent < 90 && L.Storage.field && L.Storage.field('player_timecode') === 'continue';
+        var play = '', resume = canResume(progress);
         if (!busy && selected) play = btn('play','&#9654; '+(resume ? 'Продовжити з '+clockLabel(progress.time) : 'Дивитися'),'fbr-play',false,function () { session.focusVoice = selected.key; selectStream(session,selected.entries[0]); });
         var hint = busy ? 'Назад — скасувати' : selected ? selected.voice+' · '+qualityLabel(view.quality)+' · '+sourceName(selected.entries[0].release.source) : 'Назад — повернутися до картки';
         if (!busy && selected) hint += subtitleHint(selected.entries[0].episode);
@@ -1418,6 +1421,11 @@
         var last = lastPosition(session);
         if (last) rows.push({title:'Ви дивилися S'+last.season+'E'+last.episode,subtitle:progressLabel(last),action:'last'});
         var focused = view.groups.filter(function (group) { return group.key === session.focusVoice; })[0] || view.groups[0];
+        var progress = progressFor(session);
+        if (focused && canResume(progress)) {
+            var next = focused.entries[0];
+            rows.push({title:'Продовжити з '+clockLabel(progress.time),subtitle:focused.voice+' · '+qualityLabel(view.quality)+' · '+sourceName(next.release.source),action:'play',group:focused,release:next.release,episode:next.episode,value:next.value});
+        }
         view.groups.forEach(function (group) {
             var entry = group.entries[0], many = group.entries.length > 1;
             var names = unique(group.entries.map(function (item) { return sourceName(item.release.source); }));
@@ -1483,7 +1491,14 @@
                 var progress = episodeTimeline(session.title,{season:season,episode:e});
                 return {title:'Серія '+e+(info.name ? ' · '+info.name : ''),subtitle:progressLabel(progress),value:e,selected:e === session.episode,info:info,progress:progress};
             });
-            if (!canPresent()) return select('Сезон '+season,rows,function (row) { choose(row.value); },back);
+            if (!canPresent()) {
+                rows.forEach(function (row) {
+                    row.thumbnail = episodeImage(row.info.still_path);
+                    var overview = plain(row.info.overview || '');
+                    if (overview) row.subtitle += ' · '+overview.slice(0,180)+(overview.length > 180 ? '…' : '');
+                });
+                return select('Сезон '+season,rows,function (row) { choose(row.value); },back);
+            }
             closePresentation(); L.Select.hide();
             var actions = {close:back}, content = '<h2 class="fbr-title">Сезон '+season+'</h2><div class="fbr-meta">'+escapeHTML(session.title.title)+'</div>';
             rows.forEach(function (row) {
@@ -2039,7 +2054,7 @@
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_ratings',type:'select',values:{on:'Faborn',off:'Стандартні'},default:'on'},field:{name:'Рейтинги Faborn',description:'IMDb / TMDB на головній і компактна панель у картці. Доступні RT / Metacritic завантажуються автоматично. Твоя оцінка зберігається на цьому пристрої.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_badges',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Бейджі якості Faborn',description:'Кольорові позначки онлайн-джерел і знайдених торрентів. Формат береться з даних конкретного релізу.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_quality',type:'select',values:{auto:'Автоматично в картці',search:'Лише після пошуку торрентів'},default:'auto'},field:{name:'Якість із торрентів',description:'Шукає метадані через налаштований парсер Lampa. Кеш на добу; завантаження відео не починається.'},onChange:applyAppearance});
-        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_layout', type: 'select', values: {panel:'Панель', cinema:'Кінозал', classic:'Стандартне Lampa'}, default: 'panel'}, field: {name: 'Оформлення модуля', description: '«Стандартне Lampa» — штатні вікна та фокус, без кольорових акцентів Faborn у всій системі.'}, onChange: applyAppearance});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_layout', type: 'select', values: {panel:'Панель', cinema:'Кінозал', classic:'Стандартне Lampa'}, default: 'panel'}, field: {name: 'Оформлення модуля', description: 'Стандартне — штатні вікна й нейтральні кольори. Рейтинги, головна, студії та інші функції працюють у всіх трьох режимах і мають власні перемикачі.'}, onChange: applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_theme', type: 'select', values: {on:'Faborn', ios:'iOS · Liquid Glass', off:'Стандартна Lampa'}, default: 'on'}, field: {name: 'Тема всієї Lampa', description: 'iOS — скляні меню, картки та вікна. Застосовується одразу; зі стандартного оформлення переходить у «Панель».'}, onChange: changeTheme});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_glass_transparency',type:'select',values:{solid:'Непрозоре',low:'Низька',standard:'Стандартна',high:'Висока',max:'Максимальна'},default:'standard'},field:{name:'Прозорість скла iOS',description:'Для теми iOS · Liquid Glass. Вища прозорість — краще видно фон крізь меню, кнопки й вікна. Застосовується одразу.'},onChange:applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_accent', type: 'select', values: {blue:'Синій', amber:'Бурштиновий', mint:'М’ятний', violet:'Фіолетовий', aurora:'Синій → фіолетовий', lagoon:'Бірюзовий → синій'}, default: 'blue'}, field: {name: 'Колір акценту', description: 'Колір або градієнт для «Панелі» та «Кінозалу». У стандартному оформленні не застосовується.'}, onChange: applyAppearance});

@@ -75,5 +75,5 @@ test('home backdrop includes navigation only on enhanced main, never on full car
  state.component='full';ui.syncHomeBackdrop();assert.equal(active(),false);
  state.component='main';player.opened=true;ui.syncHomeBackdrop();assert.equal(active(),false);
  player.opened=false;values.faborn_ukr_home='off';ui.syncHomeBackdrop();assert.equal(active(),false);
- values.faborn_ukr_home='on';values.faborn_ukr_layout='classic';ui.syncHomeBackdrop();assert.equal(active(),false);
+ values.faborn_ukr_home='on';values.faborn_ukr_layout='classic';ui.syncHomeBackdrop();assert.equal(active(),true);
 });
