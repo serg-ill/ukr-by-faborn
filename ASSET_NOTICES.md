@@ -10,11 +10,16 @@ Retrieved 2026-10-01. SVG editor metadata and global CSS classes were removed; t
 
 Dolby and the double-D symbol, Dolby Atmos and Dolby Vision are trademarks of Dolby Laboratories. These marks identify declared media formats; they do not imply certification, affiliation or endorsement of this plugin. A format badge describes the release metadata, not a guarantee of hardware playback support.
 
-## Starfield motion
+## Screensaver motion
 
-The radial star motion in `lib/faborn-screensaver.js` is adapted from [AnnikaV9/starfield.js](https://github.com/AnnikaV9/starfield.js), commit `103c2c2c6c6b354efa2f871bfcca3e9a6d969848` (source header 1.5.0). Retrieved 2026-10-01.
+Two MIT sources were reviewed and adapted into the bounded ES5 Canvas implementation in `lib/faborn-screensaver.js`, retrieved 2026-10-01:
 
-Copyright (c) 2024 carrot. MIT license: [lib/STARFIELD-LICENSE](lib/STARFIELD-LICENSE). The adaptation uses ES5, bounded Canvas resolution and star count, reduced frame rate, a cancellable lifecycle, and Lampa's native idle layer. Aurora, clock, settings and playback/input guards are implemented in this project. No third-party script is fetched while a screensaver is running.
+- Perspective/depth stars and reset model: [tdous/star-field-canvas](https://github.com/tdous/star-field-canvas), commit `28c139ebdbc538b85bcd01ea084aee0044ce303b`. Copyright (c) 2019 Tom. License: [lib/SAVER-WARP-LICENSE](lib/SAVER-WARP-LICENSE).
+- Moving digital-rain heads and tails: [carlnewton/digital-rain](https://github.com/carlnewton/digital-rain), commit `0ceec4cb06437b489b403e0e9488465d99bfeaae`. Copyright (c) 2019 Carl Newton. License: [lib/SAVER-MATRIX-LICENSE](lib/SAVER-MATRIX-LICENSE).
+
+The adaptations use fixed particle/column bounds, cached glow sprites and a glyph atlas, reduced frame rate, a cancellable lifecycle, and Lampa's native idle layer. Aurora, twinkling night sky, meteors, nebula, waves, ribbons, bokeh, fireflies, rainy skyline, orbits, clock, settings and playback/input guards are implemented in this project. No third-party script, video or remote media is fetched while a screensaver is running.
+
+Historical beta.18–19 radial-star inspiration: [AnnikaV9/starfield.js](https://github.com/AnnikaV9/starfield.js), commit `103c2c2c6c6b354efa2f871bfcca3e9a6d969848`, Copyright (c) 2024 carrot. Its [MIT notice](lib/STARFIELD-LICENSE) is retained. Beta.20 replaces that radial scene with the night-sky and separate depth-flight renderers.
 
 ## Studio and service logos
 

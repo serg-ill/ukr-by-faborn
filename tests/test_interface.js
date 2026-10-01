@@ -84,3 +84,12 @@ test('leaving the card or choosing manual quality prevents a delayed background 
  const e=automaticQuality();e.ui.requestTorrentQuality(e.record);e.navigate();e.run();assert.equal(e.calls.length,0);
  const f=automaticQuality();f.ui.requestTorrentQuality(f.record);f.values.faborn_ukr_torrent_quality='search';f.run();assert.equal(f.calls.length,0);
 });
+
+test('feed appearance is reversible and hiding is independent of the global theme',()=>{
+ const {ui,data}=environment();assert.equal(ui.feedMode(),'compact');data.faborn_ukr_feed='native';assert.equal(ui.feedMode(),'native');data.faborn_ukr_feed='compact';data.faborn_ukr_layout='classic';assert.equal(ui.feedMode(),'native');data.faborn_ukr_feed='off';assert.equal(ui.feedMode(),'off');
+});
+test('feed summaries distinguish episodes from films and preserve missing-data fallback',()=>{
+ const {ui}=environment(),fallback={title:'Native title',meta:'IMDb 8.2'};
+ assert.deepEqual(ui.feedSummary({card_type:'tv',data:{name:'Series',first_air_date:'2020-03-01'}},fallback),{title:'Series',meta:'2020 · Серіал',movie:{name:'Series',first_air_date:'2020-03-01'}});
+ assert.equal(ui.feedSummary({card_type:'movie',data:{title:'Film',release_date:'2023-01-01'}},fallback).meta,'2023 · Фільм');assert.equal(ui.feedSummary(null,fallback).meta,'IMDb 8.2');assert.equal(ui.feedSummary(null,fallback).title,'Native title');
+});

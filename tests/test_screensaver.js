@@ -5,7 +5,9 @@ function setup(initial={}) {
  let time=1000000,seq=0,playing=false,video=false;
  const jobs=new Map(),frames=new Map(),events={},playerEvents={},native=[],values={...initial};
  const DateMock=class extends Date { constructor(...args){super(...(args.length?args:[time]));} static now(){return time;} };
- const context={fillRect(){},createLinearGradient(){return {addColorStop(){}};},beginPath(){},moveTo(){},lineTo(){},stroke(){},closePath(){},fill(){}};
+ const draws=[];function draw(name,args){for(const v of args)if(typeof v==='number'&&!Number.isFinite(v))throw Error('nonfinite '+name);draws.push([name,...args].filter(v=>typeof v!=='object'));}
+ const context={};for(const name of ['fillRect','drawImage','beginPath','moveTo','lineTo','stroke','closePath','fill','arc','save','restore','scale','translate','rotate','fillText'])context[name]=function(...a){draw(name,a);};
+ context.createLinearGradient=context.createRadialGradient=function(...args){draw('gradient',args);return {addColorStop(){}};};
  function element(tag){return {tag,style:{},children:[],setAttribute(){},classList:{contains:c=>c==='player--viewing'&&video},appendChild(child){this.children.push(child);child.parentNode=this;},removeChild(child){this.children=this.children.filter(c=>c!==child);child.parentNode=null;},getContext(){return context;}};}
  function addEventListener(n,f){(events[n] ||= []).push(f);}
  function removeEventListener(n,f){events[n]=(events[n]||[]).filter(x=>x!==f);}
@@ -18,7 +20,7 @@ function setup(initial={}) {
  const api=sandbox.module.exports(root,L);api.install();
  function advance(ms){const end=time+ms;let count=0;while(true){const next=[...jobs].filter(([,j])=>j.at<=end).sort((a,b)=>a[1].at-b[1].at)[0];if(!next)break;if(++count>10000)throw Error('timer loop');time=next[1].at;jobs.delete(next[0]);next[1].f();}time=end;}
  function fire(name,keyCode){const e={keyCode,preventDefault(){this.prevented=true;},stopImmediatePropagation(){this.stopped=true;}};for(const f of events[name]||[])f(e);return e;}
- return {api,ss,root,doc,values,native,jobs,frames,events,playerEvents,originalShow,originalReset,advance,fire,context,playing(v){playing=v;},video(v){video=v;},jump(ms){time+=ms;},emit(n){for(const f of playerEvents[n]||[])f();}};
+ return {api,ss,root,doc,values,native,jobs,frames,events,playerEvents,originalShow,originalReset,advance,fire,context,draws,step(ms=50){advance(ms);const batch=[...frames.values()];frames.clear();batch.forEach(f=>f());},playing(v){playing=v;},video(v){video=v;},jump(ms){time+=ms;},emit(n){for(const f of playerEvents[n]||[])f();}};
 }
 test('screensaver is ES5 for older Tizen engines',()=>{
  const acorn=require('../vendor/acorn');acorn.parse(source,{ecmaVersion:5});
@@ -26,7 +28,7 @@ test('screensaver is ES5 for older Tizen engines',()=>{
 test('default Aurora starts after three idle minutes, without changing native preferences',()=>{
  const s=setup({screensaver:false,screensaver_type:'aerial',screensaver_time:10});
  assert.equal(s.jobs.size,1);s.advance(179999);assert.equal(s.api.active(),false);s.advance(1);assert.equal(s.api.active(),true);
- assert.equal(s.ss.screensaver.render().className,'fbr-saver fbr-saver--aurora');assert.equal(s.frames.size,1);
+ assert.equal(s.ss.screensaver.render().className,'fbr-saver fbr-saver--aurora fbr-saver--compact');assert.equal(s.frames.size,1);
  assert.deepEqual(s.values,{screensaver:false,screensaver_type:'aerial',screensaver_time:10});
  const canvas=s.ss.screensaver.render().children[0];assert.equal(canvas.width,1280);assert.equal(canvas.height,720);
 });
@@ -68,7 +70,7 @@ test('a suspended TV does not open a saver immediately on returning',()=>{
 });
 test('switching style safely disposes old frames and previews never duplicate layers',()=>{
  const s=setup();s.api.preview();assert.equal(s.api.preview(),false);s.values.faborn_ukr_screensaver_style='stars';s.api.apply();assert.equal(s.frames.size,0);assert.equal(s.api.preview(),false);s.advance(300);assert.equal(s.api.preview(),true);
- assert.equal(s.ss.html.children.length,1);assert.equal(s.ss.html.children[0].className,'fbr-saver fbr-saver--stars');
+ assert.equal(s.ss.html.children.length,1);assert.equal(s.ss.html.children[0].className,'fbr-saver fbr-saver--stars fbr-saver--compact');
 });
 test('minimal clock and no-Canvas fallback use a one-second timer without RAF',()=>{
  for(const fallback of [false,true]){const s=setup({faborn_ukr_screensaver_style:fallback?'stars':'clock'});if(fallback){const old=s.doc.createElement;s.doc.createElement=t=>{const e=old(t);e.getContext=()=>{throw Error('no canvas');};return e;};}
@@ -83,4 +85,30 @@ test('disabled core waits for enable, and a player opened just before expiry can
 });
 test('reinstall after disposal restores the configured idle timer once',()=>{
  const s=setup();s.api.destroy();s.api.install();assert.equal(s.jobs.size,1);assert.equal(s.events.keydown.length,1);s.advance(180000);assert.equal(s.api.active(),true);
+});
+
+test('every animated style produces changing finite drawing commands for a full minute',()=>{
+ const styles=setup().api.styles();assert.equal(styles.length,12);
+ for(const style of styles.filter(v=>v!=='clock')) {
+  const s=setup({faborn_ukr_screensaver_style:style});s.api.preview();const first=JSON.stringify(s.draws.slice(-100));s.draws.length=0;
+  for(let i=0;i<120;i++){s.step(500);if(i%10===0)s.draws.length=0;}
+  assert.equal(s.api.status().error,'',style);assert.ok(s.api.status().frames>=121,style);assert.notEqual(JSON.stringify(s.draws.slice(-100)),first,style);assert.equal(s.frames.size,1,style);
+  s.fire('keydown',27);assert.equal(s.frames.size,0,style);
+ }
+});
+test('renderer failures fall back to the moving clock and keep wake handling alive',()=>{
+ const s=setup({faborn_ukr_screensaver_style:'stars',faborn_ukr_screensaver_clock:'off'});s.context.arc=()=>{throw Error('canvas lost');};s.api.preview();assert.equal(s.api.status().error,'canvas lost');assert.equal(s.frames.size,0);assert.equal(s.ss.html.children[0].className,'fbr-saver fbr-saver--clock');assert.equal(s.ss.html.children[0].children[1].style.display,'block');assert.equal(s.fire('keydown',13).prevented,true);
+});
+test('random animation skips clock and never immediately repeats the previous style',()=>{
+ const s=setup({faborn_ukr_screensaver_style:'random'});let previous='';for(let i=0;i<25;i++){s.api.preview();const style=s.api.status().style;assert.notEqual(style,previous);assert.notEqual(style,'clock');assert.ok(s.api.styles().includes(style));previous=style;s.fire('keydown',27);s.advance(300);s.fire('keyup',27);}
+});
+test('clock overlay can be disabled while the dedicated clock always remains visible',()=>{
+ const s=setup({faborn_ukr_screensaver_style:'stars',faborn_ukr_screensaver_clock:'off'});s.api.preview();assert.equal(s.ss.html.children[0].children[1].style.display,'none');
+ const c=setup({faborn_ukr_screensaver_style:'clock',faborn_ukr_screensaver_clock:'off'});c.api.preview();assert.notEqual(c.ss.html.children[0].children[0].style.display,'none');
+});
+test('all scenes animate on the timer fallback when RAF is unavailable',()=>{
+ for(const style of setup().api.styles().filter(v=>v!=='clock')){const s=setup({faborn_ukr_screensaver_style:style});delete s.root.requestAnimationFrame;s.api.preview();s.advance(500);assert.ok(s.api.status().frames>=10,style);assert.equal(s.frames.size,0);s.fire('keydown',27);s.advance(300);assert.equal(s.ss.html.children.length,0);}
+});
+test('resize rebuilds bounded scenes without duplicating animation loops',()=>{
+ for(const style of ['stars','warp','matrix','orbits']){const s=setup({faborn_ukr_screensaver_style:style});s.api.preview();s.root.innerWidth=720;s.root.innerHeight=1280;s.fire('resize');s.step();const c=s.ss.html.children[0].children[0];assert.ok(c.width<=1280&&c.height<=720);assert.equal(s.api.status().error,'');assert.equal(s.frames.size,1);}
 });

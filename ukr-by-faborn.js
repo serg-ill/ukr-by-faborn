@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.19 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.20 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.19';
+    var VERSION = '0.1.0-beta.20';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null;
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
@@ -1920,6 +1920,7 @@
             if (catalog) {
                 lines.push('Резервний індекс: '+catalog.titles.length+' назв · '+catalog.generatedAt+'. Основний пошук виконується за відкритою карткою; він не обмежений цим індексом.');
             }
+            if (saverUI && saverUI.status) { var saverStatus=saverUI.status();lines.push('Заставка: '+(saverStatus.style || 'очікування')+' · кадрів '+saverStatus.frames+(saverStatus.error ? ' · '+saverStatus.error : '')); }
             select('Діагностика', lines.map(function (line) { return {title: line}; }), function () { diagnostics(); }, restore);
     }
     function cancelLabLoad() {
@@ -2034,6 +2035,7 @@
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_style',type:'select',values:{on:'Faborn',off:'Стандартна Lampa'},default:'on'},field:{name:'Оформлення торрентів',description:'Бейджі релізу, пріоритет Toloka та «Рекомендуємо» від 50 сідів за даними парсера.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_home',type:'select',values:{on:'Faborn · чотири постери',off:'Стандартна Lampa'},default:'on'},field:{name:'Головний екран',description:'Чотири постери, IMDb / TMDB та один опис вибраного фільму. Після зміни повторно відкрий головну.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_studios',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Студії під постерами',description:'Netflix, Apple TV, Prime Video та інші добірки фільмів і серіалів. Для головної Faborn.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_feed',type:'select',values:{compact:'Компактна Faborn',native:'Стандартна Lampa',off:'Приховати в меню'},default:'compact'},field:{name:'Стрічка',description:'Компактні новини з постером, оцінками та коротким описом. Можна повернути стандартний вигляд або прибрати розділ із меню.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_ratings',type:'select',values:{on:'Faborn',off:'Стандартні'},default:'on'},field:{name:'Рейтинги Faborn',description:'IMDb / TMDB на головній і компактна панель у картці. Доступні RT / Metacritic завантажуються автоматично. Твоя оцінка зберігається на цьому пристрої.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_badges',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Бейджі якості Faborn',description:'Кольорові позначки онлайн-джерел і знайдених торрентів. Формат береться з даних конкретного релізу.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_quality',type:'select',values:{auto:'Автоматично в картці',search:'Лише після пошуку торрентів'},default:'auto'},field:{name:'Якість із торрентів',description:'Шукає метадані через налаштований парсер Lampa. Кеш на добу; завантаження відео не починається.'},onChange:applyAppearance});
@@ -2042,7 +2044,8 @@
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_glass_transparency',type:'select',values:{solid:'Непрозоре',low:'Низька',standard:'Стандартна',high:'Висока',max:'Максимальна'},default:'standard'},field:{name:'Прозорість скла iOS',description:'Для теми iOS · Liquid Glass. Вища прозорість — краще видно фон крізь меню, кнопки й вікна. Застосовується одразу.'},onChange:applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_accent', type: 'select', values: {blue:'Синій', amber:'Бурштиновий', mint:'М’ятний', violet:'Фіолетовий', aurora:'Синій → фіолетовий', lagoon:'Бірюзовий → синій'}, default: 'blue'}, field: {name: 'Колір акценту', description: 'Колір або градієнт для «Панелі» та «Кінозалу». У стандартному оформленні не застосовується.'}, onChange: applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver',type:'select',values:{on:'Faborn',native:'Стандартна Lampa',off:'Вимкнено'},default:'on'},field:{name:'Заставка під час бездіяльності',description:'Вмикається в меню. Під час перегляду, паузи та завантаження відео не запускається.'},onChange:applyAppearance});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_style',type:'select',values:{aurora:'Аврора',stars:'Зоряне небо',clock:'Годинник'},default:'aurora'},field:{name:'Стиль заставки',description:'Плавні кольорові хвилі, політ крізь зорі або мінімальний годинник. Працюють без завантаження відео.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_style',type:'select',values:{aurora:'Аврора',stars:'Нічне небо',warp:'Зоряний політ',nebula:'Туманність',waves:'Океанські хвилі',ribbons:'Світлові стрічки',bokeh:'Боке',fireflies:'Світлячки',rain:'Нічний дощ',matrix:'Цифровий дощ',orbits:'Орбіти',clock:'Годинник',random:'Випадкова анімація'},default:'aurora'},field:{name:'Стиль заставки',description:'12 стилів. Випадкова анімація змінюється при кожному запуску. Усі працюють локально.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_clock',type:'select',values:{compact:'Компактний',large:'Великий',off:'Без годинника'},default:'compact'},field:{name:'Годинник на заставці',description:'Для анімованих стилів. У стилі «Годинник» час завжди показується.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_time',type:'select',values:{'1':'1 хвилина','3':'3 хвилини','5':'5 хвилин','10':'10 хвилин'},default:'3'},field:{name:'Запуск заставки через',description:'Будь-яка кнопка пульта повертає до того самого місця в меню.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_preview',type:'button'},field:{name:'Переглянути заставку',description:'Попередній перегляд вибраного стилю Faborn.'},onChange:function () { if (!saverUI) { loadScreensaver();notify('Заставка ще завантажується або не підтримується цією збіркою Lampa. Спробуй після перезапуску.'); } else if (!saverUI.preview()) notify('Заверши перегляд відео, щоб відкрити заставку.'); }});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinobase:'KinoBase', kinoukr:'KinoUkr'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом.'}});

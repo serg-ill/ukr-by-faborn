@@ -603,6 +603,10 @@ test('appearance settings expose both layouts, fallback, reversible global theme
     assert.deepEqual(param('studios').param.values, {on:'Показувати',off:'Приховати'});
     assert.equal(param('studios').param.default, 'on');
     assert.equal(typeof param('studios').onChange, 'function');
+    assert.deepEqual(Object.keys(param('feed').param.values), ['compact','native','off']);
+    assert.equal(param('feed').param.default, 'compact');
+    assert.deepEqual(Object.keys(param('screensaver_style').param.values), require('../lib/faborn-screensaver')({},{}).styles().concat('random'));
+    assert.deepEqual(Object.keys(param('screensaver_clock').param.values), ['compact','large','off']);
     assert.deepEqual(Object.keys(param('theme').param.values), ['on', 'ios', 'off']);
     assert.equal(Object.keys(param('accent').param.values).length, 6);
     assert.equal(typeof param('theme').onChange, 'function');
