@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.16.2 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.17 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.16.2';
+    var VERSION = '0.1.0-beta.17';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null;
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
@@ -2018,8 +2018,8 @@
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_buttons',type:'button'},field:{name:'Порядок кнопок у картці',description:'Переміщення іконок зі збереженням після перезапуску. Також доступне довгим натисканням іконки Faborn.'},onChange:function () { if(interfaceUI) interfaceUI.editButtons(); }});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_button',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Кнопка торрентів',description:'Штатний пошук Lampa з твоїми налаштуваннями парсера і TorrServer.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_style',type:'select',values:{on:'Faborn',off:'Стандартна Lampa'},default:'on'},field:{name:'Оформлення торрентів',description:'Бейджі релізу, пріоритет Toloka та «Рекомендуємо» від 50 сідів за даними парсера.'},onChange:applyAppearance});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_home',type:'select',values:{on:'Faborn · три картки',off:'Стандартна Lampa'},default:'on'},field:{name:'Головний екран',description:'Три картки, читабельні описи та SVG-іконки. Після зміни повторно відкрий головну.'},onChange:applyAppearance});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_ratings',type:'select',values:{on:'Faborn',off:'Стандартні'},default:'on'},field:{name:'Рейтинги у картці',description:'Компактна панель. IMDb та доступні RT / Metacritic завантажуються автоматично. Твоя оцінка зберігається на цьому пристрої.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_home',type:'select',values:{on:'Faborn · чотири постери',off:'Стандартна Lampa'},default:'on'},field:{name:'Головний екран',description:'Чотири постери, IMDb / TMDB та один опис вибраного фільму. Після зміни повторно відкрий головну.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_ratings',type:'select',values:{on:'Faborn',off:'Стандартні'},default:'on'},field:{name:'Рейтинги Faborn',description:'IMDb / TMDB на головній і компактна панель у картці. Доступні RT / Metacritic завантажуються автоматично. Твоя оцінка зберігається на цьому пристрої.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_badges',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Бейджі якості Faborn',description:'Кольорові позначки онлайн-джерел і знайдених торрентів. Формат береться з даних конкретного релізу.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_quality',type:'select',values:{auto:'Автоматично в картці',search:'Лише після пошуку торрентів'},default:'auto'},field:{name:'Якість із торрентів',description:'Шукає метадані через налаштований парсер Lampa. Кеш на добу; завантаження відео не починається.'},onChange:applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_layout', type: 'select', values: {panel:'Панель', cinema:'Кінозал', classic:'Стандартне Lampa'}, default: 'panel'}, field: {name: 'Оформлення модуля', description: '«Стандартне Lampa» — штатні вікна та фокус, без кольорових акцентів Faborn у всій системі.'}, onChange: applyAppearance});
@@ -2035,7 +2035,7 @@
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_diagnostic', type: 'button'}, field: {name: 'Версія та діагностика', description: VERSION}, onChange: function () { rememberController(); diagnostics(); }});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_pages', type: 'input', values: '', default: '', placeholder: 'Визначається автоматично'}, field: {name: 'Адреса GitHub Pages', description: 'Зазвичай визначається автоматично. Резерв: https://USERNAME.github.io/REPOSITORY/'}});
     }
-    var TORRENT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3v10a7 7 0 0 0 14 0V3h-5v10a2 2 0 0 1-4 0V3Z"/><path d="M5 8h5M14 8h5"/></svg>';
+    var TORRENT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h5v10a3 3 0 0 0 6 0V3h5v10a8 8 0 0 1-16 0Z" fill="#28dbbf"/><path d="M12 16a3 3 0 0 0 3-3V3h5v10a8 8 0 0 1-8 8Z" fill="#369bff"/><path d="M4 3h5v4H4Zm11 0h5v4h-5Z" fill="#d3fff7"/><path d="M6 9v4a6 6 0 0 0 4 5.65" fill="none" stroke="#91ffe4" stroke-width="1.2" stroke-linecap="round"/></svg>';
     function buttonMarkup(kind) {
         var torrent = kind === 'torrent', label = torrent ? 'Торренти' : NAME;
         return '<div class="full-start__button selector view--faborn-'+(torrent ? 'torrent' : 'ukr')+'" role="button" aria-label="'+label+'" data-faborn-action="'+kind+'" data-title="'+label+'" data-subtitle="'+label+'">'+(torrent ? TORRENT_ICON : ICON)+'<span aria-hidden="true" style="display:none!important;font-size:0!important;line-height:0!important;width:0!important;height:0!important;overflow:hidden!important">'+label+'</span></div>';

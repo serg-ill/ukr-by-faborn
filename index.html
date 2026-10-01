@@ -2,19 +2,19 @@
 <html lang="uk">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ukr by Faborn · beta 15</title>
+<title>ukr by Faborn · beta 17</title>
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 <style>
 body{margin:0;background:#111722;color:#f3f6fc;font:18px/1.55 system-ui,sans-serif}main{max-width:780px;margin:9vh auto;padding:28px}header{display:flex;align-items:center;gap:22px}header img{width:72px}h1{font-size:36px;margin:0}small{color:#b7c4d8}code{display:block;padding:18px;background:#202a3a;border-radius:12px;overflow-wrap:anywhere;color:#a9d6ff}a{color:#a9d6ff}.note{border-left:4px solid #ffd54a;padding-left:18px;margin:28px 0}li{margin-bottom:8px}
 </style>
 <main>
-<header><img src="assets/icon.svg" alt=""><div><h1>ukr by Faborn</h1><small>0.1.0-beta.16.2 · Lampa / Tizen · GitHub Pages</small></div></header>
+<header><img src="assets/icon.svg" alt=""><div><h1>ukr by Faborn</h1><small>0.1.0-beta.17 · Lampa / Tizen · GitHub Pages</small></div></header>
 <p>Додай цю адресу в Lampa: <strong>Налаштування → Розширення → Додати</strong>.</p>
 <code id="install">ukr-by-faborn.js</code>
 <p>Уже встановлено? <strong>Повністю перезапусти Lampa.</strong> Посилання змінювати не потрібно.</p>
 <div class="note"><strong>Картка → синьо-жовта іконка → переклад → плеєр.</strong><br>Пошук на UAKino, UASerials, UAFix та KinoBase виконується автоматично. Угорі — вибір якості, нижче — переклади без повторів для кожного джерела.</div>
 <div class="note"><strong>beta.16.2: акцент на джерелі й розмірі.</strong><br>Назва трекера — великий синій бейдж, Toloka / Гуртом — золотий. Розмір залишається окремим м’ятним бейджем праворуч від якості. У стандартній темі — нейтральні контрастні підкладки.<br>Збережені Metacritic, якість із торрентів, кольорові 4K / Full HD / HDR / Dolby та контрастний список.</div>
-<div class="note"><strong>beta.14: нова головна, рейтинги та кнопки.</strong><br>Три картки в ряд, одна назва й один опис, SVG-іконки, єдиний блок рейтингів і власна оцінка на пристрої. Бейджі 4K / Full HD та мов з’являються після перевірки доступних джерел; HDR не вгадується.<br><strong>Налаштування → ukr by Faborn</strong>: головна, рейтинги й бейджі мають окремі перемикачі.</div>
+<div class="note"><strong>beta.17: чотири постери та рейтинги.</strong><br>Вертикальні постери, IMDb / TMDB під назвами й один опис вибраного фільму над рядом. Там же — доступні Rotten Tomatoes / Metacritic. Фокус і відблиски підлаштовуються під тему. Іконка торрентів — бірюзово-синій магніт.<br><strong>Налаштування → ukr by Faborn → Головний екран → Faborn · чотири постери.</strong> Рейтинги завантажуються лише для видимих постерів; якість береться зі збережених перевірок.</div>
 <div class="note"><strong>Іконка магніту → торренти.</strong><br>Відкриває штатний пошук Lampa зі збереженими налаштуваннями парсера і TorrServer. Порядок іконок: <strong>Налаштування → ukr by Faborn → Порядок кнопок у картці</strong>, або довге натискання синьо-жовтої іконки. Обери кнопку й позицію — порядок збережеться після перезапуску. Зовнішні редактори кнопок більше не потрібні.</div>
 <div class="note"><strong>Нова тема iOS · Liquid Glass.</strong><br>Налаштування → ukr by Faborn → <strong>Тема всієї Lampa → iOS · Liquid Glass</strong>.<br>Скляні меню, налаштування, округлі кнопки й вікна джерел, м’які відблиски та світлий фокус пульта. Працює з «Панеллю» й «Кінозалом», підтримує збережені акценти та градієнти. Якщо було стандартне оформлення, вибір iOS увімкне «Панель». На старіших Tizen — щільніше скло без розмиття. Застосовується одразу.</div>
 <p><strong>Прозорість скла iOS:</strong> Налаштування → ukr by Faborn → Прозорість скла iOS. П’ять рівнів: «Непрозоре», «Низька», «Стандартна», «Висока» та «Максимальна». Зміна застосовується одразу й зберігається після перезапуску. Працює для теми iOS · Liquid Glass; під текстом рейтингів і списком торрентів використовується щільніша підкладка для читабельності.</p>
@@ -23,7 +23,7 @@ body{margin:0;background:#111722;color:#f3f6fc;font:18px/1.55 system-ui,sans-ser
 <p><strong>KinoBase — постійне джерело.</strong> Українські доріжки — UA, російські — 🐷 RU. Українські показуються першими в обраній якості. Для серіалів доступні сезони й серії; якість залежить від конкретного релізу.</p>
 <ul><li>4K / 1080p / 720p / 480p — залежно від потоку.</li><li>Кнопка «Назад» повертає керування картці.</li><li>Потрібен плеєр Tizen / AVPlay у налаштуваннях Lampa.</li></ul>
 <p><strong>Alloha вимкнено.</strong> Експериментальний рядок і тестові повідомлення прибрані. KinoBase, українські джерела та перемикання озвучень у плеєрі збережені.</p>
-<p>Версія й діагностика: <strong>Налаштування → ukr by Faborn → Версія та діагностика</strong>. Має бути 0.1.0-beta.16.2.</p>
+<p>Версія й діагностика: <strong>Налаштування → ukr by Faborn → Версія та діагностика</strong>. Має бути 0.1.0-beta.17.</p>
 <p><strong>beta.13.1: резервна сесія KinoBase.</strong> Після HTTP 404 на <code>/user_data</code> модуль повторює отримання списку через мережевий API Samsung, якщо він доступний у застосунку. Налаштування → ukr by Faborn → <strong>Сесія KinoBase → Автоматично</strong>. Причина недоступності тепер видима у картці. Окремого сервера не потрібно; відео лишається прямим. Фізичний Samsung ще потребує перевірки. Раніше окремими HTTP-перевірками з cookie підтверджено «Оппенгеймер» — UA LeDoyen 4K, «Термінатор 2» — 4K, «Назад у майбутнє» — Full HD, «Друзі» — 720p з UA 1+1 та RU. Це не підтверджує відтворення на фізичному Tizen.</p>
 <p>Недоступні плеєри не потрапляють до списку готових потоків. На 30.09.2026 перевірені плеєри UAFix / Zetvideo для двох назв відповіли 404. Потоки UASerials для «Проєкт Аве Марія» й «Ззовні» віддали 1080p; ці перевірки стосуються доступності потоку, а не декодування на телевізорі.</p>
 <p>GitHub розміщує модуль і резервний індекс. KinoUkr додається з резервного індексу; прямого пошуку цього сайту немає. Наступна серія поки вибирається вручну.</p>
