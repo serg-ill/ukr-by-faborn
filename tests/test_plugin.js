@@ -99,6 +99,7 @@ function environment(options = {}) {
     };
     if (options.document) root.document = options.document;
     if (options.jQuery) root.jQuery = options.jQuery;
+    if (options.panelEvents) root.Lampa.PlayerPanel = {listener:{follow(k,fn){options.panelEvents[k]=fn;}}};
     const instance = factory(root); instance.boot();
     state.choose = function (predicate) {
         const menu = state.menu;
@@ -677,7 +678,7 @@ function kinoEnvironment(options={}) {
             if(options.delayUser){stateData.pending=req;return;}
         }
         else if(req.url.startsWith('https://kinobase.org/vod/')) {
-            const parts=options.series?['p',JSON.stringify([1,2].map(s=>({title:s+' сезон',folder:[1,2].map(e=>({title:e+' серия',file:file(s,e)}))})))]:['f',file()];
+            const parts=options.playlist ? ['p',JSON.stringify(options.playlist(file,stateData))] : options.series?['p',JSON.stringify([1,2].map(s=>({title:s+' сезон',folder:[1,2].map(e=>({title:e+' серия',file:file(s,e)}))})))]:['f',file()];
             req.responseText=data.encode(parts,false);
             if(options.delayVod){stateData.pending=req;return;}
         } else if(/https:\/\/(?:primary.redcdn.org|mirror.threnet.xyz)\//.test(req.url)) {
@@ -687,7 +688,7 @@ function kinoEnvironment(options={}) {
         } else {req.status=403;req.responseText='';}
         req.onload();
     }
-    const env=environment({respond});
+    const env=environment({respond,panelEvents:options.panelEvents});
     env.root.FabornKinoBase=kinoReader;env.kino=stateData;
     stateData.nativeRequests=[];stateData.clients=0;stateData.cancels=0;
     if(options.native) env.root.FabornKinoSession=()=>{
@@ -1197,4 +1198,38 @@ test('another plugin taking over playback does not reopen the old Faborn sources
 test('an old ended event cannot mark a newly started resumed episode watched',()=>{
  const env=kinoEnvironment({series:true}),one=torrentEpisode(env),two=torrentEpisode(env,2);registerFiles(env,[one,two]);env.root.Lampa.Player.play(one);env.state.progress(1400,1440);
  env.root.Lampa.Player.play(two);Object.assign(two.timeline,{time:200,duration:1440,percent:14});env.state.videoEvents.ended();assert.equal(two.timeline.percent,14);
+});
+
+test('source markers reach the actual Player handoff from a parsed and checked UAKino stream',()=>{
+ const env=directEnvironment({intercept(req){
+  if(req.url==='https://ashdi.vip/vod/3306') {req.status=200;req.responseText=embedHTML.replace("id:'video'","id:'video',skip:'50-95,500-550'");req.onload();return true;}
+ }});
+ chooseDirect(env);env.state.play('1080p');
+ assert.deepEqual(env.state.played.faborn_segments,{source:[{start_sec:50,end_sec:95},{start_sec:500,end_sec:550}],sourceName:'UAKino'});
+});
+
+function markerPlaylist(file,state){
+ function row(episode,quality,voice,skip){return {title:episode+' серия',file:'['+quality+'p]{'+voice+'}https://primary.redcdn.org/'+quality+'/s1e'+episode+'/v'+state.version+'/master-v1-a1.m3u8',skip};}
+ return [{title:'1 сезон',folder:[
+  row(1,720,'1+1 (Украинский)',state.version===1?'50-95':undefined),
+  row(1,1080,'1+1 (Украинский)',undefined),
+  row(1,720,'Оригинал','60-105'),
+  row(2,720,'1+1 (Украинский)','172-236')
+ ]}];
+}
+test('quality, translation and next-episode handoffs never reuse another stream marker',()=>{
+ const panelEvents={},env=voicePlayer(kinoEnvironment({series:true,english:true,playlist:markerPlaylist,panelEvents})),{state}=env;
+ env.instance.open(kinoSeries);state.play('720p',r=>r.release.audioLanguage==='uk');const data=state.played;
+ assert.deepEqual(data.faborn_segments.source,[{start_sec:50,end_sec:95}]);
+ panelEvents.quality({name:'1080p',url:data.quality['1080p']});assert.equal(data.faborn_segments,null);
+ panelEvents.quality({name:'720p',url:data.quality['720p']});assert.deepEqual(data.faborn_segments.source,[{start_sec:50,end_sec:95}]);
+ data.voiceovers.find(v=>v.language==='EN').onSelect();assert.deepEqual(data.faborn_segments.source,[{start_sec:60,end_sec:105}]);
+ state.videoEvents.loadeddata();data.voiceovers.find(v=>v.language==='UA').onSelect();state.videoEvents.loadeddata();
+ const next=advanceFixture(env);state.fireTimer(0);assert.equal(state.played,next);assert.deepEqual(next.faborn_segments.source,[{start_sec:172,end_sec:236}]);
+});
+test('a refreshed provider response without markers clears previously available markers',t=>{
+ let now=Date.now();t.mock.method(Date,'now',()=>now);
+ const env=kinoEnvironment({series:true,playlist:markerPlaylist});env.instance.open(kinoSeries);env.state.play('720p',r=>r.release.audioLanguage==='uk');assert.ok(env.state.played.faborn_segments);
+ env.root.Lampa.Player.close();env.kino.version=2;now+=61000;env.state.play('720p',r=>r.release.audioLanguage==='uk');
+ assert.match(env.state.played.url,/\/v2\//);assert.equal(env.state.played.faborn_segments,null);
 });

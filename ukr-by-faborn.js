@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.23 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.24 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.23';
+    var VERSION = '0.1.0-beta.24';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null;
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
@@ -236,7 +236,8 @@
         rule('.settings-input__input,.simple-keyboard-input','background:rgba(0,0,0,.18);border:0;border-radius:.8em;color:#fff');
         rule('.fbr-overlay','background:rgba(4,8,16,'+glass.veil+')');
         rule('.fbr-window','border-radius:1.8em');
-        rule('.fbr-header','border:0;border-image:none;padding:1.2em 1.55em;box-shadow:0 1px 0 rgba(255,255,255,.09)');
+        rule('.fbr-header','border:0;box-shadow:0 1px 0 rgba(255,255,255,.09)');
+        rule('.fbr-header:before','display:none');
         rule('.fbr-brand','letter-spacing:-.02em');
         rule('.fbr-brand small','color:#cad5e7;letter-spacing:.1em');
         rule('.fbr-close','border-radius:50%;background:rgba(255,255,255,.1)');
@@ -280,9 +281,9 @@
     function presentationCSS(accent,tint,fill,ink) {
         return '.fbr-overlay{position:fixed;top:0;right:0;bottom:0;left:0;z-index:54;background:rgba(3,7,15,.72);color:#f4f6fb;font-size:1em;line-height:1.4;text-align:left}' +
         '.fbr-overlay *{box-sizing:border-box}.fbr-window{position:absolute;top:3vh;bottom:3vh;right:3vw;width:43vw;min-width:25em;background:#141c2a;border:1px solid #354158;border-radius:1.35em;box-shadow:0 1.5em 4em rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden}' +
-        '.fbr-header{display:flex;align-items:center;justify-content:space-between;padding:1.15em 1.45em;border-bottom:1px solid #303b50;flex-shrink:0}.fbr-brand{display:flex;align-items:center;font-size:1.05em;font-weight:700;letter-spacing:.015em}.fbr-brand svg{width:1.8em;height:1.8em;margin-right:.65em}.fbr-brand small{font-size:.67em;color:#adbad1;font-weight:400;display:block;letter-spacing:.1em;text-transform:uppercase}' +
-        '.fbr-close{width:2.3em;height:2.3em;display:flex;align-items:center;justify-content:center;font-size:1.15em}.fbr-layout{display:flex;flex:1;min-height:0}.fbr-story{display:none}.fbr-content{flex:1;min-width:0;overflow-y:auto;padding:1.45em;scrollbar-width:thin;scrollbar-color:#50617c transparent}.fbr-content::-webkit-scrollbar{width:.3em}.fbr-content::-webkit-scrollbar-thumb{background:#50617c;border-radius:1em}' +
-        '.fbr-language{display:inline-flex;align-items:center;margin-right:.5em;font-size:.74em;font-weight:700;white-space:nowrap}.fbr-language svg{width:1.35em;height:1.35em;margin-right:.25em;flex-shrink:0}.fbr-language-uk{color:#82dfc1}.fbr-language-en{color:#91bdff}.fbr-language-original{color:#c3cbd8}.fbr-btn.focus .fbr-language{color:inherit}.fbr-header{border-top:3px solid '+accent+';border-image:'+fill+' 1}.fbr-btn.fbr-control.chosen{background:'+accent+';background-image:'+fill+';color:'+ink+'}' +
+        '.fbr-header{position:relative;display:flex;align-items:center;justify-content:space-between;min-width:0;padding:.7em 1.45em;border-bottom:1px solid #303b50;flex-shrink:0}.fbr-brand{display:flex;align-items:center;min-width:0;font-size:1.05em;font-weight:700;letter-spacing:.015em}.fbr-brand>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fbr-brand svg{width:1.8em;height:1.8em;margin-right:.65em;flex-shrink:0}.fbr-brand small{font-size:.67em;color:#adbad1;font-weight:400;display:block;letter-spacing:.1em;text-transform:uppercase}' +
+        '.fbr-close{width:2.3em;height:2.3em;margin-left:1em;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1.15em}.fbr-layout{display:flex;flex:1;min-height:0}.fbr-story{display:none}.fbr-content{flex:1;min-width:0;overflow-y:auto;padding:1.45em;scrollbar-width:thin;scrollbar-color:#50617c transparent}.fbr-content::-webkit-scrollbar{width:.3em}.fbr-content::-webkit-scrollbar-thumb{background:#50617c;border-radius:1em}' +
+        '.fbr-language{display:inline-flex;align-items:center;margin-right:.5em;font-size:.74em;font-weight:700;white-space:nowrap}.fbr-language svg{width:1.35em;height:1.35em;margin-right:.25em;flex-shrink:0}.fbr-language-uk{color:#82dfc1}.fbr-language-en{color:#91bdff}.fbr-language-original{color:#c3cbd8}.fbr-btn.focus .fbr-language{color:inherit}.fbr-header:before{content:"";position:absolute;top:0;left:1.35em;right:1.35em;height:2px;border-radius:0 0 2px 2px;background:'+accent+';background-image:'+fill+';pointer-events:none}.fbr-btn.fbr-control.chosen{background:'+accent+';background-image:'+fill+';color:'+ink+'}' +
         '.fbr-title{font-size:1.85em;font-weight:700;line-height:1.1;margin:0 0 .35em;word-wrap:break-word}.fbr-meta{color:#adbad1;font-size:.86em;margin-bottom:1.35em}.fbr-label{color:#b7c4d8;font-size:.72em;letter-spacing:.12em;text-transform:uppercase;margin:1.4em 0 .7em}.fbr-controls{display:flex;flex-wrap:wrap;margin:-.22em}.fbr-control{padding:.55em .85em;margin:.22em;min-width:3.8em;text-align:center}' +
         '.fbr-btn{background:#222e42;border:0;color:#f4f6fb;border-radius:.65em;cursor:pointer;position:relative;transform:none!important;filter:none!important;transition:none!important}.fbr-btn.chosen{background:'+tint+';color:'+accent+'}.fbr-btn.focus{background:'+accent+'!important;background-image:'+fill+'!important;color:'+ink+'!important;box-shadow:none;z-index:1}.fbr-btn.focus .fbr-small{color:'+ink+'}.fbr-btn:focus{outline:none}' +
         '.fbr-voice{margin:.65em 0}.fbr-voice-main{padding:.8em 1em;display:flex;align-items:center;justify-content:space-between}.fbr-voice-name{font-size:1.02em;font-weight:600;word-wrap:break-word;min-width:0}.fbr-small{display:block;color:#b0bdd2;font-size:.76em;margin-top:.2em;font-weight:400}.fbr-mark{margin-left:.7em;font-size:1.2em;flex-shrink:0}.fbr-sources{display:flex;flex-wrap:wrap;padding:.45em .3em 0;margin:0 -.25em}.fbr-source{font-size:.8em;padding:.65em .85em;margin:.25em}' +
@@ -565,12 +566,69 @@
             return c === 'n' ? '\n' : c === 'r' ? '\r' : c === 't' ? '\t' : c;
         }));
     }
+    function playerConfig(html) {
+        // Read only root literal properties. Never search inside a playlist string,
+        // a nested ad configuration, or scripts following this player instance.
+        var source = text(html), match = /new\s+Playerjs\s*\(\s*\{/.exec(source), result = {}, field = '', stack = [], quote = '', comment = '', escaped = false;
+        if (!match || source.length > 8000000) return result;
+        function property(value) {
+            var m = /^\s*(?:([a-zA-Z_$][\w$]*)|"([^"\\]*)"|'([^'\\]*)')\s*:\s*([\s\S]*?)\s*$/.exec(value);
+            if (!m) return;
+            var key = m[1] || m[2] || m[3], raw = m[4];
+            if (['file','subtitle','skip'].indexOf(key) < 0) return;
+            // A duplicate/dynamic property invalidates an earlier literal too.
+            delete result[key];
+            if (/^("(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*')$/.test(raw)) result[key] = quotedProperty('value:'+raw,'value');
+            else if (key !== 'skip' && /^\[/.test(raw)) {
+                try { var parsed = JSON.parse(raw); if (Array.isArray(parsed)) result[key] = parsed; } catch (ignore) { /* Literal JSON only. */ }
+            }
+        }
+        for (var i = match.index+match[0].length; i < source.length; i++) {
+            var c = source.charAt(i), next = source.charAt(i+1);
+            if (comment) {
+                if (comment === 'line' && /[\r\n]/.test(c)) { comment = '';field += ' '; }
+                else if (comment === 'block' && c === '*' && next === '/') { comment = '';field += ' ';i++; }
+                continue;
+            }
+            if (quote) {
+                field += c;
+                if (escaped) escaped = false;
+                else if (c === '\\') escaped = true;
+                else if (c === quote) quote = '';
+                continue;
+            }
+            if (c === '/' && (next === '/' || next === '*')) { comment = next === '/' ? 'line' : 'block';i++;continue; }
+            // Regex/template expressions are outside the supported literal format.
+            if (c === '/' || c === '`') return {};
+            if (c === '"' || c === "'") { quote = c;field += c;continue; }
+            if ('{[('.indexOf(c) >= 0) stack.push(c);
+            else if ('}])'.indexOf(c) >= 0) {
+                if (!stack.length && c === '}') { property(field);return result; }
+                if (stack.pop() !== ({'}':'{',']':'[',')':'('})[c]) return {};
+            } else if (c === ',' && !stack.length) { property(field);field = '';continue; }
+            field += c;
+        }
+        return {};
+    }
+    function sourceSkip(value) {
+        // PlayerJS skip intervals are seconds, not durations or a season-wide offset.
+        if (typeof value !== 'string' || value.length > 2000 || !value.trim()) return [];
+        var parts = value.split(','), rows = [], valid = parts.length <= 32;
+        parts.forEach(function (part) {
+            var m = /^\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*$/.exec(part);
+            if (!m || +m[2] <= +m[1]+1 || +m[2] > 172800) { valid = false;return; }
+            rows.push({start_sec:+m[1],end_sec:+m[2]});
+        });
+        rows.sort(function (a,b) { return a.start_sec-b.start_sec; });
+        rows = rows.filter(function (row,index) { return !index || row.start_sec !== rows[index-1].start_sec || row.end_sec !== rows[index-1].end_sec; });
+        rows.forEach(function (row,index) { if (index && row.start_sec < rows[index-1].end_sec) valid = false; });
+        return valid ? rows : [];
+    }
     function parseEmbed(html) {
-        var start = text(html).search(/new\s+Playerjs\s*\(/), config = text(html).substr(start), file;
-        if (start < 0) throw new Error('Ashdi: не знайдено відкритий HLS-плеєр.');
-        file = quotedProperty(config, 'file');
+        var config = playerConfig(html), file = config.file;
+        if (!/new\s+Playerjs\s*\(/.test(text(html))) throw new Error('Ashdi: не знайдено відкритий HLS-плеєр.');
         if (!mediaURL(file) || !/\.m3u8(?:\?|$)/i.test(file)) throw new Error('Ashdi: цей формат плеєра поки не підтримується.');
-        return {master:file,subtitles:subtitlesFrom(quotedProperty(config, 'subtitle'))};
+        return {master:file,subtitles:subtitlesFrom(config.subtitle),skipSegments:sourceSkip(config.skip)};
     }
     function resolveMedia(base, value) {
         if (/^https:\/\//i.test(value)) return mediaURL(value) ? value : '';
@@ -793,7 +851,7 @@
             try { tree = JSON.parse(parts[1]); } catch (error) { throw new Error('Некоректний список сезонів KinoBase.'); }
         } else if (kind === 'f' || kind === 'file') tree = [{file:parts[1],subtitle:parts[2]}];
         else throw new Error('Цей формат відео KinoBase не підтримується.');
-        function fileEntries(file,season,episode,subtitle) {
+        function fileEntries(file,season,episode,subtitle,skip) {
             var re = /\[(2160|1440|1080|720|480|360)p?\]([\s\S]*?)(?=\[(?:2160|1440|1080|720|480|360)p?\]|$)/g, m;
             while ((m = re.exec(text(file)))) {
                 var q = m[1]+'p', voices = /\{([^}]+)\}([^{}]+)/g, v, chunks = [];
@@ -806,10 +864,11 @@
                     var language = audioLanguage(chunk.voice,'ru',title.originalLanguage), key = language+':'+chunk.voice+':'+season+':'+episode, entry = byKey[key];
                     if (!entry) {
                         if (out.length >= 10000) throw new Error('Завеликий список серій KinoBase.');
-                        entry = {voice:chunk.voice,audioLanguage:language,season:season,episode:episode,qualities:{},mirrors:{},subtitles:subtitlesFrom(subtitle),kino:true,kinoFetched:Date.now(),state:'pending'};
+                        entry = {voice:chunk.voice,audioLanguage:language,season:season,episode:episode,qualities:{},mirrors:{},skipByQuality:{},subtitles:subtitlesFrom(subtitle),kino:true,kinoFetched:Date.now(),state:'pending'};
                         byKey[key] = entry; out.push(entry);
                     }
                     entry.qualities[q] = urls[0]; entry.mirrors[q] = urls;
+                    entry.skipByQuality[q] = sourceSkip(skip);
                 });
             }
         }
@@ -821,7 +880,7 @@
                 if (item.folder) return walk(item.folder,s || season,depth+1);
                 var n = /(?:серия|серія|episode)\s*(\d+)|(\d+)\s*(?:серия|серія|episode)/i.exec(label);
                 if (title.type === 'tv' && (!season || !n)) return;
-                fileEntries(item.file,title.type === 'tv' ? season : 0,title.type === 'tv' ? +(n[1] || n[2]) : 0,item.subtitle);
+                fileEntries(item.file,title.type === 'tv' ? season : 0,title.type === 'tv' ? +(n[1] || n[2]) : 0,item.subtitle,item.skip);
             });
         }
         walk(tree,0,0);
@@ -990,11 +1049,12 @@
         if (/<title>\s*404 Not Found\s*<\/title>/i.test(text(html))) throw new Error('Відеосервер повернув сторінку 404: відео недоступне.');
         var start = text(html).search(/new\s+Playerjs\s*\(/);
         if (start < 0) throw new Error('Не знайдено відкриту конфігурацію відеоплеєра.');
-        var config = text(html).substr(start), raw = quotedProperty(config,'file'), tree, out = [];
+        var config = playerConfig(html), raw = config.file, tree, out = [];
         if (!raw) throw new Error('Плеєр не віддав прямого потоку.');
-        if (raw.charAt(0) === '[' && /\[\s*\{/.test(raw)) {
+        if (Array.isArray(raw)) tree = raw;
+        else if (raw.charAt(0) === '[' && /\[\s*\{/.test(raw)) {
             try { tree = JSON.parse(raw); } catch (e) { throw new Error('Не вдалося прочитати список відео.'); }
-        } else tree = [{file:raw,subtitle:quotedProperty(config,'subtitle')}];
+        } else tree = [{file:raw,subtitle:config.subtitle,skip:config.skip}];
         function walk(items, season, voice, language, subtitles, depth) {
             if (!Array.isArray(items) || depth > 5 || out.length > 2000) return;
             items.forEach(function (item) {
@@ -1017,10 +1077,10 @@
                 if (!master) return;
                 var n = /(?:серія|episode)\s*(\d+)|(\d+)\s*(?:серія|episode)/i.exec(label);
                 if (defaults.type === 'tv' && !n && !defaults.episode) return;
-                out.push({master:master,qualities:qualities,subtitles:subs,season:defaults.type === 'tv' ? season || defaults.season || 1 : 0,episode:defaults.type === 'tv' ? n ? +(n[1] || n[2]) : defaults.episode : 0,voice:defaults.type === 'movie' && label ? label : v || defaults.voice,audioLanguage:lang,title:label});
+                out.push({master:master,qualities:qualities,subtitles:subs,skipSegments:sourceSkip(item.skip),season:defaults.type === 'tv' ? season || defaults.season || 1 : 0,episode:defaults.type === 'tv' ? n ? +(n[1] || n[2]) : defaults.episode : 0,voice:defaults.type === 'movie' && label ? label : v || defaults.voice,audioLanguage:lang,title:label});
             });
         }
-        walk(tree,defaults.season || 0,defaults.voice,audioLanguage(defaults.voice,defaults.audioLanguage,defaults.originalLanguage),subtitlesFrom(quotedProperty(config,'subtitle')),0);
+        walk(tree,defaults.season || 0,defaults.voice,audioLanguage(defaults.voice,defaults.audioLanguage,defaults.originalLanguage),subtitlesFrom(config.subtitle),0);
         if (!out.length) throw new Error('Немає підтримуваного HLS-потоку.');
         return out;
     }
@@ -1238,6 +1298,8 @@
                         if (actual.length && actual.indexOf(top) < 0) throw new Error('KinoBase: маніфест не підтверджує заявлену якість.');
                     } else if (Object.keys(qualities).length) entry.qualities = qualities;
                     episode.master = entry.master; episode.qualities = entry.qualities || {};
+                    episode.skipSegments = entry.skipSegments || [];
+                    episode.skipByQuality = entry.skipByQuality || null;
                     if (entry.kino) { episode.mirrors = entry.mirrors; episode.kinoFetched = entry.kinoFetched; }
                     episode.subtitles = entry.subtitles || []; episode.embeddedSubtitles = /#EXT-X-MEDIA:[^\r\n]*TYPE=SUBTITLES/.test(body);
                     episode.resolvedAt = Date.now(); episode.state = 'resolved'; episode.error = '';
@@ -1272,7 +1334,7 @@
                 }
                 next();
             });
-        } else if (episode.embed && (!episode.master || force)) embed(episode.embed);
+        } else if (episode.embed && (!episode.master || force || storage('skip_source','off') === 'on' && !own(episode,'skipSegments'))) embed(episode.embed);
         else if (episode.master) verify(episode);
         else done(new Error('Джерело не віддало посилання на відео.'));
     }
@@ -1823,10 +1885,15 @@
         while (right + 1 < list.length && list[right + 1].state !== 'unavailable' && list[right + 1].episode === list[right].episode + 1) right++;
         return list.slice(left, right + 1);
     }
+    function episodeSegments(release,episode,url) {
+        var quality = Object.keys(episode.qualities || {}).filter(function (key) { return episode.qualities[key] === url; })[0];
+        var rows = episode.skipByQuality ? episode.skipByQuality[quality] : episode.skipSegments;
+        return rows && rows.length ? {source:rows.map(function (row) { return {start_sec:row.start_sec,end_sec:row.end_sec}; }),sourceName:sourceName(release.source)} : null;
+    }
     function playData(movie, title, release, episode, preference) {
         var url = pickURL(episode, preference), result = {
             url: url, faborn_url: url, faborn_episode: episode.id, faborn_title: title.id, faborn_release: release.id, faborn_quality: preference,
-            quality: episode.qualities,
+            quality: episode.qualities, faborn_segments:episodeSegments(release,episode,url),
             title: title.title + (title.type === 'tv' ? ' · S' + episode.season + 'E' + episode.episode : '') + ' · ' + release.voice,
             season: episode.season, episode: episode.episode, voice_name: release.voice,
             isonline: true
@@ -1936,7 +2003,7 @@
             clearPlaybackWatch();
             voiceSwitch = null;
             L.PlayerVideo.destroy(true);
-            ['url','faborn_url','faborn_episode','faborn_release','faborn_quality','quality','title','voice_name'].forEach(function (key) { data[key] = next[key]; });
+            ['url','faborn_url','faborn_episode','faborn_release','faborn_quality','faborn_segments','quality','title','voice_name'].forEach(function (key) { data[key] = next[key]; });
             data.quality_switched = quality;
             delete data.translate;
             delete data.subtitles;
@@ -2335,8 +2402,8 @@
         var api = L.SettingsApi;
         if (!api || !api.addComponent || !api.addParam) return;
         api.addComponent({component: 'faborn_ukr', name: NAME, icon: ICON});
-        ['intro','credits'].forEach(function(kind) {
-            api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_skip_'+kind,type:'select',values:{on:'Увімкнено',off:'Вимкнено'},default:'off'},field:{name:kind==='intro' ? 'Пропуск вступу за мітками' : 'Пропуск титрів за мітками',description:'Кнопка з відліком 7 секунд на мітці відео. OK — одразу, Назад — скасувати. Без міток нічого не пропускається.'},onChange:function(){if(skipUI)skipUI.start(L.Player.playdata());}});
+        ['intro','credits','source'].forEach(function(kind) {
+            api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_skip_'+kind,type:'select',values:{on:'Увімкнено',off:'Вимкнено'},default:'off'},field:{name:kind==='intro' ? 'Пропуск вступу за мітками' : kind==='credits' ? 'Пропуск титрів за мітками' : 'Пропуск за мітками джерела',description:kind==='source' ? 'Відрізки, позначені в самому відео. Кнопка «Пропустити фрагмент» з відліком 7 секунд; Назад — скасувати. Доступно, якщо джерело передає мітки.' : 'Кнопка з відліком 7 секунд на мітці відео. OK — одразу, Назад — скасувати. Без міток нічого не пропускається.'},onChange:function(){if(skipUI)skipUI.start(L.Player.playdata());}});
         });
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_buttons',type:'button'},field:{name:'Порядок кнопок у картці',description:'Переміщення іконок зі збереженням після перезапуску. Також доступне довгим натисканням іконки Faborn.'},onChange:function () { if(interfaceUI) interfaceUI.editButtons(); }});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_button',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Кнопка торрентів',description:'Штатний пошук Lampa з твоїми налаштуваннями парсера і TorrServer.'},onChange:applyAppearance});
@@ -2452,6 +2519,7 @@
             var context = playerVoiceContext;
             if (!context || !event || L.Player.playdata() !== context.data) return;
             context.data.faborn_quality = event.name; context.data.faborn_url = event.url;
+            context.data.faborn_segments = episodeSegments(context.release,context.episode,event.url);
             if(playbackQueue && playbackQueue.current && playbackQueue.current.data === context.data) {
                 playbackQueue.preference=event.name;queueSelection(playbackQueue,playbackQueue.current);
             }

@@ -50,3 +50,29 @@ test('old request cannot attach markers after changing an episode or closing pla
 test('failed API and mismatched episode return no button',()=>{const s=setup();s.start();s.at(50);s.requests[0].cb(Error('unreachable'));s.at(50);assert.ok(!s.button());s.start();s.at(50);s.requests[1].cb(null,JSON.stringify({imdb_id:'tt0903747',is_movie:false,season:2,episode:1,...intro}));s.at(50);assert.ok(!s.button());});
 test('native segments owned by another plugin are not auto-skipped a second time',()=>{const s=setup();s.start(null,{segments:{skip:[[50,95]]}});s.at(50);assert.equal(s.requests.length,0);assert.ok(!s.button());});
 test('unanswered resume choice blocks both the control and countdown',()=>{const s=setup();s.start(intro,{timeline:{waiting_for_user:true}});s.at(50);s.step(9000,50);assert.ok(!s.button());assert.deepEqual(s.seeks,[]);});
+
+test('valid enabled source markers take priority and use a neutral label with the same countdown',()=>{
+ const s=setup({faborn_ukr_skip_source:'on'});s.start({source:[{start_sec:172,end_sec:236}],sourceName:'UAKino'});s.at(50);assert.equal(s.requests.length,0);assert.ok(!s.button());
+ s.at(172);assert.equal(s.button().querySelector('.faborn-skip__title').textContent,'Пропустити фрагмент');assert.match(s.api.status(),/UAKino/);s.step(7200,172);assert.deepEqual(s.seeks,[236]);assert.deepEqual(s.done,[]);
+});
+test('source control is opt-in and does not suppress the enabled IntroDB fallback',()=>{
+ const s=setup();s.start({source:[{start_sec:172,end_sec:236}]});s.at(172);assert.equal(s.requests.length,1);assert.ok(!s.button());
+ s.requests[0].cb(null,JSON.stringify({imdb_id:'tt0903747',is_movie:false,season:1,episode:1,...intro}));s.at(50);assert.ok(s.button());
+});
+test('absent or invalid source metadata falls back to IntroDB but source-only mode makes no API request',()=>{
+ for(const raw of [{source:[]},{source:[{start_sec:172,end_sec:1200}]}]){
+  const s=setup({faborn_ukr_skip_source:'on'});s.start(raw);s.at(172);assert.equal(s.requests.length,1);assert.ok(!s.button());
+  const local=setup({faborn_ukr_skip_source:'on',faborn_ukr_skip_intro:'off',faborn_ukr_skip_credits:'off'});local.start(raw);local.at(172);assert.equal(local.requests.length,0);assert.ok(!local.button());
+ }
+});
+test('new stream markers replace the old set and Back cancels only the current fragment',()=>{
+ const s=setup({faborn_ukr_skip_source:'on'});s.start({source:[{start_sec:50,end_sec:95}]});s.at(50);s.key('keydown',10009);s.key('keyup',10009);s.step(9000,51);assert.deepEqual(s.seeks,[]);
+ s.start({source:[{start_sec:172,end_sec:236}]},{episode:2});s.at(50);assert.ok(!s.button());s.at(172);assert.ok(s.button());s.key('keydown',13);assert.deepEqual(s.seeks,[236]);
+});
+test('native Lampa segments retain ownership even when source markers exist',()=>{
+ const s=setup({faborn_ukr_skip_source:'on'});s.start({source:[{start_sec:50,end_sec:95}]},{segments:{skip:[[50,95]]}});s.at(50);assert.equal(s.requests.length,0);assert.ok(!s.button());
+});
+test('duration validation remains effective when IntroDB metadata comes from cache',()=>{
+ const s=setup();s.start();s.at(50);s.requests[0].cb(null,JSON.stringify({imdb_id:'tt0903747',is_movie:false,season:1,episode:1,duration_ms:1000000,...intro}));s.at(50);assert.ok(s.button());
+ s.start();s.at(50,1200);assert.equal(s.requests.length,1);assert.ok(!s.button());
+});
