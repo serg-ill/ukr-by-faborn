@@ -109,3 +109,31 @@ test('a synchronous TMDB failure cannot break card rendering',()=>{
  L.Api={sources:{tmdb:{get(){throw new Error('Offline');}}}};
  ui.loadRatings({id:42},v=>value=v);assert.deepEqual(value,{});assert.equal(requests.length,0);
 });
+
+test('Dolby Vision remains a video format and never invents Dolby sound',()=>{
+ const {ui}=environment(),facts=ui.torrentFacts({Title:'Film 2160p DV HDR10 HEVC',ffprobe:[{codec_type:'audio',codec_name:'aac',channels:8}]});
+ assert.equal(facts.badges.find(b=>b.label==='Dolby Vision').brand,'dolby');
+ assert.ok(!facts.badges.some(b=>/Dolby (Audio|Atmos)/.test(b.label)));
+ assert.ok(facts.badges.some(b=>b.label==='7.1'));
+});
+test('Dolby audio codecs do not imply Atmos without an explicit declaration',()=>{
+ const {ui}=environment();
+ for(const codec_name of ['ac3','eac3','truehd']) {
+  const f=ui.torrentFacts({ffprobe:[{codec_type:'audio',codec_name,channels:8}]});
+  assert.ok(f.badges.some(b=>b.label==='Dolby Audio'));assert.ok(!f.badges.some(b=>b.label==='Dolby Atmos'));
+ }
+ for(const Title of ['Film 4K DDP5.1','Film DD+5.1','Film TrueHD 7.1'])assert.ok(ui.torrentFacts({Title}).badges.some(b=>b.label==='Dolby Audio'));
+ for(const Title of ['Atmosphere (2023) 4K','Atmos (2016)','Film DTS-HD MA 7.1','Film AAC 5.1'])assert.ok(!ui.torrentFacts({Title}).badges.some(b=>b.brand==='dolby'));
+});
+test('explicit Atmos declarations use the Dolby brand without duplicate generic Dolby Audio',()=>{
+ const {ui}=environment();
+ for(const input of [{Title:'Film Dolby Atmos'},{Title:'Film TrueHD Atmos 7.1'},{ffprobe:[{codec_type:'audio',codec_name:'eac3',profile:'Dolby Digital Plus + Dolby Atmos'}]}]) {
+  const brands=ui.torrentFacts(input).badges.filter(b=>b.brand==='dolby');
+  assert.deepEqual(brands.map(b=>b.label),['Dolby Atmos']);
+ }
+});
+test('Toloka priority is independent of seed recommendations and adds no remote-control targets',()=>{
+ const {ui}=environment(),m=ui.torrentMarkup(ui.torrentFacts({Tracker:'Toloka',Seeders:0}),{});
+ assert.ok(m.header.includes('Пріоритет'));assert.ok(!m.header.includes('Рекомендуємо'));assert.ok(!/selector|tabindex|<button/.test(m.header));
+ assert.ok(!ui.torrentMarkup(ui.torrentFacts({Tracker:'RuTracker',Seeders:200}),{}).header.includes('Пріоритет'));
+});
