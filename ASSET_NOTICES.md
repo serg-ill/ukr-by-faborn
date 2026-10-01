@@ -17,7 +17,7 @@ Two MIT sources were reviewed and adapted into the bounded ES5 Canvas implementa
 - Perspective/depth stars and reset model: [tdous/star-field-canvas](https://github.com/tdous/star-field-canvas), commit `28c139ebdbc538b85bcd01ea084aee0044ce303b`. Copyright (c) 2019 Tom. License: [lib/SAVER-WARP-LICENSE](lib/SAVER-WARP-LICENSE).
 - Moving digital-rain heads and tails: [carlnewton/digital-rain](https://github.com/carlnewton/digital-rain), commit `0ceec4cb06437b489b403e0e9488465d99bfeaae`. Copyright (c) 2019 Carl Newton. License: [lib/SAVER-MATRIX-LICENSE](lib/SAVER-MATRIX-LICENSE).
 
-The adaptations use fixed particle/column bounds, cached glow sprites and a glyph atlas, reduced frame rate, a cancellable lifecycle, and Lampa's native idle layer. Aurora, twinkling night sky, meteors, nebula, waves, ribbons, bokeh, fireflies, rainy skyline, orbits, clock, settings and playback/input guards are implemented in this project. No third-party script, video or remote media is fetched while a screensaver is running.
+The adaptations use fixed particle/column bounds, cached glow sprites and a glyph atlas, reduced frame rate, a cancellable lifecycle, and Lampa's native idle layer. Aurora, twinkling night sky, meteors, nebula, waves, ribbons, bokeh, fireflies, rainy skyline, orbits, clock, settings and playback/input guards are implemented in this project. The local Canvas and clock styles fetch no third-party scripts or media. Optional Aerial video styles are described below.
 
 Historical beta.18–19 radial-star inspiration: [AnnikaV9/starfield.js](https://github.com/AnnikaV9/starfield.js), commit `103c2c2c6c6b354efa2f871bfcca3e9a6d969848`, Copyright (c) 2024 carrot. Its [MIT notice](lib/STARFIELD-LICENSE) is retained. Beta.20 replaces that radial scene with the night-sky and separate depth-flight renderers.
 
@@ -34,3 +34,11 @@ Original PNG network logos, retrieved from TMDB on 2026-10-01 and bundled withou
 - `assets/studios/hulu.png`: [TMDB network 453 logo](https://image.tmdb.org/t/p/w300/pqUTCleNUiTLAVlelGxUgWn1ELh.png).
 
 Netflix, Apple TV, Prime Video, Disney+, HBO Max, Paramount+ and Hulu are trademarks of their respective owners. They identify catalog collections; their appearance does not imply affiliation or endorsement. Movie provider data is supplied by TMDB / JustWatch, credited in the collection menu. This product uses the TMDB API but is not endorsed or certified by TMDB.
+
+## Aerial video metadata and clocks — beta.21
+
+The 114-scene metadata catalog in `data/aerial.json` is a reduced copy of the H2641080p entries in [OrangeJedi/Aerial videos.json](https://github.com/OrangeJedi/Aerial/blob/master/videos.json), retrieved 2026-10-01. Metadata license: [MIT, Copyright (c) 2022 OrangeJedi](lib/AERIAL-LICENSE). This is also the catalog referenced by Lampa's native Aerial screensaver. The plugin retains original scene names and categories.
+
+Video files are streamed directly from the original HTTPS `sylvan.apple.com` URLs and are not redistributed in this repository. The metadata project's MIT license does not grant rights to Apple's video footage. Apple and Aerial are not sponsors of this plugin.
+
+The flip, analog and ring clock implementations and their SVG/CSS geometry are original project code; no external clock runtime, font or image is loaded.

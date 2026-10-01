@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.20.1 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.21 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,12 +8,13 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.20.1';
+    var VERSION = '0.1.0-beta.21';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null;
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
     var pendingRequest, playbackTimer, watchedPlayback, playbackContext, historyPlayback;
+    var torrentRows = [], torrentFiles = [], pendingTorrent = null, torrentListRelease = '', progressPaintTimer, progressWriting = false;
     var playbackWatchSerial = 0, playerVoiceContext = null, voiceSwitch = null, voiceResume = null;
     var seasonMetadata = {}, seasonMetadataOrder = [];
     var directTrace = [], presentation = null;
@@ -101,6 +102,9 @@
                 if (row.subtitle) row.subtitle = escapeHTML(row.subtitle);
                 return row;
             }),
+            onDraw: function (node,item) {
+                if (item.progress && L.Timeline && L.Timeline.render) node.find('.selectbox-item__title').parent().append(L.Timeline.render(item.progress));
+            },
             onSelect: function (item) { L.Select.hide(); onSelect(item); },
             onBack: function () { L.Select.hide(); (onBack || restore)(); }
         });
@@ -1613,34 +1617,192 @@
         if (!title.originalTitle) return '';
         return title.type === 'tv' ? [episode.season,episode.season > 10 ? ':' : '',episode.episode,title.originalTitle].join('') : title.originalTitle;
     }
-    function episodeTimeline(title,episode) {
+    function episodeTimeline(title,episode,native,extra,preferLocal) {
         if (!L || !L.Timeline || !L.Utils || !L.Utils.hash) return {};
-        var timeline = L.Timeline.view(L.Utils.hash(timelineKey(title,episode))), canonical = lampaTimelineKey(title,episode);
-        var shared = canonical && L.Timeline.view(L.Utils.hash(canonical));
-        // Preserve beta.9 progress, and use newer standard Lampa marks when available.
-        if (shared && (+shared.updated > (+timeline.updated || 0) || (!timeline.updated && !timeline.percent && shared.percent))) {
-            ['time','duration','percent','updated'].forEach(function (key) { timeline[key] = shared[key]; });
+        var local = title && L.Timeline.view(L.Utils.hash(timelineKey(title,episode)));
+        var timeline = native || local, canonical = title && lampaTimelineKey(title,episode), targets = [], chosen = local || timeline;
+        if (!timeline) return {};
+        function add(view) {
+            if (!view || targets.some(function (v) { return text(v.hash) === text(view.hash); })) return;
+            targets.push(view);
         }
-        var original = timeline.handler;
+        add(timeline); add(local);
+        if (canonical) add(L.Timeline.view(L.Utils.hash(canonical)));
+        if (extra) add(L.Timeline.view(L.Utils.hash(extra)));
+        // TorrServer timecodes have no author timestamp. Do not let an old server
+        // position overwrite newer local progress simply because the list was opened.
+        targets.forEach(function (view) {
+            if (preferLocal && local && local.updated && (view === native || canonical && text(view.hash) === text(L.Utils.hash(canonical)))) return;
+            if (+view.updated > (+chosen.updated || 0) || (!chosen.updated && !chosen.percent && view.percent)) chosen = view;
+        });
+        ['time','duration','percent','updated'].forEach(function (key) { timeline[key] = chosen[key] || 0; });
+        var original = timeline.faborn_original_handler || timeline.handler;
+        timeline.faborn_original_handler = original;
         timeline.handler = function (percent,time,duration) {
-            if (original) original(percent,time,duration);
-            if (shared && shared.handler) shared.handler(percent,time,duration);
+            progressWriting = true;
+            try {
+                if (original) original(percent,time,duration);
+                targets.forEach(function (view) { if (view !== timeline && view.handler) view.handler(percent,time,duration); });
+            } finally { progressWriting = false; }
+            queueProgressPaint();
         };
         return timeline;
     }
-    function savePlaybackProgress(force) {
+    function savePlaybackProgress(force,ended) {
         var data = historyPlayback, progress = data && data.timeline;
-        if (!data || !data.faborn_watched || !progress || progress.waiting_for_user || progress.stop_recording || !(progress.time > 0) || !(progress.duration > 0) || !isFinite(progress.time) || !isFinite(progress.duration)) return;
+        if (!data || !data.faborn_watched || !progress || progress.waiting_for_user && !ended || progress.stop_recording || !(progress.time > 0) || !(progress.duration > 0) || !isFinite(progress.time) || !isFinite(progress.duration)) return;
         if (!force && data.faborn_saved && Date.now()-data.faborn_saved < 15000) return;
         data.faborn_saved = Date.now();
         if (progress.handler) progress.handler(progress.percent,progress.time,progress.duration);
-        save('position_'+data.faborn_title,{season:data.season,episode:data.episode,time:progress.time,duration:progress.duration,percent:progress.percent,updated:Date.now()});
+        if (data.faborn_title) save('position_'+data.faborn_title,{season:data.season,episode:data.episode,time:progress.time,duration:progress.duration,percent:progress.percent,updated:Date.now()});
         if (!data.faborn_in_history && data.card && data.card.id && L.Favorite && L.Favorite.add) {
             data.faborn_in_history = true;
             L.Favorite.add('history',data.card,100);
         }
     }
     function finishHistory() { savePlaybackProgress(true); historyPlayback = null; }
+
+    function torrentFileKey(data) {
+        return data && /^[a-z0-9]{16,64}$/i.test(text(data.torrent_hash)) && /^\d+$/.test(text(data.id)) ? 'faborn-torrent|'+text(data.torrent_hash).toLowerCase()+'|'+data.id : '';
+    }
+    function extraTorrentFile(path) { return /(?:^|[\/ ._\-])(sample|trailer|extras?|bonus|featurette|behind[ ._\-]the[ ._\-]scenes)(?:[\/ ._\-]|$)/i.test(text(path)); }
+    function torrentIdentity(data,items) {
+        var movie = data && data.card, path = text(data && data.path), tv, season, episode;
+        if (!movie || !/^\d+$/.test(text(movie.id)) || movie.source && movie.source !== 'tmdb' || extraTorrentFile(path)) return null;
+        tv = Boolean(movie.media_type === 'tv' || movie.original_name || movie.first_air_date || movie.number_of_seasons);
+        season = +data.season; episode = +data.episode;
+        if (tv) {
+            if (!/^\d+$/.test(text(data.season)) || !/^\d+$/.test(text(data.episode)) || !(season >= 0 && season <= 999 && season % 1 === 0 && episode > 0 && episode <= 9999 && episode % 1 === 0)) return null;
+            // Native parsing defaults to season 1. Require season evidence for multi-season shows.
+            if (path && !/(?:\bs\d+|\b\d{1,2}x\d+|season[ ._\-]*\d+|сезон[ ._\-]*\d+|\d+[ ._\-]*сезон)/i.test(path) && +movie.number_of_seasons !== 1) return null;
+            if (/e\d+(?:e\d+|[\-+]e?\d+)|\d+x\d+[-+]\d+/i.test(path)) return null;
+        } else {
+            season = 0; episode = 0;
+            if (/(?:^|[\/ ._\-])(?:cd|disc|disk|part)[ ._\-]*\d+(?:\b|_)/i.test(path)) return null;
+            if (items && items.filter(function (item) { return !extraTorrentFile(item.path); }).length !== 1) return null;
+        }
+        return {title:{id:'tmdb-'+(tv ? 'tv-' : 'movie-')+movie.id,type:tv ? 'tv' : 'movie',originalTitle:movie.original_title || movie.original_name || ''},season:season,episode:episode};
+    }
+    function prepareTorrentProgress(data,items,serverPosition) {
+        var file = torrentFileKey(data);
+        if (!file || !data.timeline) return false;
+        var known = data.timeline.faborn_identity, info = known === undefined ? torrentIdentity(data,items) : known;
+        serverPosition = serverPosition || data.timeline.faborn_server_position;
+        data.timeline = episodeTimeline(info && info.title,info || {},data.timeline,file,serverPosition);
+        data.timeline.faborn_server_position = Boolean(serverPosition);
+        data.timeline.faborn_identity = info;
+        data.faborn_torrent = true;
+        if (info) { data.faborn_title = info.title.id; data.season = info.season; data.episode = info.episode; }
+        return true;
+    }
+    function releaseProgressKey(element) {
+        var match = /(?:\?|&)xt=urn:btih:([a-f0-9]{40})(?:&|$)/i.exec(text(element && element.MagnetUri));
+        if (match) return 'h:'+match[1].toLowerCase();
+        return element && element.hash !== undefined ? 'r:'+text(element.hash) : '';
+    }
+    function newestProgress(hashes) {
+        var chosen = {};
+        if (!L.Timeline) return chosen;
+        hashes.forEach(function (hash) {
+            if (hash === undefined || hash === null || hash === '') return;
+            var view = L.Timeline.view(hash);
+            if (+view.updated > (+chosen.updated || 0) || (!chosen.updated && !chosen.percent && view.percent)) chosen = view;
+        });
+        return chosen;
+    }
+    function torrentProgressState(record) {
+        if (!record || !record.files || !record.files.length) return {label:'',complete:false};
+        var complete = 0, last = null, percent = 0, seen = {}, files = record.files.filter(function (file) {
+            var key = file.shared || file.file;
+            if (seen[key]) return false;
+            seen[key] = true; return true;
+        });
+        files.forEach(function (file) {
+            var progress = newestProgress([file.shared,file.native,file.file]);
+            percent += +progress.percent >= 90 ? 100 : Math.max(0,Math.min(100,+progress.percent || 0));
+            if (+progress.percent >= 90) complete++;
+            else if (+progress.time > 10 && (!last || +progress.updated > +last.progress.updated)) last = {file:file,progress:progress};
+        });
+        var label = '';
+        if (complete === files.length) label = 'Переглянуто'+(files.length > 1 ? ' · '+complete+' / '+files.length : '');
+        else if (last) label = 'Продовжити'+(last.file.episode ? ' S'+last.file.season+'E'+last.file.episode : '')+' · '+clockLabel(last.progress.time);
+        if (complete && complete < files.length) label += (label ? ' · ' : '')+'Переглянуто '+complete+' / '+files.length;
+        return {label:label,complete:complete === files.length,watched:complete,total:files.length,percent:files.length ? percent/files.length : 0};
+    }
+    function paintProgress(node,status) {
+        if (!node || !node.querySelector || !root.document.createElement) return;
+        var badge = node.querySelector('.faborn-watch-status'), bar = node.querySelector('.faborn-watch-bar');
+        var nativeBar = node.querySelector('.time-line');
+        if (nativeBar) { nativeBar.classList.toggle('hide',!status.percent);if (nativeBar.firstElementChild) nativeBar.firstElementChild.style.width = (status.percent || 0)+'%'; }
+        if (!status.label) { if (badge) badge.remove();if (bar) bar.remove();node.classList.remove('faborn-has-progress');return; }
+        if (!badge) { badge = root.document.createElement('div');badge.className = 'faborn-watch-status';(node.querySelector('.torrent-serial__content') || node).appendChild(badge); }
+        badge.textContent = (status.complete ? '✓ ' : '')+status.label;
+        badge.classList.toggle('faborn-watch-status--done',status.complete);
+        if (!nativeBar) {
+            if (!bar) { bar = root.document.createElement('div');bar.className = 'faborn-watch-bar';bar.appendChild(root.document.createElement('i'));badge.parentNode.appendChild(bar); }
+            bar.setAttribute('role','progressbar');bar.setAttribute('aria-label','Перегляд');bar.setAttribute('aria-valuenow',Math.round(status.percent));bar.setAttribute('aria-valuemin','0');bar.setAttribute('aria-valuemax','100');bar.firstElementChild.style.width = status.percent+'%';
+        }
+        node.classList.add('faborn-has-progress');
+    }
+    function paintTorrentProgress() {
+        var index = storage('torrent_index',{}), doc = root.document;
+        function exists(record) { return doc.documentElement && doc.documentElement.contains(record.node); }
+        torrentRows = torrentRows.filter(exists); torrentFiles = torrentFiles.filter(exists);
+        torrentRows.forEach(function (record) { paintProgress(record.node,torrentProgressState(index[record.key])); });
+        torrentFiles.forEach(function (record) { paintProgress(record.node,torrentProgressState({files:[record.file]})); });
+    }
+    function queueProgressPaint() {
+        if (!torrentRows.length && !torrentFiles.length || progressPaintTimer) return;
+        progressPaintTimer = root.setTimeout(function () { progressPaintTimer = null;paintTorrentProgress(); },0);
+    }
+    function watchTorrent(event) {
+        if (!event || !event.element) return;
+        var key = releaseProgressKey(event.element), node = event.item && (event.item[0] || event.item);
+        if (event.type === 'onenter') pendingTorrent = {key:key,at:Date.now()};
+        if (event.type === 'render' && key && node) { torrentRows.push({key:key,node:node});queueProgressPaint(); }
+    }
+    function watchTorrentFile(event) {
+        if (!event) return;
+        if (event.type === 'list_open') { torrentFiles = [];torrentListRelease = pendingTorrent && Date.now()-pendingTorrent.at < 30000 ? pendingTorrent.key : '';pendingTorrent = null;return; }
+        if (event.type === 'list_close') { torrentFiles = [];torrentListRelease = '';return; }
+        if (event.type !== 'render' || !event.element) return;
+        var data = event.element, params = event.params || {}, server = (params.viewed || []).some(function (v) { return v.file_index === data.id && v.timecode > 0; });
+        if (!prepareTorrentProgress(data,event.items,server)) return;
+        var info = data.timeline.faborn_identity, file = {id:data.id,file:L.Utils.hash(torrentFileKey(data)),native:info ? data.timeline.hash : '',shared:info ? L.Utils.hash(timelineKey(info.title,info)) : '',season:info ? info.season : 0,episode:info ? info.episode : 0};
+        var node = event.item && (event.item[0] || event.item);
+        if (node) {
+            torrentFiles.push({node:node,file:file});
+            if (node.querySelectorAll) Array.prototype.forEach.call(node.querySelectorAll('.time-line'),function (line) {
+                line.classList.toggle('hide',!data.timeline.percent);
+                if (line.firstElementChild) line.firstElementChild.style.width = Math.max(0,Math.min(100,+data.timeline.percent || 0))+'%';
+            });
+        }
+        // The index holds identities only; progress itself stays in Lampa's profile-aware Timeline.
+        if (!extraTorrentFile(data.path)) {
+            var index = storage('torrent_index',{}), hashKey = 'h:'+text(data.torrent_hash).toLowerCase();
+            var record = index[hashKey] || {files:[]};
+            record.files = record.files.filter(function (f) { return f.id !== file.id; });record.files.push(file);record.updated = Date.now();
+            index[hashKey] = record;if (torrentListRelease) index[torrentListRelease] = record;
+            Object.keys(index).sort(function (a,b) { return index[b].updated-index[a].updated; }).slice(200).forEach(function (key) { delete index[key]; });
+            save('torrent_index',index);
+        }
+        queueProgressPaint();
+    }
+    function watchTimelineUpdate(event) {
+        if (!progressWriting && event && event.data && event.data.road) {
+            var update = event.data, progress = update.road;
+            progressWriting = true;
+            try {
+                torrentFiles.forEach(function (record) {
+                    if (text(record.file.native) !== text(update.hash)) return;
+                    [record.file.shared,record.file.file].forEach(function (hash) {
+                        if (hash && text(hash) !== text(update.hash)) L.Timeline.view(hash).handler(progress.percent,progress.time,progress.duration);
+                    });
+                });
+            } finally { progressWriting = false; }
+        }
+        queueProgressPaint();
+    }
     function availablePlaylist(release, episode) {
         var list = release.episodes.filter(function (e) { return e.season === episode.season; }).sort(function (a, b) { return a.episode - b.episode; });
         var index = -1, left, right;
@@ -1935,7 +2097,7 @@
             if (catalog) {
                 lines.push('Резервний індекс: '+catalog.titles.length+' назв · '+catalog.generatedAt+'. Основний пошук виконується за відкритою карткою; він не обмежений цим індексом.');
             }
-            if (saverUI && saverUI.status) { var saverStatus=saverUI.status();lines.push('Заставка: '+(saverStatus.style || 'очікування')+' · кадрів '+saverStatus.frames+(saverStatus.error ? ' · '+saverStatus.error : '')); }
+            if (saverUI && saverUI.status) { var saverStatus=saverUI.status();lines.push('Заставка: '+(saverStatus.style || 'очікування')+(saverStatus.video ? ' · '+saverStatus.video+' · с ' : ' · кадрів ')+saverStatus.frames+(saverStatus.error ? ' · '+saverStatus.error : '')); }
             select('Діагностика', lines.map(function (line) { return {title: line}; }), function () { diagnostics(); }, restore);
     }
     function cancelLabLoad() {
@@ -2018,7 +2180,7 @@
         if (!L.Screensaver || !root.document || !root.document.createElement || !root.document.head || saverUI || saverScript || !baseURL()) return;
         function ready() {
             if (typeof root.FabornScreensaver !== 'function') return;
-            saverUI=root.FabornScreensaver(root,L);
+            saverUI=root.FabornScreensaver(root,L,{catalogURL:baseURL()+'data/aerial.json?v='+VERSION});
             if (!saverUI.install()) saverUI=null;
         }
         if (typeof root.FabornScreensaver === 'function') return ready();
@@ -2059,7 +2221,7 @@
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_glass_transparency',type:'select',values:{solid:'Непрозоре',low:'Низька',standard:'Стандартна',high:'Висока',max:'Максимальна'},default:'standard'},field:{name:'Прозорість скла iOS',description:'Для теми iOS · Liquid Glass. Вища прозорість — краще видно фон крізь меню, кнопки й вікна. Застосовується одразу.'},onChange:applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_accent', type: 'select', values: {blue:'Синій', amber:'Бурштиновий', mint:'М’ятний', violet:'Фіолетовий', aurora:'Синій → фіолетовий', lagoon:'Бірюзовий → синій'}, default: 'blue'}, field: {name: 'Колір акценту', description: 'Колір або градієнт для «Панелі» та «Кінозалу». У стандартному оформленні не застосовується.'}, onChange: applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver',type:'select',values:{on:'Faborn',native:'Стандартна Lampa',off:'Вимкнено'},default:'on'},field:{name:'Заставка під час бездіяльності',description:'Вмикається в меню. Під час перегляду, паузи та завантаження відео не запускається.'},onChange:applyAppearance});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_style',type:'select',values:{aurora:'Аврора',stars:'Нічне небо',warp:'Зоряний політ',nebula:'Туманність',waves:'Океанські хвилі',ribbons:'Світлові стрічки',bokeh:'Боке',fireflies:'Світлячки',rain:'Нічний дощ',matrix:'Цифровий дощ',orbits:'Орбіти',clock:'Годинник',random:'Випадкова анімація'},default:'aurora'},field:{name:'Стиль заставки',description:'12 стилів. Випадкова анімація змінюється при кожному запуску. Усі працюють локально.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_style',type:'select',values:{aerial:'Відео · усі сцени', 'aerial-ocean':'Відео · океан','aerial-city':'Відео · міста','aerial-nature':'Відео · природа','aerial-space':'Відео · Земля з космосу', 'clock-flip':'Годинник · перекидний','clock-analog':'Годинник · стрілочний','clock-rings':'Годинник · кільця',clock:'Годинник · мінімальний',aurora:'Аврора',stars:'Нічне небо',warp:'Зоряний політ',nebula:'Туманність',waves:'Океанські хвилі',ribbons:'Світлові стрічки',bokeh:'Боке',fireflies:'Світлячки',rain:'Нічний дощ',matrix:'Цифровий дощ',orbits:'Орбіти',random:'Випадкова анімація'},default:'aurora'},field:{name:'Стиль заставки',description:'114 відеосцен з інтернету, 4 годинники та 11 локальних анімацій. Відеосцени змінюються автоматично.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_clock',type:'select',values:{compact:'Компактний',large:'Великий',off:'Без годинника'},default:'compact'},field:{name:'Годинник на заставці',description:'Для анімованих стилів. У стилі «Годинник» час завжди показується.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_time',type:'select',values:{'1':'1 хвилина','3':'3 хвилини','5':'5 хвилин','10':'10 хвилин'},default:'3'},field:{name:'Запуск заставки через',description:'Будь-яка кнопка пульта повертає до того самого місця в меню.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_preview',type:'button'},field:{name:'Переглянути заставку',description:'Попередній перегляд вибраного стилю Faborn.'},onChange:function () { if (!saverUI) { loadScreensaver();notify('Заставка ще завантажується або не підтримується цією збіркою Lampa. Спробуй після перезапуску.'); } else if (!saverUI.preview()) notify('Заверши перегляд відео, щоб відкрити заставку.'); }});
@@ -2125,6 +2287,12 @@
         if (storage('source','uakino') === 'uakinogo') save('source','kinobase');
         if (!$('#faborn-ukr-style').length) $('body').append('<style id="faborn-ukr-style">.full-start__button.view--faborn-ukr,.full-start__button.view--faborn-torrent{justify-content:center;border:0!important;outline:0!important;box-shadow:none!important}.full-start__button.view--faborn-ukr>svg,.full-start__button.view--faborn-torrent>svg{margin:0!important;flex-shrink:0}.full-start__button.view--faborn-torrent>:not(svg),.full-start__button.view--faborn-torrent:before,.full-start__button.view--faborn-torrent:after,.full-start__button.view--faborn-ukr>:not(svg),.full-start__button.view--faborn-ukr:before,.full-start__button.view--faborn-ukr:after{display:none!important}</style>');
         L.Listener.follow('full', attach);
+        L.Listener.follow('torrent', watchTorrent);
+        L.Listener.follow('torrent_file', watchTorrentFile);
+        if (L.Timeline && L.Timeline.listener) L.Timeline.listener.follow('update',watchTimelineUpdate);
+        if (!$('#faborn-progress-style').length) $('body').append('<style id="faborn-progress-style">.faborn-watch-status{display:table;max-width:100%;box-sizing:border-box;margin-top:.7em;padding:.38em .7em;border-radius:.5em;background:#253c5a;color:#e4efff;font-size:.85em;line-height:1.4;font-weight:600}.faborn-watch-status--done{background:#174b3f;color:#9cffe0}.faborn-has-progress>.torrent-item__viewed{display:none}.faborn-watch-bar{height:.22em;margin-top:.55em;border-radius:.3em;background:rgba(140,176,210,.2);overflow:hidden}.faborn-watch-bar i{display:block;height:100%;background:linear-gradient(90deg,#528dff,#64e9c5);border-radius:inherit}body:not(.faborn-theme) .faborn-watch-status{background:#394453;color:#fff}body:not(.faborn-theme) .faborn-watch-bar i{background:#fff}</style>');
+        if (root.addEventListener) { root.addEventListener('pagehide',function () { savePlaybackProgress(true); });root.addEventListener('beforeunload',function () { savePlaybackProgress(true); }); }
+        if (root.document.addEventListener) root.document.addEventListener('visibilitychange',function () { if (root.document.hidden) savePlaybackProgress(true); });
         if (L.Player.listener) {
             L.Player.listener.follow('start', function (data) {
                 // Lampa applies its global quality preference before this event. Preserve the explicit selection only for our streams.
@@ -2132,6 +2300,7 @@
                 cancelVoiceSwitch();
                 if (playerVoiceContext && playerVoiceContext.data !== data) playerVoiceContext = null;
                 finishHistory();
+                if (data && prepareTorrentProgress(data)) { historyPlayback = data;return; }
                 var labOwned = data && data === labPlaybackData && data.faborn_4klab === true;
                 if (!data || !data.faborn_title || (!labOwned && !mediaURL(data.faborn_url))) return;
                 data.url = data.faborn_url;
@@ -2150,6 +2319,7 @@
         });
         if (L.PlayerVideo && L.PlayerVideo.listener) {
             L.PlayerVideo.listener.follow('loadeddata', function () { clearPlaybackWatch(); resumePlayerVoice(); });
+            L.PlayerVideo.listener.follow('pause', function () { savePlaybackProgress(true); });
             L.PlayerVideo.listener.follow('timeupdate', function (event) {
                 resumePlayerVoice();
                 if (watchedPlayback && event && event.current > 0) clearPlaybackWatch();
@@ -2160,7 +2330,7 @@
             L.PlayerVideo.listener.follow('ended', function () {
                 if (historyPlayback && historyPlayback.timeline && historyPlayback.timeline.duration > 0) {
                     historyPlayback.timeline.percent = 100; historyPlayback.timeline.time = historyPlayback.timeline.duration;
-                    savePlaybackProgress(true);
+                    savePlaybackProgress(true,true);
                 }
             });
             L.PlayerVideo.listener.follow('error', function (event) {
@@ -2186,6 +2356,7 @@
         normalize: normalize, matchTitles: matchTitles, mediaURL: mediaURL,
         safeBase: safeBase, validCatalog: validCatalog, qualityNames: qualityNames,
         pickURL: pickURL, timelineKey: timelineKey, availablePlaylist: availablePlaylist, escapeHTML: escapeHTML,
+        torrentIdentity:torrentIdentity,torrentProgressState:torrentProgressState,prepareTorrentProgress:prepareTorrentProgress,
         audioLanguage:audioLanguage, sourceGroups:sourceGroups, playerVoiceRows:playerVoiceRows, kinoPage:kinoPage, kinoEntries:kinoEntries, kinoDecode:kinoDecode, kinoCandidate:kinoCandidate,
         providers:PROVIDERS, providerSearch:providerSearch, providerPage:providerPage, playerEntries:playerEntries, sameTitle:sameTitle, parseSearch:parseSearch, parseSource:parseSource, addEpisodeRefs:addEpisodeRefs, parseEmbed:parseEmbed, parseMaster:parseMaster, uakinoURL:uakinoURL, embedURL:embedURL
     };

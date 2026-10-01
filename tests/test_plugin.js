@@ -57,7 +57,7 @@ test('escapes source labels before Lampa templates', () => {
 });
 
 function environment(options = {}) {
-    const state = {storage: {}, timelines: {}, history: [], follows: {}, playerEvents: {}, videoEvents: {}, nativeEvents: {}, timers: {}, timerId: 0, params: [], notices: [], controller: 'full_start', menu: null, played: null, requests: [], catalog: catalog};
+    const state = {storage: {}, timelines: {}, timelineEvents: {}, history: [], follows: {}, playerEvents: {}, videoEvents: {}, nativeEvents: {}, pageEvents: {}, timers: {}, timerId: 0, params: [], notices: [], controller: 'full_start', menu: null, played: null, requests: [], catalog: catalog};
     const jq = () => ({length: 0, append() { return this; }});
     function XHR() { state.requests.push(this); }
     XHR.prototype.open = function (method, url) { if (options.openError) throw new Error('Request blocked'); this.url = url; this.method = method; this.headers = {}; };
@@ -72,6 +72,7 @@ function environment(options = {}) {
     };
     XHR.prototype.abort = function () { this.aborted = true; };
     const root = {jQuery: jq, XMLHttpRequest: XHR, document: {currentScript: {src: 'https://faborn.github.io/lampa/ukr-by-faborn.js'}, getElementsByTagName() { return []; }},
+        addEventListener(name,fn) { state.pageEvents[name]=fn; },
         setTimeout(fn, ms) { const id = ++state.timerId; state.timers[id] = {fn, ms}; return id; },
         clearTimeout(id) { delete state.timers[id]; }
     };
@@ -83,7 +84,7 @@ function environment(options = {}) {
         Listener: {follow(k, fn) { state.follows[k] = fn; }},
         Controller: {enabled() { return {name: state.controller}; }, toggle(n) { state.controller = n; }},
         SettingsApi: {addComponent() {}, addParam(p) { state.params.push(p); }},
-        Timeline: {view(hash) { return {hash, time: 0, percent: 0, duration: 0, ...state.timelines[hash], handler(percent,time,duration) { state.timelines[hash]={percent,time,duration,updated:Date.now()}; }}; }},
+        Timeline: {listener:{follow(k,fn){state.timelineEvents[k]=fn;}},update({hash,percent,time,duration}){const road={percent,time,duration,updated:Date.now()};state.timelines[hash]=road;if(state.timelineEvents.update)state.timelineEvents.update({data:{hash,road}});},view(hash) { return {hash, time: 0, percent: 0, duration: 0, ...state.timelines[hash], handler(percent,time,duration) { root.Lampa.Timeline.update({hash,percent,time,duration}); }}; }},
         Favorite: {add(folder,card) { state.history.push({folder,card}); }},
         Utils: {hash(s) { return s; }},
         Player: {
@@ -605,7 +606,7 @@ test('appearance settings expose both layouts, fallback, reversible global theme
     assert.equal(typeof param('studios').onChange, 'function');
     assert.deepEqual(Object.keys(param('feed').param.values), ['compact','native','off']);
     assert.equal(param('feed').param.default, 'compact');
-    assert.deepEqual(Object.keys(param('screensaver_style').param.values), require('../lib/faborn-screensaver')({},{}).styles().concat('random'));
+    assert.deepEqual(Object.keys(param('screensaver_style').param.values).sort(), require('../lib/faborn-screensaver')({},{}).styles().concat('random').sort());
     assert.deepEqual(Object.keys(param('screensaver_clock').param.values), ['compact','large','off']);
     assert.deepEqual(Object.keys(param('theme').param.values), ['on', 'ios', 'off']);
     assert.equal(Object.keys(param('accent').param.values).length, 6);
@@ -1061,10 +1062,102 @@ test('classic episode menus keep safe thumbnails, titles, synopsis and progress'
  env.instance.open(kinoSeries);env.state.choose(i=>i.action==='episode');env.state.choose(i=>i.value===1);
  loaded({episodes:[{episode_number:1,name:'Пілот',still_path:'/photo.jpg',overview:'Короткий <b>опис</b>'},{episode_number:2,name:'Друга',still_path:'javascript:bad',overview:''}]});
  const rows=env.state.menu.items;assert.equal(rows[0].thumbnail,'https://image.tmdb.org/t/p/w300/photo.jpg');assert.match(rows[0].title,/Пілот/);assert.match(rows[0].subtitle,/8:30/);assert.match(rows[0].subtitle,/Короткий опис/);assert.equal(rows[1].thumbnail,'');
+ let rendered,appended;env.root.Lampa.Timeline.render=p=>{rendered=p;return 'native-timeline';};
+ env.state.menu.onDraw({find:()=>({parent:()=>({append:v=>{appended=v;}})})},rows[0]);assert.equal(rendered.percent,35);assert.equal(appended,'native-timeline');
  env.state.choose(i=>i.value===2);env.state.play('1080p');assert.equal(env.state.played.episode,2);
 });
 test('classic source menus expose the same continue action and preserve the player timecode',()=>{
  const env=kinoEnvironment();env.state.storage.faborn_ukr_layout='classic';env.state.storage.player_timecode='continue';const field=env.root.Lampa.Storage.field;env.root.Lampa.Storage.field=k=>k==='player_timecode'?env.state.storage.player_timecode:field(k);env.state.timelines['faborn|tmdb-movie-280|0|0']={time:510,duration:7000,percent:7};
  env.instance.open(kinoMovie);env.state.choose(i=>/^Продовжити з 8:30/.test(i.title));assert.equal(env.state.played.timeline.time,510);assert.equal(env.state.storage.faborn_ukr_layout,'classic');
  env.root.Lampa.Player.close();env.state.storage.player_timecode='ask';env.instance.open(kinoMovie);assert.ok(!env.state.menu.items.some(i=>/^Продовжити з/.test(i.title)));
+});
+
+const torrentHash='a'.repeat(40);
+function torrentEpisode(env,episode=1,season=1){
+ return {id:episode,torrent_hash:torrentHash,path:'Friends/Season '+season+'/Friends.S'+String(season).padStart(2,'0')+'E'+String(episode).padStart(2,'0')+'.mkv',card:{...kinoSeries,number_of_seasons:10},season,episode,url:'http://127.0.0.1:8090/stream/test',timeline:env.root.Lampa.Timeline.view(''+season+episode+'Friends')};
+}
+function registerFiles(env,files,viewed=[]){
+ env.state.follows.torrent({type:'onenter',element:{hash:123}});
+ env.state.follows.torrent_file({type:'list_open',items:files,params:{movie:files[0].card}});
+ files.forEach(element=>env.state.follows.torrent_file({type:'render',element,items:files,params:{movie:element.card,viewed}}));
+}
+test('online to torrent to online retains exact seconds and the latest episode',()=>{
+ const env=kinoEnvironment({series:true}),{state,root}=env;
+ env.instance.open(kinoSeries);state.play('1080p');state.progress(510,1440);root.Lampa.Player.close();
+ const first=torrentEpisode(env),second=torrentEpisode(env,2);registerFiles(env,[first,second]);
+ assert.equal(first.timeline.time,510);assert.equal(second.timeline.time,0);
+ assert.equal(state.storage['faborn_ukr_position_tmdb-tv-1668'].episode,1);
+ root.Lampa.Player.play(first);assert.equal(state.played.timeline.time,510);state.progress(700,1440);root.Lampa.Player.close();
+ assert.equal(state.timelines['faborn|tmdb-tv-1668|1|1'].time,700);
+ root.Lampa.Player.play(second);state.progress(300,1440);root.Lampa.Player.close();
+ assert.equal(state.storage['faborn_ukr_position_tmdb-tv-1668'].episode,2);
+ env.instance.open(kinoSeries);state.play('1080p');assert.equal(state.played.episode,2);assert.equal(state.played.timeline.time,300);
+ assert.equal(first.url,'http://127.0.0.1:8090/stream/test');
+});
+test('pause saves torrent progress before the normal recording interval',()=>{
+ const env=kinoEnvironment({series:true}),file=torrentEpisode(env);registerFiles(env,[file]);env.root.Lampa.Player.play(file);
+ env.state.progress(100,1440);Object.assign(file.timeline,{time:123,duration:1440,percent:9});env.state.videoEvents.pause();
+ assert.equal(env.state.timelines['faborn|tmdb-tv-1668|1|1'].time,123);
+ assert.equal(env.state.timelines['faborn-torrent|'+torrentHash+'|1'].time,123);
+});
+test('opening or failing a torrent never records a watched episode',()=>{
+ const env=kinoEnvironment({series:true}),file=torrentEpisode(env);registerFiles(env,[file]);
+ assert.equal(env.instance.torrentProgressState(env.state.storage.faborn_ukr_torrent_index['r:123']).label,'');
+ env.root.Lampa.Player.play(file);env.root.Lampa.Player.close();assert.equal(env.state.storage['faborn_ukr_position_tmdb-tv-1668'],undefined);
+ assert.equal(env.state.history.length,0);
+ env.root.Lampa.Player.play(file);file.timeline.waiting_for_user=true;env.state.progress(100,1440);env.root.Lampa.Player.close();assert.equal(env.state.history.length,0);
+});
+test('a season pack shows partial progress until every known episode is watched',()=>{
+ const env=kinoEnvironment({series:true}),first=torrentEpisode(env),second=torrentEpisode(env,2);registerFiles(env,[first,second]);
+ env.root.Lampa.Player.play(first);env.state.progress(1300,1440);env.state.videoEvents.ended();env.root.Lampa.Player.close();
+ const record=env.state.storage.faborn_ukr_torrent_index['r:123'];
+ assert.deepEqual(env.instance.torrentProgressState(record),{label:'Переглянуто 1 / 2',complete:false,watched:1,total:2,percent:50});
+ env.root.Lampa.Player.play(second);env.state.progress(510,1440);env.root.Lampa.Player.close();assert.match(env.instance.torrentProgressState(record).label,/S1E2 · 8:30.*1 \/ 2/);
+ env.root.Lampa.Player.play(second);env.state.progress(1400,1440);env.state.videoEvents.ended();env.root.Lampa.Player.close();assert.equal(env.instance.torrentProgressState(record).complete,true);
+});
+test('ended progress is saved even when the native timeline locks continuation at end',()=>{
+ const env=kinoEnvironment({series:true}),file=torrentEpisode(env);registerFiles(env,[file]);env.root.Lampa.Player.play(file);env.state.progress(1400,1440);file.timeline.waiting_for_user=true;env.state.videoEvents.ended();
+ assert.equal(env.state.timelines['faborn|tmdb-tv-1668|1|1'].percent,100);
+});
+test('an untimestamped old TorrServer timecode cannot replace a newer local stop',()=>{
+ const env=kinoEnvironment({series:true});env.state.timelines['faborn|tmdb-tv-1668|1|1']={time:510,duration:1440,percent:35,updated:100};
+ env.state.timelines['11Friends']={time:50,duration:1440,percent:3,updated:200};
+ const file=torrentEpisode(env);registerFiles(env,[file],[{file_index:1,timecode:50}]);assert.equal(file.timeline.time,510);
+});
+test('unknown episodes, season guesses, extras and multi-episode files are not linked to shared progress',()=>{
+ const env=kinoEnvironment({series:true}),normal=torrentEpisode(env);
+ for(const change of [{episode:0},{season:null},{path:'Friends/Episode 03.mkv'},{path:'Friends/Sample.S01E01.mkv'},{path:'Friends.S01E01E02.mkv'},{path:'Friends.S01E01-02.mkv'},{card:{...normal.card,source:'cub'}}]){
+  assert.equal(env.instance.torrentIdentity({...normal,...change}),null,JSON.stringify(change));
+ }
+ assert.equal(env.instance.torrentIdentity({...normal,season:11,path:'Friends.S11E01.mkv'}).season,11);
+ const unknown={...normal,episode:0,timeline:env.root.Lampa.Timeline.view('unrecognized')};registerFiles(env,[unknown]);env.root.Lampa.Player.play(unknown);env.state.progress(120,1440);env.root.Lampa.Player.close();assert.equal(unknown.faborn_title,undefined);assert.equal(env.state.storage['faborn_ukr_position_tmdb-tv-1668'],undefined);
+});
+test('film progress crosses sources but multipart releases and extras stay separate',()=>{
+ const env=kinoEnvironment();env.instance.open(kinoMovie);env.state.play('1080p');env.state.progress(900,7000);env.root.Lampa.Player.close();
+ const file={id:1,torrent_hash:torrentHash,path:'Terminator.2.mkv',card:kinoMovie,url:'http://127.0.0.1:8090/stream/film',timeline:env.root.Lampa.Timeline.view('Terminator 2: Judgment Day')};
+ registerFiles(env,[file]);assert.equal(file.timeline.time,900);env.root.Lampa.Player.play(file);env.state.progress(1200,7000);env.root.Lampa.Player.close();env.instance.open(kinoMovie);env.state.play('1080p');assert.equal(env.state.played.timeline.time,1200);
+ assert.equal(env.instance.torrentIdentity({...file,path:'Terminator.CD1.mkv'}),null);
+ assert.equal(env.instance.torrentIdentity(file,[file,{path:'Another.Movie.mkv'}]),null);
+ assert.ok(env.instance.torrentIdentity(file,[file,{path:'Sample.mkv'}]));
+});
+test('latest local reset wins over older completed progress',()=>{
+ const env=kinoEnvironment({series:true});env.state.timelines.shared={time:1440,duration:1440,percent:100,updated:100};env.state.timelines.native={time:0,duration:0,percent:0,updated:200};
+ assert.equal(env.instance.torrentProgressState({files:[{shared:'shared',native:'native',file:'file'}]}).label,'');
+});
+test('native watched and reset actions update the shared and per-torrent marks without recursion',()=>{
+ const env=kinoEnvironment({series:true}),file=torrentEpisode(env);registerFiles(env,[file]);
+ env.state.follows.torrent_file({type:'render',element:file,item:{},items:[file],params:{}});
+ env.root.Lampa.Timeline.update({hash:'11Friends',percent:100,time:1440,duration:1440});
+ assert.equal(env.state.timelines['faborn|tmdb-tv-1668|1|1'].percent,100);assert.equal(env.state.timelines['faborn-torrent|'+torrentHash+'|1'].percent,100);
+ env.root.Lampa.Timeline.update({hash:'11Friends',percent:0,time:0,duration:0});assert.equal(env.state.timelines['faborn|tmdb-tv-1668|1|1'].percent,0);assert.equal(env.state.timelines['faborn-torrent|'+torrentHash+'|1'].percent,0);
+});
+test('a later episode and another series cannot inherit the stop from the current episode',()=>{
+ const env=kinoEnvironment({series:true});env.state.timelines['faborn|tmdb-tv-1668|1|1']={time:510,duration:1440,percent:35,updated:100};
+ const second=torrentEpisode(env,2);env.instance.prepareTorrentProgress(second);assert.equal(second.timeline.time,0);
+ const other=torrentEpisode(env);other.card={...other.card,id:42,original_name:'Another',original_title:'Another'};other.timeline=env.root.Lampa.Timeline.view('11Another');env.instance.prepareTorrentProgress(other);assert.equal(other.timeline.time,0);
+});
+test('page exit flushes the last torrent seconds before the fifteen-second interval',()=>{
+ const env=kinoEnvironment({series:true}),file=torrentEpisode(env);registerFiles(env,[file]);env.root.Lampa.Player.play(file);
+ env.state.progress(100,1440);Object.assign(file.timeline,{time:107,duration:1440,percent:7});env.state.pageEvents.pagehide();
+ assert.equal(env.state.timelines['faborn|tmdb-tv-1668|1|1'].time,107);assert.equal(env.state.storage['faborn_ukr_position_tmdb-tv-1668'].time,107);
 });
