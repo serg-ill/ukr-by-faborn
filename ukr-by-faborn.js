@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.17 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.18 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,9 +8,9 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.17';
+    var VERSION = '0.1.0-beta.18';
     var NAME = 'ukr by Faborn';
-    var interfaceUI = null, interfaceScript = null, lastFullEvent = null;
+    var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null;
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
     var pendingRequest, playbackTimer, watchedPlayback, playbackContext, historyPlayback;
@@ -136,6 +136,7 @@
         putStyle('faborn-ukr-theme',enabled ? (glass ? glassCSS(accent,tint,fill,ink) : themeCSS(accent,tint,fill,ink)) : '');
         $('.view--faborn-torrent').toggleClass('hide',storage('torrent_button','on') !== 'on');
         if (interfaceUI) interfaceUI.apply();
+        if (saverUI) saverUI.apply();
     }
     function changeTheme(value) {
         // An explicit choice of iOS must also work when the previous layout disabled all theming.
@@ -1997,6 +1998,19 @@
         interfaceScript.onerror = function () { interfaceScript = null; };
         root.document.head.appendChild(interfaceScript);
     }
+    function loadScreensaver() {
+        if (!L.Screensaver || !root.document || !root.document.createElement || !root.document.head || saverUI || saverScript || !baseURL()) return;
+        function ready() {
+            if (typeof root.FabornScreensaver !== 'function') return;
+            saverUI=root.FabornScreensaver(root,L);
+            if (!saverUI.install()) saverUI=null;
+        }
+        if (typeof root.FabornScreensaver === 'function') return ready();
+        saverScript=root.document.createElement('script');
+        saverScript.src=baseURL()+'lib/faborn-screensaver.js?v='+VERSION;saverScript.async=true;
+        saverScript.onload=ready;saverScript.onerror=function () { saverScript=null; };
+        root.document.head.appendChild(saverScript);
+    }
     function learnSourceQuality(session) {
         if (!interfaceUI || !session.movie.id) return;
         var qualities = [], languages = [];
@@ -2026,6 +2040,10 @@
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_theme', type: 'select', values: {on:'Faborn', ios:'iOS · Liquid Glass', off:'Стандартна Lampa'}, default: 'on'}, field: {name: 'Тема всієї Lampa', description: 'iOS — скляні меню, картки та вікна. Застосовується одразу; зі стандартного оформлення переходить у «Панель».'}, onChange: changeTheme});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_glass_transparency',type:'select',values:{solid:'Непрозоре',low:'Низька',standard:'Стандартна',high:'Висока',max:'Максимальна'},default:'standard'},field:{name:'Прозорість скла iOS',description:'Для теми iOS · Liquid Glass. Вища прозорість — краще видно фон крізь меню, кнопки й вікна. Застосовується одразу.'},onChange:applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_accent', type: 'select', values: {blue:'Синій', amber:'Бурштиновий', mint:'М’ятний', violet:'Фіолетовий', aurora:'Синій → фіолетовий', lagoon:'Бірюзовий → синій'}, default: 'blue'}, field: {name: 'Колір акценту', description: 'Колір або градієнт для «Панелі» та «Кінозалу». У стандартному оформленні не застосовується.'}, onChange: applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver',type:'select',values:{on:'Faborn',native:'Стандартна Lampa',off:'Вимкнено'},default:'on'},field:{name:'Заставка під час бездіяльності',description:'Вмикається в меню. Під час перегляду, паузи та завантаження відео не запускається.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_style',type:'select',values:{aurora:'Аврора',stars:'Зоряне небо',clock:'Годинник'},default:'aurora'},field:{name:'Стиль заставки',description:'Плавні кольорові хвилі, політ крізь зорі або мінімальний годинник. Працюють без завантаження відео.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_time',type:'select',values:{'1':'1 хвилина','3':'3 хвилини','5':'5 хвилин','10':'10 хвилин'},default:'3'},field:{name:'Запуск заставки через',description:'Будь-яка кнопка пульта повертає до того самого місця в меню.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_preview',type:'button'},field:{name:'Переглянути заставку',description:'Попередній перегляд вибраного стилю Faborn.'},onChange:function () { if (!saverUI) { loadScreensaver();notify('Заставка ще завантажується або не підтримується цією збіркою Lampa. Спробуй після перезапуску.'); } else if (!saverUI.preview()) notify('Заверши перегляд відео, щоб відкрити заставку.'); }});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinobase:'KinoBase', kinoukr:'KinoUkr'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найвища доступна', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: 'Підсвічує варіант у списку джерел.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_kino_session',type:'select',values:{auto:'Автоматично',direct:'Лише звичайний запит'},default:'auto'},field:{name:'Сесія KinoBase',description:'Після помилки сесії повторює запит через мережевий API Samsung, якщо він доступний у застосунку. Окремий сервер не потрібен.'}});
@@ -2133,6 +2151,7 @@
         settings();
         applyAppearance();
         loadInterface();
+        loadScreensaver();
     }
     function boot() {
         var tries = 0;

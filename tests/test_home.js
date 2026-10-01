@@ -65,3 +65,15 @@ test('synchronous cache hits and failed providers cannot deadlock the visible qu
  const queue=ui.createHomeRatingQueue((movie,done)=>{seen.push(movie.id);if(movie.id===2)throw Error('offline');done({imdb:8});},(record)=>painted.push(record.movie.id));
  queue.replace(cards.slice(0,4));assert.deepEqual(seen,[1,2,3,4]);assert.deepEqual(painted,[1,2,3,4]);
 });
+
+test('home backdrop includes navigation only on enhanced main, never on full cards or video',()=>{
+ const classes=new Set(),values={},state={component:'main'},player={opened:false};
+ const doc={body:{classList:{toggle(k,v){if(v)classes.add(k);else classes.delete(k);}}}};
+ const L={Storage:{get:(k,f)=>values[k]??f},Activity:{active:()=>state},Player:{opened:()=>player.opened}};
+ const ui=factory({document:doc},L,null),active=()=>classes.has('fbr-home-active');
+ ui.syncHomeBackdrop();assert.equal(active(),true);
+ state.component='full';ui.syncHomeBackdrop();assert.equal(active(),false);
+ state.component='main';player.opened=true;ui.syncHomeBackdrop();assert.equal(active(),false);
+ player.opened=false;values.faborn_ukr_home='off';ui.syncHomeBackdrop();assert.equal(active(),false);
+ values.faborn_ukr_home='on';values.faborn_ukr_layout='classic';ui.syncHomeBackdrop();assert.equal(active(),false);
+});

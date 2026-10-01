@@ -44,7 +44,7 @@ jobs:
           cp ukr-by-faborn.js index.html .nojekyll _site/
           cp assets/icon.svg _site/assets/
           cp data/catalog.json data/status.json _site/data/
-          cp lib/kinobase.js lib/faborn-ui.js lib/ACORN-LICENSE _site/lib/
+          cp lib/kinobase.js lib/faborn-ui.js lib/faborn-screensaver.js lib/STARFIELD-LICENSE lib/ACORN-LICENSE _site/lib/
           cp -R lib/4klab _site/lib/
       - uses: actions/upload-pages-artifact@v5
         with:
