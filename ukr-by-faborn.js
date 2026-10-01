@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.24 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.24.1 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.24';
+    var VERSION = '0.1.0-beta.24.1';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null;
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
@@ -2146,7 +2146,7 @@
             stopKinoSession();
             closePresentation(); L.Select.hide(); L.Controller.toggle(returnController);
             // Other episodes receive lazy resolvers; each stream is checked before playback.
-            handoff(movie,catalog,title,release,episode,preference,[]);
+            handoff(movie,catalog,title,release,episode,preference);
         });
     }
     function queueSelection(queue,entry) {
@@ -2156,6 +2156,44 @@
         session.qualityPreference=entry.data.faborn_quality;
         session.focusVoice=(entry.release.audioLanguage || 'uk')+':'+normalize(voiceLabel(entry.release,entry.episode));
         session.uiFocus=queue.title.type === 'tv' ? 'episode' : 'play';
+    }
+    function queueStatus(queue,message) {
+        if (!queue || queue.title.type !== 'tv' || !queue.current) return;
+        var entry=queue.current, index=queue.entries.indexOf(entry), next=queue.entries[index+1];
+        save('autoplay_status',sourceName(entry.release.source)+' · S'+entry.episode.season+'E'+entry.episode.episode+
+            (next ? ' → S'+next.episode.season+'E'+next.episode.episode : ' · остання доступна серія')+
+            ' · черга: '+queue.entries.length+' · '+message);
+    }
+    function restoreEpisodeQueue(queue) {
+        if (L.Player.playlist) L.Player.playlist(queue.title.type === 'tv' ? queue.entries.map(function (entry) { return entry.data; }) : []);
+    }
+    function queueEnded() {
+        var queue=playbackQueue, data=L.Player.playdata && L.Player.playdata();
+        if (!queue || queue.closed || queue.title.type !== 'tv' || !queue.current || queue.current.data !== data || data !== lastProgressPlayback) return;
+        queueStatus(queue,queue.loading ? 'Завершення отримано · наступна серія завантажується' : 'Завершення отримано');
+        if (queue.endPending === data) return;
+        queue.endPending=data;
+        // Give Lampa's normal ended handler first choice. Recover only if it did
+        // not begin resolving or playing another item; never start two episodes.
+        root.setTimeout(function () {
+            if (queue.endPending !== data) return;
+            queue.endPending=null;
+            if (playbackQueue !== queue || queue.closed || queue.loading || queue.transition || L.Player.playdata() !== data) return;
+            if (!L.Storage.field || !L.Storage.field('playlist_next')) { queueStatus(queue,'Автоперехід вимкнено в Lampa');return; }
+            if (L.Select.opened && L.Select.opened()) { queueStatus(queue,'Автоперехід призупинено: відкрито меню плеєра');return; }
+            var next=queue.entries[queue.entries.indexOf(queue.current)+1];
+            if (!next) { queueStatus(queue,'Наступної послідовної серії немає');return; }
+            if (!L.PlayerPlaylist || !L.PlayerPlaylist.next) { queueStatus(queue,'Ядро Lampa не надало API наступної серії');return; }
+            restoreEpisodeQueue(queue);
+            queueStatus(queue,'Резервний автоперехід · оновлення потоку');
+            // Resolve before requesting the native transition, so recovery does
+            // not depend on the player invoking another lazy-URL handler.
+            resolveQueueEntry(queue,next,function () {
+                restoreEpisodeQueue(queue);
+                L.PlayerPlaylist.next();
+                if (L.Player.playdata() === data) queueStatus(queue,'Ядро Lampa не запустило перевірений наступний потік');
+            });
+        },300);
     }
     function returnFromPlayer(queue) {
         // If another extension took over without replacing our callback, use Lampa's normal exit.
@@ -2172,11 +2210,13 @@
         var current=L.Player.playdata && L.Player.playdata();
         if (!current || !queue.entries.some(function (row) { return row.data === current; })) return;
         queue.loading=true;var run=++queue.serial;
+        queueStatus(queue,'Отримання потоку S'+entry.episode.season+'E'+entry.episode.episode);
         cancelPending();var serial=requestSerial;
         function valid() { return playbackQueue===queue && !queue.closed && run===queue.serial && L.Player.playdata()===current; }
         function fail(error) {
             if (!valid()) return;
             queue.loading=false;entry.episode.error=text(error && error.message || error);
+            queueStatus(queue,'Помилка наступного потоку: '+entry.episode.error);
             notify('Наступна серія не запустилася: '+entry.episode.error);
             // Closing releases Lampa's lazy-URL loading lock and restores the existing source window.
             if (L.Player.close) L.Player.close();
@@ -2206,11 +2246,13 @@
         if (!queue) return;
         var entry=queue.entries.filter(function (row) { return row.data === data; })[0];
         if (!entry) { queue.closed=true;queue.serial++;playbackQueue=null;return; }
-        queue.closed=false;queue.transition=false;queue.current=entry;
+        queue.closed=false;queue.transition=false;queue.endPending=null;queue.current=entry;
         queueSelection(queue,entry);
         queue.entries.forEach(function (row) {
             if (row !== entry) row.data.url=function (done) { resolveQueueEntry(queue,row,done); };
         });
+        restoreEpisodeQueue(queue);
+        queueStatus(queue,(L.Storage.field && L.Storage.field('playlist_next') ? 'Автоперехід увімкнено' : 'Автоперехід вимкнено в Lampa')+' · очікування завершення');
         setPlayerVoices(data,queue.movie,queue.catalog,queue.title,entry.release,entry.episode);
         playbackContext={movie:queue.movie,catalog:queue.catalog};
         save('last_launch',queue.title.title+' · '+data.faborn_quality+' · '+sourceName(entry.release.source)+' · '+entry.release.voice+' · S'+data.season+'E'+data.episode);
@@ -2228,13 +2270,12 @@
         });
         playbackQueue=queue;
         if (L.Player.callback) L.Player.callback(function () { returnFromPlayer(queue); });
-        if (L.Player.playlist) L.Player.playlist(title.type === 'tv' ? queue.entries.map(function (entry) { return entry.data; }) : []);
+        restoreEpisodeQueue(queue);
         return queue;
     }
-    function handoff(movie,catalog,title,release,episode,preference,playlist) {
+    function handoff(movie,catalog,title,release,episode,preference) {
         var data = playData(movie,title,release,episode,preference);
         setPlayerVoices(data,movie,catalog,title,release,episode);
-        data.playlist = playlist;
         playbackContext = {movie:movie,catalog:catalog};
         save('last_launch',title.title+' · '+preference+' · '+sourceName(release.source)+' · '+release.voice+' · передано плеєру');
         save('last_' + title.id,episode.id);
@@ -2245,6 +2286,7 @@
     function diagnostics() {
             var catalog = currentCatalog;
             var lines = [NAME + ' ' + VERSION];
+            if (L.Manifest && L.Manifest.app_version) lines.push('Версія Lampa: ' + L.Manifest.app_version);
             if (L.Storage.field) lines.push('Плеєр Lampa: ' + L.Storage.field('player') + ' · для бети потрібен Tizen / AVPlay');
             lines.push('AVPlay API: ' + (root.webapis && root.webapis.avplay ? 'доступний' : 'недоступний'));
             lines.push('Сесія KinoBase: '+storage('kino_transport','Звичайний запит'));
@@ -2252,6 +2294,7 @@
 
             if (storage('last_error', '')) lines.push('Остання помилка плеєра: ' + storage('last_error', ''));
             if (storage('last_launch', '')) lines.push('Останній запуск: ' + storage('last_launch', ''));
+            if (storage('autoplay_status', '')) lines.push('Автоперехід: ' + storage('autoplay_status', ''));
             if (skipUI) lines.push('Вступ і титри: '+skipUI.status());
             if (lastDiagnostic) lines.push(lastDiagnostic);
             storage('source_status',[]).forEach(function (line) { lines.push(line); });
@@ -2537,6 +2580,7 @@
             });
             L.PlayerVideo.listener.follow('ended', function () {
                 if(historyPlayback === lastProgressPlayback)completePlayback(historyPlayback);
+                queueEnded();
             });
             L.PlayerVideo.listener.follow('error', function (event) {
                 playbackError(event, watchedPlayback);

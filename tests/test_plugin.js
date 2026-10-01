@@ -1233,3 +1233,67 @@ test('a refreshed provider response without markers clears previously available 
  env.root.Lampa.Player.close();env.kino.version=2;now+=61000;env.state.play('720p',r=>r.release.audioLanguage==='uk');
  assert.match(env.state.played.url,/\/v2\//);assert.equal(env.state.played.faborn_segments,null);
 });
+
+function nativeQueueFixture(env) {
+ const {state,root}=env,field=root.Lampa.Storage.field;
+ state.autonext=true;state.nativeNext=0;state.selectOpened=false;
+ root.Lampa.Storage.field=k=>k==='playlist_next'?state.autonext:field(k);
+ root.Lampa.Select.opened=()=>state.selectOpened;
+ root.Lampa.PlayerPlaylist={next(){
+  state.nativeNext++;
+  const list=state.playlist,current=state.played,next=list[list.indexOf(current)+1];
+  if(!next)return;
+  const play=()=>{state.playerEvents.destroy();state.playlist=[];root.Lampa.Player.play(next);};
+  if(typeof next.url==='function')next.url(play);else play();
+ }};
+ return env;
+}
+function playingUASerials() {
+ const env=nativeQueueFixture(multiSourceEnvironment(true));env.instance.open(fromCard);env.state.play('1080p',i=>i.release.voice==='HDrezka Studio');return env;
+}
+test('UASerials ended fallback restores a lost native playlist and starts the checked next stream',()=>{
+ const env=playingUASerials(),{state}=env,first=state.played,voice=first.voice_name;
+ assert.ok(!Object.hasOwn(first,'playlist'),'do not pass an empty competing playlist');
+ state.playlist=[];state.progress(1440,1440);state.videoEvents.ended();state.fireTimer(300);
+ assert.equal(state.played,first);state.fireTimer(0);
+ assert.equal(state.nativeNext,1);assert.equal(state.played.episode,2);assert.equal(state.played.voice_name,voice);
+ assert.equal(state.played.faborn_quality,'1080p');assert.ok(state.playlist.length>1);assert.equal(first.timeline.percent,100);
+ assert.ok(state.storage.faborn_ukr_autoplay_status.includes('S1E2 → S1E3'));
+});
+test('native autoplay and duplicate ended callbacks cannot start an episode twice',()=>{
+ const env=playingUASerials(),{state,root}=env;
+ state.progress(1440,1440);root.Lampa.PlayerPlaylist.next();state.videoEvents.ended();state.videoEvents.ended();
+ state.fireTimer(0);state.fireTimer(300);
+ assert.equal(state.nativeNext,1);assert.equal(state.played.episode,2);assert.equal(state.played.timeline.percent,0);
+});
+test('autoplay recovery respects disabled auto-next, open menus and the end of a season',()=>{
+ for(const mode of ['off','menu','last']){
+  const env=playingUASerials(),{state,root}=env;
+  if(mode==='off')state.autonext=false;
+  if(mode==='menu')state.selectOpened=true;
+  if(mode==='last'){
+   const last=state.playlist.at(-1);last.url(()=>{state.playerEvents.destroy();root.Lampa.Player.play(last);});state.fireTimer(0);
+  }
+  const current=state.played;state.progress(1440,1440);state.videoEvents.ended();state.fireTimer(300);
+  assert.equal(state.played,current);assert.equal(state.nativeNext,0);
+  assert.ok(state.storage.faborn_ukr_autoplay_status.includes(mode==='off'?'вимкнено':mode==='menu'?'меню':'немає'));
+ }
+});
+test('Back and another plugin taking over cancel a queued autoplay recovery',()=>{
+ for(const takeover of [false,true]){
+  const env=playingUASerials(),{state,root}=env;state.progress(1440,1440);state.videoEvents.ended();
+  if(takeover)root.Lampa.Player.play({url:'https://other.example/movie.m3u8'});else root.Lampa.Player.close();
+  const before=state.requests.length;state.fireTimer(300);assert.equal(state.nativeNext,0);assert.equal(state.requests.length,before);
+ }
+});
+test('Back cancels an in-flight recovery and a failure returns to cached UASerials sources',()=>{
+ for(const fail of [false,true]){
+  let pending;
+  const env=nativeQueueFixture(multiSourceEnvironment(true,req=>{if(pending===true){pending=req;return true;}})),{state,root}=env;
+  env.instance.open(fromCard);state.play('1080p',i=>i.release.voice==='HDrezka Studio');state.progress(1440,1440);state.videoEvents.ended();pending=true;state.fireTimer(300);
+  const req=pending;assert.equal(req.url,'https://hdvbua.pro/embed/6097/b0c42c552');
+  if(fail){req.status=503;req.onload();assert.ok(state.storage.faborn_ukr_autoplay_status.includes('Помилка'));}
+  else{root.Lampa.Player.close();req.status=200;req.responseText=fixture('hdvb-from.html');req.onload();assert.ok(req.aborted);}
+  assert.equal(state.played,null);assert.equal(state.controller,'select');assert.equal(state.nativeNext,0);
+ }
+});
