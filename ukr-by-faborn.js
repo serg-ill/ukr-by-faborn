@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.15.1 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.16 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.15.1';
+    var VERSION = '0.1.0-beta.16';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null;
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
@@ -1987,7 +1987,7 @@
         if (!root.document || !root.document.querySelector || interfaceUI || interfaceScript || !baseURL()) return;
         function ready() {
             if (typeof root.FabornInterface !== 'function') return;
-            interfaceUI = root.FabornInterface(root,L,$); interfaceUI.install();
+            interfaceUI = root.FabornInterface(root,L,$,{torrentRequest:torrentRequest}); interfaceUI.install();
             if (lastFullEvent) interfaceUI.full(lastFullEvent);
         }
         if (typeof root.FabornInterface === 'function') return ready();
@@ -2020,7 +2020,8 @@
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_style',type:'select',values:{on:'Faborn',off:'Стандартна Lampa'},default:'on'},field:{name:'Оформлення торрентів',description:'Бейджі релізу, пріоритет Toloka та «Рекомендуємо» від 50 сідів за даними парсера.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_home',type:'select',values:{on:'Faborn · три картки',off:'Стандартна Lampa'},default:'on'},field:{name:'Головний екран',description:'Три картки, читабельні описи та SVG-іконки. Після зміни повторно відкрий головну.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_ratings',type:'select',values:{on:'Faborn',off:'Стандартні'},default:'on'},field:{name:'Рейтинги у картці',description:'Компактна панель. IMDb та доступні RT / Metacritic завантажуються автоматично. Твоя оцінка зберігається на цьому пристрої.'},onChange:applyAppearance});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_badges',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Бейджі якості Faborn',description:'Дані знайдених джерел: якість, мови й конкретна серія. 4K та HDR не визначаються за постером.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_badges',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Бейджі якості Faborn',description:'Кольорові позначки онлайн-джерел і знайдених торрентів. Формат береться з даних конкретного релізу.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_quality',type:'select',values:{auto:'Автоматично в картці',search:'Лише після пошуку торрентів'},default:'auto'},field:{name:'Якість із торрентів',description:'Шукає метадані через налаштований парсер Lampa. Кеш на добу; завантаження відео не починається.'},onChange:applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_layout', type: 'select', values: {panel:'Панель', cinema:'Кінозал', classic:'Стандартне Lampa'}, default: 'panel'}, field: {name: 'Оформлення модуля', description: '«Стандартне Lampa» — штатні вікна та фокус, без кольорових акцентів Faborn у всій системі.'}, onChange: applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_theme', type: 'select', values: {on:'Faborn', ios:'iOS · Liquid Glass', off:'Стандартна Lampa'}, default: 'on'}, field: {name: 'Тема всієї Lampa', description: 'iOS — скляні меню, картки та вікна. Застосовується одразу; зі стандартного оформлення переходить у «Панель».'}, onChange: changeTheme});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_glass_transparency',type:'select',values:{solid:'Непрозоре',low:'Низька',standard:'Стандартна',high:'Висока',max:'Максимальна'},default:'standard'},field:{name:'Прозорість скла iOS',description:'Для теми iOS · Liquid Glass. Вища прозорість — краще видно фон крізь меню, кнопки й вікна. Застосовується одразу.'},onChange:applyAppearance});
@@ -2085,7 +2086,7 @@
         installed = true;
         save('lab4k','off'); save('lab4k_status','');
         if (storage('source','uakino') === 'uakinogo') save('source','kinobase');
-        if (!$('#faborn-ukr-style').length) $('body').append('<style id="faborn-ukr-style">.full-start__button.view--faborn-ukr,.full-start__button.view--faborn-torrent{justify-content:center;font-size:0!important;min-width:3.64rem!important;width:3.64rem!important;height:3.64rem!important;padding:0!important;border-radius:.85rem!important;margin-right:.975rem!important;border:0!important;outline:0!important;box-shadow:none!important}.full-start__button.view--faborn-ukr>svg,.full-start__button.view--faborn-torrent>svg{width:1.95rem!important;height:1.95rem!important;margin:0!important;flex-shrink:0}.full-start__button.view--faborn-torrent>:not(svg),.full-start__button.view--faborn-torrent:before,.full-start__button.view--faborn-torrent:after,.full-start__button.view--faborn-ukr>:not(svg),.full-start__button.view--faborn-ukr:before,.full-start__button.view--faborn-ukr:after{display:none!important}</style>');
+        if (!$('#faborn-ukr-style').length) $('body').append('<style id="faborn-ukr-style">.full-start__button.view--faborn-ukr,.full-start__button.view--faborn-torrent{justify-content:center;border:0!important;outline:0!important;box-shadow:none!important}.full-start__button.view--faborn-ukr>svg,.full-start__button.view--faborn-torrent>svg{margin:0!important;flex-shrink:0}.full-start__button.view--faborn-torrent>:not(svg),.full-start__button.view--faborn-torrent:before,.full-start__button.view--faborn-torrent:after,.full-start__button.view--faborn-ukr>:not(svg),.full-start__button.view--faborn-ukr:before,.full-start__button.view--faborn-ukr:after{display:none!important}</style>');
         L.Listener.follow('full', attach);
         if (L.Player.listener) {
             L.Player.listener.follow('start', function (data) {

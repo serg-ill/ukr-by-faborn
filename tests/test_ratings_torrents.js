@@ -26,18 +26,18 @@ test('aggregator keeps critics distinct from audience ratings and preserves vali
 });
 test('deduplicated live requests cache exact-title results and need no API key',()=>{
  const {ui,requests}=environment(),outputs=[];
- ui.loadRatings(movie,v=>outputs.push(v));ui.loadRatings(movie,v=>outputs.push(v));assert.equal(requests.length,2);
+ ui.loadRatings(movie,v=>outputs.push(v));ui.loadRatings(movie,v=>outputs.push(v));assert.equal(requests.length,3);
  requests[0].reply({meta:{id:movie.imdb_id,imdbRating:'8.2'}});
- requests[1].reply(aggregate(movie.imdb_id,'RT: 93/100'));
+ requests[1].reply(aggregate(movie.imdb_id,'RT: 93/100'));requests[2].reply({});
  assert.deepEqual(outputs,[{imdb:'8.2',rt:'93'},{imdb:'8.2',rt:'93'}]);
- ui.loadRatings(movie,v=>outputs.push(v));assert.equal(requests.length,2);assert.equal(outputs.length,3);
+ ui.loadRatings(movie,v=>outputs.push(v));assert.equal(requests.length,3);assert.equal(outputs.length,3);
  assert.ok(!requests.some(r=>r.url.includes('apikey')));
 });
 test('missing IMDb IDs use the appropriate TMDB external IDs endpoint for series',()=>{
  const {ui,L,requests}=environment();let path;
  L.Api={sources:{tmdb:{get(p,args,success){path=p;success({id:136311,imdb_id:'tt15677150'});}}}};
  ui.loadRatings({id:136311,original_name:'Shrinking'},()=>{});
- assert.equal(path,'tv/136311/external_ids');assert.equal(requests.length,2);assert.ok(requests.every(r=>r.url.includes('/series/tt15677150.json')));
+ assert.equal(path,'tv/136311/external_ids');assert.equal(requests.length,3);assert.ok(requests.slice(0,2).every(r=>r.url.includes('/series/tt15677150.json')));
  requests.forEach(r=>r.reply({}));
 });
 test('a mismatched TMDB response never triggers ratings for another movie',()=>{
@@ -48,23 +48,23 @@ test('a mismatched TMDB response never triggers ratings for another movie',()=>{
 test('network failures retain successful scores and retry after the short failure cache expires',()=>{
  const {ui,data,requests}=environment();let value;
  ui.loadRatings(movie,v=>value=v);
- requests[0].reply({meta:{id:movie.imdb_id,imdbRating:'8.2'}});requests[1].onerror();
+ requests[0].reply({meta:{id:movie.imdb_id,imdbRating:'8.2'}});requests[1].onerror();requests[2].onerror();
  assert.deepEqual(value,{imdb:'8.2'});
  const cached=data.faborn_ukr_external_ratings_cache['movie:872585'];assert.ok(cached.expiresAt-cached.checkedAt<=300000);
- cached.expiresAt=Date.now()-1;ui.loadRatings(movie,()=>{});assert.equal(requests.length,4);requests.slice(2).forEach(r=>r.ontimeout());
+ cached.expiresAt=Date.now()-1;ui.loadRatings(movie,()=>{});assert.equal(requests.length,6);requests.slice(3).forEach(r=>r.ontimeout());
 });
 test('changed IMDb ID, expired and future-dated cache entries cannot poison a card',()=>{
  const {ui,data,requests}=environment();
  data.faborn_ukr_external_ratings_cache={'movie:872585':{imdbId:'tt12345',checkedAt:Date.now(),expiresAt:Date.now()+86400000,values:{imdb:'9.9'}}};
- ui.loadRatings(movie,()=>{});assert.equal(requests.length,2);requests.forEach(r=>r.reply({}));
+ ui.loadRatings(movie,()=>{});assert.equal(requests.length,3);requests.forEach(r=>r.reply({}));
  data.faborn_ukr_external_ratings_cache['movie:872585'].checkedAt=Date.now()+120000;
- ui.loadRatings(movie,()=>{});assert.equal(requests.length,4);requests.slice(2).forEach(r=>r.reply({}));
+ ui.loadRatings(movie,()=>{});assert.equal(requests.length,6);requests.slice(3).forEach(r=>r.reply({}));
 });
 test('concurrent cards preserve both cache entries and correct callbacks',()=>{
  const {ui,data,requests}=environment(),seen={};
  ui.loadRatings(movie,v=>seen.movie=v);ui.loadRatings({id:136311,media_type:'tv',imdb_id:'tt15677150'},v=>seen.tv=v);
- requests[2].reply({meta:{id:'tt15677150',imdbRating:'8.1'}});requests[3].reply(aggregate('tt15677150','RT: 94/100'));
- requests[0].reply({meta:{id:movie.imdb_id,imdbRating:'8.2'}});requests[1].reply(aggregate(movie.imdb_id,'RT: 93/100'));
+ requests[3].reply({meta:{id:'tt15677150',imdbRating:'8.1'}});requests[4].reply(aggregate('tt15677150','RT: 94/100'));requests[5].reply({});
+ requests[0].reply({meta:{id:movie.imdb_id,imdbRating:'8.2'}});requests[1].reply(aggregate(movie.imdb_id,'RT: 93/100'));requests[2].reply({});
  assert.equal(seen.movie.rt,'93');assert.equal(seen.tv.rt,'94');assert.equal(Object.keys(data.faborn_ukr_external_ratings_cache).length,2);
 });
 test('disabling Faborn ratings makes no network requests',()=>{
@@ -136,4 +136,45 @@ test('Toloka priority is independent of seed recommendations and adds no remote-
  const {ui}=environment(),m=ui.torrentMarkup(ui.torrentFacts({Tracker:'Toloka',Seeders:0}),{});
  assert.ok(m.header.includes('Пріоритет'));assert.ok(!m.header.includes('Рекомендуємо'));assert.ok(!/selector|tabindex|<button/.test(m.header));
  assert.ok(!ui.torrentMarkup(ui.torrentFacts({Tracker:'RuTracker',Seeders:200}),{}).header.includes('Пріоритет'));
+});
+
+function snak(value){return {snaktype:'value',datavalue:{value}};}
+function entity(id=movie.imdb_id){return {entities:{Q108839994:{id:'Q108839994',claims:{P345:[{mainsnak:snak(id)}],P444:[{rank:'normal',mainsnak:snak('90/100'),qualifiers:{P447:[snak({id:'Q150248'})],P459:[snak({id:'Q106515043'})],P585:[snak({time:'+2025-12-02T00:00:00Z'})]}}]}}}};}
+function lookup(){return {results:{bindings:[{item:{value:'http://www.wikidata.org/entity/Q108839994'}}]}};}
+test('Wikidata fallback supplies missing Metacritic without overwriting the primary provider',()=>{
+ const {ui,requests,data}=environment();let result;const updates=[];
+ ui.loadRatings(movie,v=>result=v,v=>updates.push(v));
+ requests[0].reply({meta:{id:movie.imdb_id,imdbRating:'8.2'}});
+ requests[1].reply(aggregate(movie.imdb_id,'RT: 93/100'));
+ assert.equal(updates[1].imdb,'8.2');assert.equal(result,undefined);
+ requests[2].reply(lookup());assert.match(requests[3].url,/origin=\*/);
+ requests[3].reply(entity());assert.deepEqual(result,{mc:'90',imdb:'8.2',rt:'93'});
+ assert.equal(data.faborn_ukr_external_ratings_cache['movie:872585'].schema,2);
+ ui.loadRatings(movie,()=>{});assert.equal(requests.length,4);
+});
+test('ambiguous Wikidata lookups never fetch an arbitrarily selected film',()=>{
+ const {ui,requests}=environment();let result;
+ ui.loadRatings(movie,v=>result=v);requests[0].reply({});requests[1].reply({});
+ const reply=lookup();reply.results.bindings.push({item:{value:'http://www.wikidata.org/entity/Q1'}});requests[2].reply(reply);
+ assert.deepEqual(result,{});assert.equal(requests.length,3);
+});
+test('Wikidata validates identity, critic method, scale, rank and newest date',()=>{
+ const {ui}=environment(),d=entity(),claims=d.entities.Q108839994.claims;
+ assert.deepEqual(ui.wikidataRatings(entity('tt99999'),movie.imdb_id,'Q108839994'),{});
+ const base=claims.P444[0];
+ const newer=JSON.parse(JSON.stringify(base));newer.mainsnak=snak('91/100');newer.qualifiers.P585=[snak({time:'+2026-09-01T00:00:00Z'})];
+ claims.P444.push(newer,{...base,rank:'deprecated',mainsnak:snak('99/100')},{...base,mainsnak:snak('9.4/10')},{...base,mainsnak:snak('95/100'),qualifiers:{P447:[snak({id:'Q150248'})],P459:[snak({id:'audience'})]}});
+ assert.deepEqual(ui.wikidataRatings(d,movie.imdb_id,'Q108839994'),{mc:'91'});
+ base.rank='preferred';assert.deepEqual(ui.wikidataRatings(d,movie.imdb_id,'Q108839994'),{mc:'90'});
+});
+test('old incomplete cache schema refreshes while personal ratings stay intact',()=>{
+ const {ui,data,requests}=environment();data.faborn_ukr_my_ratings={'movie:872585':9};
+ data.faborn_ukr_external_ratings_cache={'movie:872585':{imdbId:movie.imdb_id,checkedAt:Date.now(),expiresAt:Date.now()+86400000,values:{imdb:'8.2',rt:'93'}}};
+ ui.loadRatings(movie,()=>{});assert.equal(requests.length,3);requests.forEach(r=>r.reply({}));
+ assert.equal(ui.localRating(movie),9);
+});
+
+test('a score explicitly limited to one season is not shown as the whole series rating',()=>{
+ const {ui}=environment(),d=entity();d.entities.Q108839994.claims.P444[0].qualifiers.P518=[snak({id:'Qseason'})];
+ assert.deepEqual(ui.wikidataRatings(d,movie.imdb_id,'Q108839994'),{});
 });

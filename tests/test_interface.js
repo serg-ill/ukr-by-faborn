@@ -7,7 +7,7 @@ test('movie and series ratings use different keys even with the same TMDB ID',()
 test('ratings preserve each source scale and reject missing or impossible numbers',()=>{const {ui}=environment();const r=ui.ratingFacts({vote_average:8.8,imdb_rating:8.6,rt_rating:'93%',metascore:90});assert.deepEqual(r.map(x=>[x.value,x.scale]),[['8.8','/10'],['8.6','/10'],['93','%'],['90','/100']]);assert.equal(ui.ratingFacts({vote_average:0,imdb_rating:99,rt_rating:'N/A'}).length,0);});
 test('late source scores update existing rows without producing duplicates',()=>{const {ui}=environment();const r=ui.ratingFacts({vote_average:8,imdb_rating:8},{imdb:'8,8'});assert.equal(r.length,2);assert.equal(r[1].value,'8.8');});
 test('rating labels are escaped before inserting them into the interface',()=>{const {ui}=environment();assert.ok(!ui.ratingMarkup([{id:'imdb',name:'<img onerror=x>',value:'<script>',scale:'%'}]).includes('<script>'));assert.match(ui.ratingMarkup([{id:'imdb',name:'A&B',value:8,scale:'/10'}]),/A&amp;B/);});
-test('quality badges do not guess HDR, Dolby Vision or surround from 4K',()=>{const {ui}=environment();assert.deepEqual(ui.qualityFacts({qualities:['2160p'],languages:['uk','en']}),[{icon:'quality',label:'4K',kind:'quality'},{icon:'globe',label:'UA / EN',kind:'language'}]);assert.deepEqual(ui.qualityFacts(null),[]);});
+test('quality badges do not guess HDR, Dolby Vision or surround from 4K',()=>{const {ui}=environment();assert.deepEqual(ui.qualityFacts({qualities:['2160p'],languages:['uk','en']}),[{icon:'quality',label:'4K',kind:'4k'},{icon:'globe',label:'UA / EN',kind:'language'}]);assert.deepEqual(ui.qualityFacts(null),[]);});
 test('TV quality is explicitly limited to the episode that was searched',()=>{const {ui}=environment();assert.ok(ui.qualityFacts({qualities:['1080p'],season:2,episode:1}).some(b=>b.label==='S2E1'));assert.ok(!ui.qualityFacts({qualities:['4K HDR']}).length);});
 test('quality cache expires and cannot be supplied by an unrelated title or future timestamp',()=>{const {ui,data}=environment(),m={id:1};ui.learn(m,{qualities:['1080p']});const entry=data.faborn_ukr_quality_cache['movie:1'];assert.equal(ui.cachedQuality({id:2}),null);assert.ok(ui.cachedQuality(m));assert.equal(ui.cachedQuality(m,entry.checkedAt+86400001),null);entry.checkedAt=Date.now()+120000;assert.equal(ui.cachedQuality(m),null);});
 test('quality cache stays bounded without storing stream URLs',()=>{const {ui,data}=environment();for(let n=1;n<210;n++)ui.learn({id:n},{qualities:['720p'],url:'https://private.example/token'});assert.equal(Object.keys(data.faborn_ukr_quality_cache).length,180);assert.ok(!JSON.stringify(data).includes('private.example'));});
@@ -32,4 +32,55 @@ test('awards require positive integral counts and accept explicit card metadata'
  const {ui}=environment();assert.deepEqual(ui.awardFacts({awards:{wins:5,oscars:{wins:2}}}).map(x=>x.value),['2','5']);
  assert.deepEqual(ui.awardFacts({oscar_wins:-1,awards_wins:2.5}),[]);
  assert.deepEqual(ui.awardFacts({awards:'N/A'}),[]);
+});
+
+const film={id:872585,imdb_id:'tt15398776',title:'Оппенгеймер',original_title:'Oppenheimer',release_date:'2023-07-19'};
+test('torrent quality uses a matching title and year, rejecting unrelated films and soundtracks',()=>{
+ const {ui}=environment();
+ for(const Title of ['Oppenheimer (2023) 2160p HDR','Оппенгеймер / Oppenheimer (2023) 1080p'])assert.equal(ui.matchesTorrent(film,{Title}),true);
+ for(const Title of ['Oppenheimer (1980) 2160p','The Real Oppenheimer (2023) 2160p','Oppenheimer: The Real Story (2023) 2160p','Oppenheimer (2023) OST FLAC','The Dark Knight (2008) 2160p'])assert.equal(ui.matchesTorrent(film,{Title}),false);
+ assert.equal(ui.matchesTorrent(film,{ImdbId:'tt99999',Title:'Oppenheimer (2023) 2160p'}),false);
+});
+test('torrent badges describe one best release and cannot join its 4K to another release HDR',()=>{
+ const {ui}=environment();ui.learnTorrents(film,{Results:[{Title:'Oppenheimer (2023) 2160p [ENG]'},{Title:'Oppenheimer (2023) 1080p HDR Dolby Atmos [UKR]'}]});
+ const labels=ui.cachedTorrentQuality(film).badges.map(b=>b.label);assert.deepEqual(labels,['4K','EN']);
+ const html=ui.qualityMarkup(film);assert.match(html,/Торренти/);assert.ok(!html.includes('Онлайн'));assert.ok(!html.includes('HDR'));
+});
+test('online and torrent quality remain distinct, with no placeholder when data is missing',()=>{
+ const {ui}=environment();assert.equal(ui.qualityMarkup(film),'');assert.equal(ui.badgesMarkup(null,true),'');
+ ui.learn(film,{qualities:['1080p']});ui.learnTorrents(film,{Results:[{Title:'Oppenheimer (2023) 2160p HDR'}]});
+ const html=ui.qualityMarkup(film);assert.match(html,/Онлайн/);assert.match(html,/Торренти/);assert.match(html,/Full HD/);assert.match(html,/4K/);
+ assert.deepEqual(ui.cachedQuality(film).qualities,['1080p']);
+});
+test('torrent cache excludes magnets and credentials, expires and is bounded',()=>{
+ const {ui,data}=environment();for(let i=1;i<200;i++)ui.learnTorrents({...film,id:i},{Results:[{Title:'Oppenheimer (2023) 2160p',MagnetUri:'magnet:private',Link:'https://private/?apikey=secret'}]});
+ const cache=data.faborn_ukr_torrent_quality_cache;assert.equal(Object.keys(cache).length,180);assert.ok(!JSON.stringify(cache).includes('private'));
+ assert.equal(ui.cachedTorrentQuality({...film,id:199},cache['movie:199'].checkedAt+86400001),null);
+ cache['movie:199'].checkedAt=Date.now()+120000;assert.equal(ui.cachedTorrentQuality({...film,id:199}),null);
+});
+test('parser observation retains callbacks, return value and the original movie identity',()=>{
+ const {ui,L}=environment();let callback,received,context;L.Parser={get(params,ok){callback=ok;return 'request-handle';}};
+ ui.hookParser();const wrapper=L.Parser.get;ui.hookParser();assert.equal(L.Parser.get,wrapper);
+ const data={Results:[{Title:'Oppenheimer (2023) 1080p'}]};
+ assert.equal(L.Parser.get({movie:film},function(d){received=d;context=this;}),'request-handle');
+ callback.call(L.Parser,data);assert.equal(received,data);assert.equal(context,L.Parser);assert.ok(ui.cachedTorrentQuality(film));assert.equal(ui.cachedTorrentQuality({id:2}),null);
+});
+test('free-text parser refinements cannot overwrite a card quality cache',()=>{
+ const {ui,L}=environment();L.Parser={get(params,ok){ok({Results:[{Title:'Oppenheimer (2023) 2160p'}]});}};ui.hookParser();L.Parser.get({movie:film,clarification:true},()=>{});assert.equal(ui.cachedTorrentQuality(film),null);
+});
+
+function automaticQuality(){
+ const values={},timers=new Map();let serial=0,active={component:'full',id:872585};const calls=[];
+ const node={},root={document:{documentElement:{contains:n=>n===node}},setTimeout(fn){timers.set(++serial,fn);return serial;},clearTimeout(id){timers.delete(id);}};
+ const L={Storage:{get(k,f){return values[k]??f;},set(k,v){values[k]=v;},field(k){return {parser_torrent_type:'jackett',parser_use_link:'one',jackett_url:'https://configured.test',parse_lang:'df_year'}[k];}},Activity:{active:()=>active},Parser:{get(p,ok){calls.push(p);ok({Results:[{Title:'Oppenheimer (2023) 2160p'}]});}},Torrent:{start(){throw Error('metadata must not start playback');}}};
+ const ui=factory(root,L,null,{torrentRequest(movie,language){return {movie:{...movie},search:movie.original_title,language};}});ui.hookParser();
+ return {ui,values,calls,record:{node,movie:film},navigate(){active={component:'main'};},run(){const [id,fn]=timers.entries().next().value;timers.delete(id);fn();}};
+}
+test('automatic quality asks only the configured native parser, caches results and never starts media',()=>{
+ const e=automaticQuality();e.ui.requestTorrentQuality(e.record);e.run();assert.equal(e.calls.length,1);assert.equal(e.calls[0].language,'df_year');assert.deepEqual(e.calls[0].movie.genres,[]);assert.equal(e.calls[0].movie.id,872585);
+ assert.ok(e.ui.cachedTorrentQuality(film));e.ui.requestTorrentQuality(e.record);assert.equal(e.calls.length,1);
+});
+test('leaving the card or choosing manual quality prevents a delayed background search',()=>{
+ const e=automaticQuality();e.ui.requestTorrentQuality(e.record);e.navigate();e.run();assert.equal(e.calls.length,0);
+ const f=automaticQuality();f.ui.requestTorrentQuality(f.record);f.values.faborn_ukr_torrent_quality='search';f.run();assert.equal(f.calls.length,0);
 });
