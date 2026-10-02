@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.26 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.27 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,9 +8,9 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.26';
+    var VERSION = '0.1.0-beta.27';
     var NAME = 'ukr by Faborn';
-    var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null;
+    var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
     var pendingRequest, playbackTimer, watchedPlayback, playbackContext, historyPlayback;
@@ -142,6 +142,7 @@
         $('.view--faborn-torrent').toggleClass('hide',storage('torrent_button','on') !== 'on');
         if (interfaceUI) interfaceUI.apply();
         if (saverUI) saverUI.apply();
+        if (hubUI) hubUI.apply();
     }
     function changeTheme(value) {
         // An explicit choice of iOS must also work when the previous layout disabled all theming.
@@ -2383,11 +2384,26 @@
         interfaceScript.onerror = function () { interfaceScript = null; };
         root.document.head.appendChild(interfaceScript);
     }
+    function loadHub() {
+        if (!root.document || !root.document.querySelector || hubUI || hubScript || !baseURL()) return;
+        function ready() {
+            if (typeof root.FabornHub !== 'function') return;
+            hubUI = root.FabornHub(root,L,$);
+            hubUI.install();
+            if (lastFullEvent) hubUI.full(lastFullEvent);
+        }
+        if (typeof root.FabornHub === 'function') return ready();
+        hubScript = root.document.createElement('script');
+        hubScript.src = baseURL()+'lib/faborn-hub.js?v='+VERSION; hubScript.async = true;
+        hubScript.onload = ready;
+        hubScript.onerror = function () { hubScript = null; };
+        root.document.head.appendChild(hubScript);
+    }
     function loadScreensaver() {
         if (!L.Screensaver || !root.document || !root.document.createElement || !root.document.head || saverUI || saverScript || !baseURL()) return;
         function ready() {
             if (typeof root.FabornScreensaver !== 'function') return;
-            saverUI=root.FabornScreensaver(root,L,{catalogURL:baseURL()+'data/aerial.json?v='+VERSION,aquariumAssets:baseURL()+'assets/aquarium/'});
+            saverUI=root.FabornScreensaver(root,L,{catalogURL:baseURL()+'data/aerial.json?v='+VERSION});
             if (!saverUI.install()) saverUI=null;
         }
         if (typeof root.FabornScreensaver === 'function') return ready();
@@ -2452,6 +2468,8 @@
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_button',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Кнопка торрентів',description:'Штатний пошук Lampa з твоїми налаштуваннями парсера і TorrServer.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_style',type:'select',values:{on:'Faborn',off:'Стандартна Lampa'},default:'on'},field:{name:'Оформлення торрентів',description:'Бейджі релізу, пріоритет Toloka та «Рекомендуємо» від 50 сідів за даними парсера.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_home',type:'select',values:{on:'Faborn · компактні постери',off:'Стандартна Lampa'},default:'on'},field:{name:'Головний екран',description:'Шість постерів у ряд, оцінки, прогрес і один опис вибраного фільму. Після зміни повторно відкрий головну.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_discover_tab',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Вкладка «Що подивитися»',description:'Окремий пункт меню: три фільми за настроєм, вільним часом і оцінкою.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_series_tab',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Вкладка «Мої серіали»',description:'Власний список поточного профілю. Додавання кнопкою «Стежити» в картці серіалу.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_poster_style',type:'select',values:{glass:'Скляні капсули',cinema:'Кіноплашки',minimal:'Мінімальні значки',off:'Стандартні Lampa'},default:'glass'},field:{name:'Бейджі на постерах',description:'Тип, оцінки, підтверджені якість і мови, позначки перегляду. На головній та в категоріях.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_initial_focus',type:'select',values:{on:'ukr by Faborn',off:'Вибір Lampa'},default:'on'},field:{name:'Початкова кнопка в картці',description:'Вибір іконки при відкритті. Після руху пультом фокус залишається під твоїм керуванням.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_studios',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Студії під постерами',description:'Netflix, Apple TV, Prime Video та інші добірки фільмів і серіалів. Для головної Faborn.'},onChange:applyAppearance});
@@ -2464,7 +2482,7 @@
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_glass_transparency',type:'select',values:{solid:'Непрозоре',low:'Низька',standard:'Стандартна',high:'Висока',max:'Максимальна'},default:'standard'},field:{name:'Прозорість скла iOS',description:'Для теми iOS · Liquid Glass. Вища прозорість — краще видно фон крізь меню, кнопки й вікна. Застосовується одразу.'},onChange:applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_accent', type: 'select', values: {blue:'Синій', amber:'Бурштиновий', mint:'М’ятний', violet:'Фіолетовий', aurora:'Синій → фіолетовий', lagoon:'Бірюзовий → синій'}, default: 'blue'}, field: {name: 'Колір акценту', description: 'Колір або градієнт для «Панелі» та «Кінозалу». У стандартному оформленні не застосовується.'}, onChange: applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver',type:'select',values:{on:'Faborn',native:'Стандартна Lampa',off:'Вимкнено'},default:'on'},field:{name:'Заставка під час бездіяльності',description:'Вмикається в меню. Під час перегляду, паузи та завантаження відео не запускається.'},onChange:applyAppearance});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_style',type:'select',values:{'aquarium-video':'Акваріум · SereneScreen',aquarium:'Акваріум · тропічні рибки',aerial:'Відео · усі сцени', 'aerial-ocean':'Відео · океан','aerial-city':'Відео · міста','aerial-nature':'Відео · природа','aerial-space':'Відео · Земля з космосу', 'clock-flip':'Годинник · перекидний','clock-analog':'Годинник · стрілочний','clock-rings':'Годинник · кільця',clock:'Годинник · мінімальний',aurora:'Аврора',stars:'Нічне небо',warp:'Зоряний політ',nebula:'Туманність',waves:'Океанські хвилі',ribbons:'Світлові стрічки',bokeh:'Боке',fireflies:'Світлячки',rain:'Нічний дощ',matrix:'Цифровий дощ',orbits:'Орбіти',random:'Випадкова анімація'},default:'aurora'},field:{name:'Стиль заставки',description:'SereneScreen — коротке офіційне демо 720p у повторі, потрібен інтернет. Також є мальований акваріум, 114 відеосцен і годинники.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_style',type:'select',values:{aerial:'Відео · усі сцени', 'aerial-ocean':'Відео · океан','aerial-city':'Відео · міста','aerial-nature':'Відео · природа','aerial-space':'Відео · Земля з космосу', 'clock-flip':'Годинник · перекидний','clock-analog':'Годинник · стрілочний','clock-rings':'Годинник · кільця',clock:'Годинник · мінімальний',aurora:'Аврора',stars:'Нічне небо',warp:'Зоряний політ',nebula:'Туманність',waves:'Океанські хвилі',ribbons:'Світлові стрічки',bokeh:'Боке',fireflies:'Світлячки',rain:'Нічний дощ',matrix:'Цифровий дощ',orbits:'Орбіти',random:'Випадкова анімація'},default:'aurora'},field:{name:'Стиль заставки',description:'114 відеосцен, 4 годинники та 11 анімацій. Відеосцени потребують інтернету.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_clock',type:'select',values:{compact:'Компактний',large:'Великий',off:'Без годинника'},default:'compact'},field:{name:'Годинник на заставці',description:'Для анімованих стилів. У стилі «Годинник» час завжди показується.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_time',type:'select',values:{'1':'1 хвилина','3':'3 хвилини','5':'5 хвилин','10':'10 хвилин'},default:'3'},field:{name:'Запуск заставки через',description:'Будь-яка кнопка пульта повертає до того самого місця в меню.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_preview',type:'button'},field:{name:'Переглянути заставку',description:'Попередній перегляд вибраного стилю Faborn.'},onChange:function () { if (!saverUI) { loadScreensaver();notify('Заставка ще завантажується або не підтримується цією збіркою Lampa. Спробуй після перезапуску.'); } else if (!saverUI.preview()) notify('Заверши перегляд відео, щоб відкрити заставку.'); }});
@@ -2589,6 +2607,7 @@
         settings();
         applyAppearance();
         loadInterface();
+        loadHub();
         loadScreensaver();
         loadSkip();
     }

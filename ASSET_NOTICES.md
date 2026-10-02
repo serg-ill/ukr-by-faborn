@@ -12,11 +12,6 @@ Dolby and the double-D symbol, Dolby Atmos and Dolby Vision are trademarks of Do
 
 ## Screensaver motion
 
-### Original aquarium artwork
-
-`assets/aquarium/reef-v1.png` and `assets/aquarium/fish-v1.png` were generated for this project with OpenAI's built-in image generation tool on 2026-10-02. They are bundled unmodified: a 1672×941 coral-reef background and a 1254×1254 transparent atlas of six tropical fish. They are new artwork, not copied from SereneScreen Marine Aquarium or another screensaver. No SereneScreen code or assets are redistributed.
-
-Fish motion, cached poses, bubbles and lighting are original ES5 Canvas 2D code. The images load only when the aquarium style is selected, from the same static host as the plugin. This style does not stream video.
 
 ### Existing procedural scenes
 
