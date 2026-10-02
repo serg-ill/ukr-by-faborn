@@ -90,7 +90,7 @@ test('reinstall after disposal restores the configured idle timer once',()=>{
 });
 
 test('every animated style produces changing finite drawing commands for a full minute',()=>{
- const styles=setup().api.styles();assert.equal(styles.length,21);
+ const styles=setup().api.styles();assert.equal(styles.length,22);
  for(const style of styles.filter(v=>!/^aquarium|^clock|^aerial/.test(v))) {
   const s=setup({faborn_ukr_screensaver_style:style});s.api.preview();const first=JSON.stringify(s.draws.slice(-100));s.draws.length=0;
   for(let i=0;i<120;i++){s.step(500);if(i%10===0)s.draws.length=0;}
@@ -145,6 +145,52 @@ test('new player immediately unloads aerial video, including the fade-out period
 });
 test('video category changes reuse metadata and leave only the new player active',()=>{
  const s=setup({faborn_ukr_screensaver_style:'aerial-ocean'});s.api.preview();s.requests[0].respond(aerialFixture);s.values.faborn_ukr_screensaver_style='aerial-city';s.api.apply();s.advance(300);s.api.preview();assert.equal(s.requests.length,1);assert.match(s.media[1].src,/city/);assert.equal(s.media[0].src,'');
+});
+test('SereneScreen streams one silent looping clip without loading Canvas, artwork or the Aerial catalog',()=>{
+ const s=setup({faborn_ukr_screensaver_style:'aquarium-video',faborn_ukr_screensaver_clock:'off'});s.api.preview();
+ const v=s.media[0];assert.equal(s.media.length,1);assert.equal(s.requests.length,0);assert.equal(s.images.length,0);assert.equal(s.frames.size,0);
+ assert.match(v.src,/^https:\/\/serenescreen\.com\/video\/vid\/hhd\/180720-Win-03-OrangeBG\.mp4\?v=2$/);
+ assert.equal(v.loop,true);assert.equal(v.muted,true);assert.equal(v.defaultMuted,true);assert.equal(v.volume,0);assert.equal(v.attrs.playsinline,'');
+ assert.equal(s.ss.html.children[0].children[0].style.display,'none');assert.match(s.api.status().video,/SereneScreen.*720p/);
+ v.onplaying();s.advance(60000);assert.equal(s.api.status().error,'');assert.equal(v.plays,1);assert.equal(s.api.active(),true);
+});
+test('SereneScreen recovers an ended event using the same clip and element without a new source lookup',()=>{
+ const s=setup({faborn_ukr_screensaver_style:'aquarium-video'});s.api.preview();const v=s.media[0],url=v.src;v.onplaying();
+ for(let i=0;i<5;i++){v.currentTime=8.174833;v.onended();assert.equal(v.currentTime,0);v.onplaying();s.advance(1000);}
+ assert.equal(v.plays,6);assert.equal(s.media.length,1);assert.equal(v.src,url);assert.equal(s.requests.length,0);assert.equal(s.api.status().error,'');
+});
+test('SereneScreen unloads on Back, player start and hidden document; late media callbacks cannot restart it',()=>{
+ for(const exit of ['back','player','hidden']){
+  const s=setup({faborn_ukr_screensaver_style:'aquarium-video'});s.api.preview();const v=s.media[0],late=[v.onended,v.onplaying,v.onerror,v.onwaiting];v.onplaying();
+  if(exit==='back')s.fire('keydown',27);else if(exit==='player'){s.playing(true);s.emit('start');}else{s.doc.hidden=true;s.fire('visibilitychange');}
+  assert.equal(v.paused,true);assert.equal(v.src,'');assert.equal(v.loop,false);assert.equal(v.onended,null);assert.equal(v.unloaded,true);
+  late.forEach(f=>f());s.advance(16000);assert.equal(v.plays,1);assert.equal(s.media.length,1);assert.equal(s.api.active(),false);assert.equal(s.api.status().error,'');
+ }
+});
+test('SereneScreen failures are bounded and retain a visible clock and working remote exit',()=>{
+ for(const failure of ['timeout','error']){
+  const s=setup({faborn_ukr_screensaver_style:'aquarium-video',faborn_ukr_screensaver_clock:'off'});s.api.preview();const v=s.media[0];
+  if(failure==='timeout')s.advance(46000);else{v.error={code:4,message:'Unsupported format'};for(let i=0;i<3;i++)v.onerror();}
+  assert.match(s.api.status().error,/Відеосцена недоступна/);assert.equal(v.src,'');assert.equal(v.paused,true);assert.equal(v.loop,false);assert.equal(v.plays,3);
+  assert.equal(s.ss.html.children[0].className,'fbr-saver fbr-saver--clock');assert.equal(s.ss.html.children[0].children[0].style.display,'block');assert.equal(s.fire('keydown',13).prevented,true);
+ }
+});
+test('SereneScreen rejected playback falls back safely and a late rejection after exit is ignored',()=>{
+ for(const late of [false,true]){
+  const s=setup({faborn_ukr_screensaver_style:'aquarium-video'}),create=s.doc.createElement;let reject;
+  s.doc.createElement=tag=>{const e=create(tag);if(tag==='video')e.play=()=>({catch(f){reject=f;}});return e;};s.api.preview();
+  if(late){s.fire('keydown',27);reject(new Error('NotAllowedError'));s.advance(300);assert.equal(s.api.status().error,'');assert.equal(s.api.active(),false);}
+  else{for(let i=0;i<3;i++)reject(new Error('NotAllowedError'));assert.match(s.api.status().error,/NotAllowedError/);assert.equal(s.media[0].src,'');}
+ }
+});
+test('changing from SereneScreen to Aerial or changing the clock disposes the previous loop',()=>{
+ for(const next of ['aerial-ocean','aquarium-video']){
+  const s=setup({faborn_ukr_screensaver_style:'aquarium-video'});s.api.preview();const previous=s.media[0];previous.onplaying();
+  s.values.faborn_ukr_screensaver_style=next;s.values.faborn_ukr_screensaver_clock='off';s.api.apply();s.advance(300);s.api.preview();
+  assert.equal(previous.src,'');assert.equal(previous.paused,true);assert.equal(previous.loop,false);assert.equal(s.media.length,2);
+  if(next==='aerial-ocean'){s.requests[0].respond(aerialFixture);assert.equal(s.media[1].loop,false);assert.match(s.media[1].src,/sylvan\.apple\.com/);}
+  else{assert.equal(s.requests.length,0);assert.equal(s.media[1].loop,true);assert.equal(s.ss.html.children[0].children[0].style.display,'none');}
+ }
 });
 test('bundled Aerial catalog has unique HTTPS H264 scenes in all four categories',()=>{
  const data=JSON.parse(fs.readFileSync(require.resolve('../data/aerial.json'),'utf8'));assert.equal(data.videos.length,114);assert.equal(new Set(data.videos.map(v=>v.id)).size,114);
