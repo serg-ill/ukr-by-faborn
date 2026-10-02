@@ -155,3 +155,60 @@ test('background checks are cached for six hours, never run during playback and 
  e.api.checkReleases();assert.equal(e.calls.length,1);e.profile('other');e.api.follow({...show,id:5},true);e.api.checkReleases();assert.equal(e.calls.length,2);
  e.profile('file_view');e.calls[1].ok({id:5,last_episode_to_air:ep(1,'2026-10-01')});assert.equal(e.storage.faborn_ukr_series_releases_v1_other[5],undefined);
 });
+
+test('series list reuses calculated state across pages without reading Timeline again',()=>{
+ const e=env(),cache=e.api.seriesCache(),task=e.api.scope();let reads=0,result;
+ const view=e.L.Timeline.view;e.L.Timeline.view=k=>{reads++;return view(k);};
+ e.put('21Young Sheldon',{percent:40,updated:10});
+ cache.load(task,show,(err,data)=>{assert.equal(err,null);result=data;});
+ e.calls[0].ok({id:show.id,seasons:[{season_number:2,episode_count:100}]});
+ e.calls[1].ok({season_number:2,episodes});
+ assert.equal(reads,208,'one full season scan and one current-season summary');
+ const before=reads;
+ for(let i=0;i<120;i++)cache.load(task,show,(err,data)=>assert.equal(data,result));
+ assert.equal(reads,before);assert.equal(e.calls.length,2);assert.equal(cache.get(show).state.last.episode,1);
+});
+test('Timeline invalidation refreshes progress from retained metadata without network calls',()=>{
+ const e=env(),cache=e.api.seriesCache(),task=e.api.scope();let result;
+ cache.load(task,show,(err,data)=>result=data);
+ e.calls[0].ok({id:show.id,seasons:[{season_number:2,episode_count:4}]});e.calls[1].ok({season_number:2,episodes});
+ assert.equal(result.state.pending,3);
+ e.put('21Young Sheldon',{percent:100,updated:20});cache.invalidate();cache.load(task,show,(err,data)=>result=data);
+ assert.equal(e.calls.length,2);assert.equal(result.state.pending,2);assert.equal(result.state.watched,1);
+ e.put('21Young Sheldon',{percent:0,updated:30});cache.invalidate();cache.load(task,show,(err,data)=>result=data);
+ assert.equal(result.state.pending,3);assert.equal(result.state.last,null);
+});
+test('cached completed season still loads the next released season after progress changes',()=>{
+ const e=env(),cache=e.api.seriesCache(),task=e.api.scope();let result;
+ cache.load(task,show,(err,data)=>result=data);
+ e.calls[0].ok({id:show.id,seasons:[{season_number:2,episode_count:1,air_date:'2020-01-01'},{season_number:3,episode_count:1,air_date:'2021-01-01'}]});
+ e.calls[1].ok({season_number:2,episodes:[episodes[0]]});
+ e.put('21Young Sheldon',{percent:100,updated:20});cache.invalidate();cache.load(task,show,(err,data)=>result=data);
+ assert.equal(e.calls.length,3);assert.equal(e.calls[2].path,'tv/'+show.id+'/season/3');
+ e.calls[2].ok({season_number:3,episodes:[{season_number:3,episode_number:1,air_date:'2021-01-01'}]});
+ assert.equal(result.state.season,3);assert.equal(result.state.pending,1);
+});
+test('series cache cannot mix profiles or accept obsolete progress calculations',()=>{
+ const e=env(),cache=e.api.seriesCache(),task=e.api.scope();let delivered=0;
+ cache.load(task,show,()=>delivered++);cache.invalidate();
+ e.calls[0].ok({id:show.id,seasons:[{season_number:2,episode_count:4}]});e.calls[1].ok({season_number:2,episodes});
+ assert.equal(delivered,0);assert.equal(cache.get(show),undefined);
+ cache.load(task,show,()=>delivered++);assert.equal(delivered,1);assert.ok(cache.get(show));
+ e.profile('other');assert.equal(cache.get(show),undefined);cache.load(task,show,()=>delivered++);assert.equal(delivered,1);
+});
+test('failed series metadata is retryable and cache clear releases saved rows',()=>{
+ const e=env(),cache=e.api.seriesCache(),task=e.api.scope();
+ cache.load(task,show,()=>{});e.calls[0].fail();assert.ok(cache.get(show).error);
+ cache.load(task,show,()=>{});assert.equal(e.calls.length,2);
+ e.calls[1].ok({id:show.id,seasons:[{season_number:2,episode_count:4}]});e.calls[2].ok({season_number:2,episodes});
+ assert.ok(cache.get(show).state);cache.clear();assert.equal(cache.get(show),undefined);
+});
+test('a new calendar day recomputes release counts even within the metadata TTL',t=>{
+ t.mock.timers.enable({apis:['Date'],now:new Date(2026,9,2,23,59).getTime()});
+ const e=env(),cache=e.api.seriesCache(),task=e.api.scope();let result;
+ cache.load(task,show,(err,data)=>result=data);
+ e.calls[0].ok({id:show.id,seasons:[{season_number:2,episode_count:2}]});
+ e.calls[1].ok({season_number:2,episodes:[{season_number:2,episode_number:1,air_date:'2026-10-02'},{season_number:2,episode_number:2,air_date:'2026-10-03'}]});
+ assert.equal(result.state.pending,1);t.mock.timers.tick(120000);
+ cache.load(task,show,(err,data)=>result=data);assert.equal(result.state.pending,2);
+});
