@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.28 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.29 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.28';
+    var VERSION = '0.1.0-beta.29';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
@@ -2542,6 +2542,7 @@
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_home',type:'select',values:{on:'Faborn · компактні постери',off:'Стандартна Lampa'},default:'on'},field:{name:'Головний екран',description:'Шість постерів у ряд, оцінки, прогрес і один опис вибраного фільму. Після зміни повторно відкрий головну.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_discover_tab',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Вкладка «Що подивитися»',description:'Окремий пункт меню: три фільми за настроєм, вільним часом і оцінкою.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_series_tab',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Вкладка «Мої серіали»',description:'Власний список поточного профілю. Додавання кнопкою «Стежити» в картці серіалу.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_watched',type:'button'},field:{name:'Переглянуте та перенесення',description:'Позначити серіал / сезон, скасувати останні відмітки або скопіювати збережений прогрес іншого профілю на цьому пристрої.'},onChange:function(){if(hubUI)hubUI.progressTools();else notify('Центр серіалів ще завантажується. Спробуй за мить.');}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_episode_countdown',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Відлік до нової серії',description:'Сьогодні, завтра або кількість днів у картці та «Моїх серіалах». Дата виходу за TMDB, без гарантії наявності озвучення.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_episode_notifications',type:'select',values:{on:'Увімкнено',off:'Вимкнено'},default:'on'},field:{name:'Сповіщення про нові серії',description:'У меню Lampa, лише для «Моїх серіалів». Перевірка раз на 6 годин під час роботи застосунку; без повтору й без переривання відео.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_poster_style',type:'select',values:{glass:'Скляні капсули',cinema:'Кіноплашки',minimal:'Мінімальні значки',off:'Стандартні Lampa'},default:'glass'},field:{name:'Бейджі на постерах',description:'Тип, оцінки, підтверджені якість і мови, позначки перегляду. На головній та в категоріях.'},onChange:applyAppearance});
