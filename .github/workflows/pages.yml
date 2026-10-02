@@ -44,6 +44,7 @@ jobs:
           cp ukr-by-faborn.js index.html .nojekyll _site/
           cp assets/icon.svg _site/assets/
           cp -R assets/studios _site/assets/
+          cp -R assets/aquarium _site/assets/
           cp data/catalog.json data/status.json data/aerial.json _site/data/
           cp lib/kinobase.js lib/faborn-ui.js lib/faborn-screensaver.js lib/faborn-skip.js lib/STARFIELD-LICENSE lib/SAVER-WARP-LICENSE lib/SAVER-MATRIX-LICENSE lib/ACORN-LICENSE lib/AERIAL-LICENSE _site/lib/
           cp -R lib/4klab _site/lib/
