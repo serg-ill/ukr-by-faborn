@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.27 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.28 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.27';
+    var VERSION = '0.1.0-beta.28';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
@@ -17,6 +17,8 @@
     var torrentRows = [], torrentFiles = [], pendingTorrent = null, torrentListRelease = '', progressPaintTimer, progressWriting = false;
     var playbackWatchSerial = 0, playerVoiceContext = null, voiceSwitch = null, voiceResume = null;
     var playbackQueue = null, skipUI = null, skipScript = null, lastProgressPlayback = null;
+    var restartPending = null;
+    var RESTART_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9a8 8 0 1 1 .5 7M4 4v5h5"/><path d="m10 8 6 4-6 4Z" stroke-width="1.4"/></svg>';
     var seasonMetadata = {}, seasonMetadataOrder = [];
     var directTrace = [], presentation = null;
     var capturedBase = detectBase();
@@ -288,7 +290,7 @@
         '.fbr-title{font-size:1.85em;font-weight:700;line-height:1.1;margin:0 0 .35em;word-wrap:break-word}.fbr-meta{color:#adbad1;font-size:.86em;margin-bottom:1.35em}.fbr-label{color:#b7c4d8;font-size:.72em;letter-spacing:.12em;text-transform:uppercase;margin:1.4em 0 .7em}.fbr-controls{display:flex;flex-wrap:wrap;margin:-.22em}.fbr-control{padding:.55em .85em;margin:.22em;min-width:3.8em;text-align:center}' +
         '.fbr-btn{background:#222e42;border:0;color:#f4f6fb;border-radius:.65em;cursor:pointer;position:relative;transform:none!important;filter:none!important;transition:none!important}.fbr-btn.chosen{background:'+tint+';color:'+accent+'}.fbr-btn.focus{background:'+accent+'!important;background-image:'+fill+'!important;color:'+ink+'!important;box-shadow:none;z-index:1}.fbr-btn.focus .fbr-small{color:'+ink+'}.fbr-btn:focus{outline:none}' +
         '.fbr-voice{margin:.65em 0}.fbr-voice-main{padding:.8em 1em;display:flex;align-items:center;justify-content:space-between}.fbr-voice-name{font-size:1.02em;font-weight:600;word-wrap:break-word;min-width:0}.fbr-small{display:block;color:#b0bdd2;font-size:.76em;margin-top:.2em;font-weight:400}.fbr-mark{margin-left:.7em;font-size:1.2em;flex-shrink:0}.fbr-sources{display:flex;flex-wrap:wrap;padding:.45em .3em 0;margin:0 -.25em}.fbr-source{font-size:.8em;padding:.65em .85em;margin:.25em}' +
-        '.fbr-footer{padding:1.1em 1.45em;border-top:1px solid #303b50;flex-shrink:0}.fbr-play{padding:.85em 1em;background:'+accent+';background-image:'+fill+';color:'+ink+';text-align:center;font-size:1.05em;font-weight:700}.fbr-hint{color:#adbad1;font-size:.72em;margin-top:.8em;text-align:center}.fbr-refresh{font-size:.8em;text-align:center;padding:.65em .8em;margin-top:1.5em;background:transparent}' +
+        '.fbr-footer{padding:1.1em 1.45em;border-top:1px solid #303b50;flex-shrink:0}.fbr-play{padding:.85em 1em;background:'+accent+';background-image:'+fill+';color:'+ink+';text-align:center;font-size:1.05em;font-weight:700}.fbr-play-actions{display:flex;align-items:stretch}.fbr-play-actions .fbr-play{flex:1}.fbr-restart{display:flex;align-items:center;justify-content:center;margin-left:.65em;padding:.7em .8em;font-size:.86em;white-space:nowrap}.fbr-restart svg{width:1.25em;height:1.25em;margin-right:.4em}.fbr-hint{color:#adbad1;font-size:.72em;margin-top:.8em;text-align:center}.fbr-refresh{font-size:.8em;text-align:center;padding:.65em .8em;margin-top:1.5em;background:transparent}' +
         '.fbr-last{padding:.6em .85em;margin-top:.8em;font-size:.85em}.fbr-episode{display:flex;overflow:hidden;margin:.8em 0;min-height:6.5em}.fbr-episode-image{width:34%;flex-shrink:0;position:relative;background:#30425e;display:flex;align-items:center;justify-content:center;min-height:6.5em}.fbr-episode-image b{font-size:1.4em}.fbr-episode-image img{position:absolute;width:100%;height:100%;object-fit:cover;left:0;top:0}.fbr-episode-body{padding:.7em .9em;min-width:0;flex:1}.fbr-episode-body strong{font-size:1em;display:block}.fbr-episode-status{display:block;font-size:.75em;margin:.4em 0;color:'+accent+'}.fbr-episode.focus .fbr-episode-status{color:inherit}.fbr-episode .fbr-progress-track{display:block;margin:.4em 0}.fbr-episode-overview{display:block;color:#b0bdd2;font-size:.72em;max-height:2.8em;overflow:hidden}.fbr-episode.focus .fbr-episode-overview{display:block;color:inherit}.fbr-episodes .fbr-content{padding-top:.8em}.fbr-episodes.fbr-cinema .fbr-window{left:18vw;right:18vw}.fbr-episodes.fbr-cinema .fbr-footer{padding:1em 2em}.fbr-episodes.fbr-cinema .fbr-episode-image{width:30%}' +
         '.fbr-progress{margin:.9em 0;color:#b7c4d8;font-size:.76em}.fbr-progress-track{height:.28em;background:#354158;border-radius:1em;margin:.65em 0;overflow:hidden}.fbr-progress-track i{display:block;height:100%;background:'+accent+';background-image:'+fill+'}.fbr-empty{padding:2em .5em;color:#b7c4d8}.fbr-empty strong{display:block;color:#f3f5fa;font-size:1.2em;margin-bottom:.6em}.fbr-loading{padding:2em 0}.fbr-loading i{display:block;height:.55em;margin:.85em 0;background:#29374e;border-radius:1em;width:82%}.fbr-loading i:nth-child(2){width:64%}.fbr-loading i:nth-child(3){width:72%}' +
         '.fbr-cinema .fbr-window{left:5vw;right:5vw;top:5vh;bottom:5vh;width:auto;min-width:0}.fbr-cinema .fbr-story{display:flex;flex-direction:column;justify-content:flex-end;width:43%;flex-shrink:0;padding:2.2em;background:#1b2a40;position:relative;overflow:hidden}.fbr-art{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;object-fit:cover;opacity:.36}.fbr-story:after{content:"";position:absolute;top:0;right:0;bottom:0;left:0;background:linear-gradient(180deg,rgba(14,22,36,.05),#111b2c 88%)}.fbr-story-info{position:relative;z-index:1}.fbr-story .fbr-title{font-size:2.7em}.fbr-overview{color:#b7c4d8;font-size:.9em;line-height:1.65;max-height:8.2em;overflow:hidden}.fbr-cinema .fbr-content{padding:1.8em 2em}.fbr-cinema .fbr-mini-title{display:none}.fbr-cinema .fbr-footer{padding:1em 2em 1em 46%}.fbr-cinema .fbr-controls{margin-bottom:.4em}' +
@@ -379,6 +381,7 @@
         }
         var play = '', resume = canResume(progress);
         if (!busy && selected) play = btn('play','&#9654; '+(resume ? 'Продовжити з '+clockLabel(progress.time) : 'Дивитися'),'fbr-play',false,function () { session.focusVoice = selected.key; selectStream(session,selected.entries[0]); });
+        if (!busy && selected && (+progress.time > 0 || +progress.percent > 0)) play = '<div class="fbr-play-actions">'+play+btn('restart',RESTART_ICON+'З початку','fbr-restart',false,function () { session.focusVoice = selected.key; selectStream(session,selected.entries[0],true); })+'</div>';
         var hint = busy ? 'Назад — скасувати' : selected ? selected.voice+' · '+qualityLabel(view.quality)+' · '+sourceName(selected.entries[0].release.source) : 'Назад — повернутися до картки';
         if (!busy && selected) hint += subtitleHint(selected.entries[0].episode);
         var art = posterURL(session.movie), story = '<div class="fbr-story">'+(art ? '<img class="fbr-art" alt="" src="'+escapeHTML(art)+'">' : '')+'<div class="fbr-story-info">'+heading+'<p class="fbr-overview">'+escapeHTML(plain(session.movie.overview || ''))+'</p>'+track+'</div></div>';
@@ -1442,7 +1445,7 @@
         groups.sort(function (a,b) { return languageOrder[a.language]-languageOrder[b.language]; });
         return {qualities:values,quality:selected,groups:groups};
     }
-    function selectStream(session, row) {
+    function selectStream(session, row, fromStart) {
         if (activeSession !== session) return;
         save('source',row.release.source); save('quality',row.value);
         if (row.episode.lab) {
@@ -1454,7 +1457,7 @@
             return;
         }
         if (lab4k && lab4k.cancel) lab4k.cancel(true);
-        launch(session.movie,session.catalog,session.title,row.release,row.episode,row.value);
+        launch(session.movie,session.catalog,session.title,row.release,row.episode,row.value,fromStart);
     }
     function chooseSource(session, group) {
         var totals = {}, seen = {}, preferredSource = storage('source','uakino');
@@ -1494,6 +1497,7 @@
             var next = focused.entries[0];
             rows.push({title:'Продовжити з '+clockLabel(progress.time),subtitle:focused.voice+' · '+qualityLabel(view.quality)+' · '+sourceName(next.release.source),action:'play',group:focused,release:next.release,episode:next.episode,value:next.value});
         }
+        if (focused && (+progress.time > 0 || +progress.percent > 0)) rows.push({title:'З початку',subtitle:'Запустити цей фільм або серію з 00:00',action:'restart',entry:focused.entries[0]});
         view.groups.forEach(function (group) {
             var entry = group.entries[0], many = group.entries.length > 1;
             var names = unique(group.entries.map(function (item) { return sourceName(item.release.source); }));
@@ -1510,6 +1514,7 @@
             if (row.action === 'episode') return chooseSeason(session);
             if (row.action === 'last') return returnToLast(session);
             if (row.action === 'retry') return startDiscovery(session.movie);
+            if (row.action === 'restart') return selectStream(session,row.entry,true);
             session.focusVoice = row.group.key;
             if (row.action === 'sources') return chooseSource(session,row.group);
             selectStream(session,row);
@@ -1728,11 +1733,76 @@
     }
     function finishHistory() { savePlaybackProgress(true); historyPlayback = null; }
     function completePlayback(data) {
+        if (restartPending && restartPending.data === data) return;
         if (!data || data !== historyPlayback || !data.timeline || !(data.timeline.duration > 0)) return;
         data.faborn_watched=true;
         data.timeline.percent=100;data.timeline.time=data.timeline.duration;
         data.timeline.waiting_for_user=true;
         savePlaybackProgress(true,true);
+    }
+
+    function cancelRestart() {
+        var pending = restartPending;
+        restartPending = null;
+        if (!pending) return;
+        root.clearTimeout(pending.timer);
+        Object.keys(pending.before).forEach(function (key) { pending.data.timeline[key] = pending.before[key]; });
+    }
+    function beginRestart(data, seek) {
+        if (!data || !data.timeline || data.iptv || data.iptv_player) return false;
+        cancelRestart();
+        var progress = data.timeline, before = {}, pending;
+        ['time','duration','percent','updated','continued','continued_bloc','waiting_for_user','stop_recording'].forEach(function (key) { before[key] = progress[key]; });
+        pending = {data:data,before:before}; restartPending = pending;
+        // Do not persist a reset until the player actually reaches the beginning.
+        // This also blocks late time updates while AVPlay is seeking.
+        progress.time = 0; progress.percent = 0; progress.continued = true;
+        progress.continued_bloc = true; progress.waiting_for_user = false; progress.stop_recording = true;
+        if (playbackQueue && playbackQueue.current && playbackQueue.current.data === data) playbackQueue.endPending = null;
+        if (skipUI) skipUI.stop();
+        pending.timer = root.setTimeout(function () {
+            if (restartPending !== pending) return;
+            cancelRestart();
+            if (seek && L.Player.playdata() === data) notify('Не вдалося перейти на початок. Спробуй запустити «З початку» у вікні джерел.');
+        },seek ? 8000 : 45000);
+        try {
+            if (seek) L.PlayerVideo.to(0);
+        } catch (ignore) { cancelRestart(); notify('Плеєр не виконав перехід на початок.'); return false; }
+        return true;
+    }
+    function confirmRestart(event) {
+        var pending = restartPending;
+        if (!pending || L.Player.playdata() !== pending.data || !event || !(event.duration > 0) || !isFinite(event.current) || event.current < 0 || event.current > 5) return;
+        var data = pending.data, progress = data.timeline;
+        restartPending = null; root.clearTimeout(pending.timer);
+        progress.stop_recording = pending.before.stop_recording;
+        progress.time = 0; progress.percent = 0; progress.duration = event.duration; progress.updated = Date.now();
+        progress.continued = true; progress.continued_bloc = true; progress.waiting_for_user = false;
+        if (progress.handler) progress.handler(0,0,event.duration);
+        if (data.faborn_title) save('position_'+data.faborn_title,{season:data.season,episode:data.episode,time:0,duration:event.duration,percent:0,updated:Date.now()});
+        data.faborn_saved = Date.now(); data.faborn_watched = false; lastProgressPlayback = null;
+        if (skipUI) skipUI.start(data);
+    }
+    function restartPlayback() {
+        var data = L.Player.playdata && L.Player.playdata(), video = L.PlayerVideo && L.PlayerVideo.video && L.PlayerVideo.video();
+        if (!data || !data.timeline || data.iptv || data.iptv_player || !video || !(video.duration > 0) || !isFinite(video.duration) || !L.PlayerVideo.to) return false;
+        if (voiceSwitch || voiceResume || playbackQueue && (playbackQueue.loading || playbackQueue.transition)) { notify('Дочекайся завершення перемикання відео.'); return false; }
+        if (restartPending) return false;
+        if (!beginRestart(data,true)) return false;
+        if (L.PlayerPanel && L.PlayerPanel.toPlayer) L.PlayerPanel.toPlayer();
+        return true;
+    }
+    function mountRestartButton(data) {
+        if (!L.PlayerPanel || !L.PlayerPanel.render) return;
+        var panel = L.PlayerPanel.render();
+        if (!panel || !panel.find) return;
+        panel.find('.faborn-player-restart').remove();
+        if (!data || !data.timeline || data.iptv || data.iptv_player) return;
+        var anchor = panel.find('.player-panel__playpause').first();
+        if (!anchor.length) return;
+        var button = $('<div class="button selector faborn-player-restart" role="button" aria-label="З початку" title="З початку">'+RESTART_ICON+'<div class="tooltip">З початку · 00:00</div></div>');
+        button.on('hover:enter',restartPlayback);
+        anchor.after(button);
     }
 
     function torrentFileKey(data) {
@@ -2130,13 +2200,13 @@
             if (video && video.addEventListener) video.addEventListener('error', function (event) { if (run === playbackWatchSerial) playbackError(event, data); });
         } catch (ignore) { /* The startup timeout still covers an unavailable adapter. */ }
     }
-    function launch(movie,catalog,title,release,episode,preference) {
+    function launch(movie,catalog,title,release,episode,preference,fromStart) {
         var session = catalog.session;
         var isTizen = L.Platform && L.Platform.is && L.Platform.is('tizen');
         if (!isTizen || L.Storage.field && L.Storage.field('player') !== 'tizen') {
             return select('Потрібен плеєр Tizen', [{title:'Lampa → Налаштування → Плеєр → Tizen',subtitle:'Потік відтворюється штатним плеєром телевізора.'}],function () { renderSources(session); },function () { renderSources(session); });
         }
-        if (!episode.resolvedAt || Date.now()-episode.resolvedAt > 60000) return resolveDirect(movie,catalog,title,release,episode,function () { launch(movie,catalog,title,release,episode,preference); });
+        if (!episode.resolvedAt || Date.now()-episode.resolvedAt > 60000) return resolveDirect(movie,catalog,title,release,episode,function () { launch(movie,catalog,title,release,episode,preference,fromStart); });
         cancelPending(); var serial = requestSerial;
         loading(session,'запуск відео');
         episodeRequest(serial,episode,pickURL(episode,preference),'Вибрана якість',function (err,body) {
@@ -2147,7 +2217,7 @@
             stopKinoSession();
             closePresentation(); L.Select.hide(); L.Controller.toggle(returnController);
             // Other episodes receive lazy resolvers; each stream is checked before playback.
-            handoff(movie,catalog,title,release,episode,preference);
+            handoff(movie,catalog,title,release,episode,preference,fromStart);
         });
     }
     function queueSelection(queue,entry) {
@@ -2169,6 +2239,7 @@
         if (L.Player.playlist) L.Player.playlist(queue.title.type === 'tv' ? queue.entries.map(function (entry) { return entry.data; }) : []);
     }
     function queueEnded() {
+        if (restartPending) return;
         var queue=playbackQueue, data=L.Player.playdata && L.Player.playdata();
         if (!queue || queue.closed || queue.title.type !== 'tv' || !queue.current || queue.current.data !== data || data !== lastProgressPlayback) return;
         queueStatus(queue,queue.loading ? 'Завершення отримано · наступна серія завантажується' : 'Завершення отримано');
@@ -2274,8 +2345,9 @@
         restoreEpisodeQueue(queue);
         return queue;
     }
-    function handoff(movie,catalog,title,release,episode,preference) {
+    function handoff(movie,catalog,title,release,episode,preference,fromStart) {
         var data = playData(movie,title,release,episode,preference);
+        if (fromStart) data.faborn_from_start = true;
         setPlayerVoices(data,movie,catalog,title,release,episode);
         playbackContext = {movie:movie,catalog:catalog};
         save('last_launch',title.title+' · '+preference+' · '+sourceName(release.source)+' · '+release.voice+' · передано плеєру');
@@ -2470,6 +2542,8 @@
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_home',type:'select',values:{on:'Faborn · компактні постери',off:'Стандартна Lampa'},default:'on'},field:{name:'Головний екран',description:'Шість постерів у ряд, оцінки, прогрес і один опис вибраного фільму. Після зміни повторно відкрий головну.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_discover_tab',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Вкладка «Що подивитися»',description:'Окремий пункт меню: три фільми за настроєм, вільним часом і оцінкою.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_series_tab',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Вкладка «Мої серіали»',description:'Власний список поточного профілю. Додавання кнопкою «Стежити» в картці серіалу.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_episode_countdown',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Відлік до нової серії',description:'Сьогодні, завтра або кількість днів у картці та «Моїх серіалах». Дата виходу за TMDB, без гарантії наявності озвучення.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_episode_notifications',type:'select',values:{on:'Увімкнено',off:'Вимкнено'},default:'on'},field:{name:'Сповіщення про нові серії',description:'У меню Lampa, лише для «Моїх серіалів». Перевірка раз на 6 годин під час роботи застосунку; без повтору й без переривання відео.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_poster_style',type:'select',values:{glass:'Скляні капсули',cinema:'Кіноплашки',minimal:'Мінімальні значки',off:'Стандартні Lampa'},default:'glass'},field:{name:'Бейджі на постерах',description:'Тип, оцінки, підтверджені якість і мови, позначки перегляду. На головній та в категоріях.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_initial_focus',type:'select',values:{on:'ukr by Faborn',off:'Вибір Lampa'},default:'on'},field:{name:'Початкова кнопка в картці',description:'Вибір іконки при відкритті. Після руху пультом фокус залишається під твоїм керуванням.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_studios',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Студії під постерами',description:'Netflix, Apple TV, Prime Video та інші добірки фільмів і серіалів. Для головної Faborn.'},onChange:applyAppearance});
@@ -2558,6 +2632,7 @@
             L.Player.listener.follow('start', function (data) {
                 // Lampa applies its global quality preference before this event. Preserve the explicit selection only for our streams.
                 clearPlaybackWatch();
+                cancelRestart();
                 cancelVoiceSwitch();
                 if (playerVoiceContext && playerVoiceContext.data !== data) playerVoiceContext = null;
                 queueStarted(data);
@@ -2567,13 +2642,14 @@
                 if (!data || !data.faborn_title || (!labOwned && !mediaURL(data.faborn_url))) return;
                 data.url = data.faborn_url;
                 historyPlayback = data;
+                if (data.faborn_from_start) { delete data.faborn_from_start; beginRestart(data,false); }
                 save('last_' + data.faborn_title, data.faborn_episode);
                 if (!labOwned) watchPlayback(data);
             });
-            L.Player.listener.follow('ready', watchNativeError);
+            L.Player.listener.follow('ready', function (data) { watchNativeError(data); mountRestartButton(data); });
             L.Player.listener.follow('destroy', function () {
                 if (playbackQueue && !playbackQueue.transition) { playbackQueue.closed=true;playbackQueue.serial++;playbackQueue.loading=false;cancelPending(); }
-                cancelVoiceSwitch(); playerVoiceContext = null; clearPlaybackWatch(); finishHistory();
+                cancelRestart(); cancelVoiceSwitch(); playerVoiceContext = null; clearPlaybackWatch(); finishHistory();
             });
         }
         if (L.PlayerPanel && L.PlayerPanel.listener) L.PlayerPanel.listener.follow('quality',function (event) {
@@ -2590,6 +2666,7 @@
             L.PlayerVideo.listener.follow('loadeddata', function () { clearPlaybackWatch(); resumePlayerVoice(); });
             L.PlayerVideo.listener.follow('pause', function () { savePlaybackProgress(true); });
             L.PlayerVideo.listener.follow('timeupdate', function (event) {
+                confirmRestart(event);
                 resumePlayerVoice();
                 if (watchedPlayback && event && event.current > 0) clearPlaybackWatch();
                 if (historyPlayback && event && event.current > 0 && event.duration > 0 && historyPlayback.timeline && !historyPlayback.timeline.waiting_for_user) {
@@ -2601,6 +2678,7 @@
                 queueEnded();
             });
             L.PlayerVideo.listener.follow('error', function (event) {
+                cancelRestart();
                 playbackError(event, watchedPlayback);
             });
         }
@@ -2620,7 +2698,7 @@
         attempt();
     }
     return {
-        version: VERSION, name: NAME, boot: boot, open: open, openTorrents:openTorrents, torrentRequest:torrentRequest, buttonMarkup:buttonMarkup,
+        version: VERSION, name: NAME, boot: boot, open: open, openTorrents:openTorrents, restart:restartPlayback, torrentRequest:torrentRequest, buttonMarkup:buttonMarkup,
         // Pure helpers are also used by the offline package checks.
         normalize: normalize, matchTitles: matchTitles, mediaURL: mediaURL,
         safeBase: safeBase, validCatalog: validCatalog, qualityNames: qualityNames,

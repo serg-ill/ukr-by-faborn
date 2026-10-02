@@ -109,3 +109,49 @@ test('recommendation failure returns a recoverable error and no invented results
 test('untrusted titles and descriptions cannot inject UI markup',()=>{
  const e=env();assert.equal(e.api.esc('<img onerror="bad">&'), '&lt;img onerror=&quot;bad&quot;&gt;&amp;');
 });
+const ep=(n,day,season=2)=>({season_number:season,episode_number:n,air_date:day});
+test('release countdown uses calendar days across months, leap days and DST, with Ukrainian labels',()=>{
+ const e=env(),info=(day,next)=>e.api.releaseInfo({next_episode_to_air:ep(4,next)},day);
+ assert.equal(info('2026-10-24','2026-10-25').label,'Нова серія завтра');
+ assert.equal(info('2028-02-28','2028-03-01').label,'Нова серія через 2 дні');
+ assert.equal(info('2026-12-31','2027-01-21').label,'Нова серія через 21 день');
+ assert.equal(info('2026-10-02','2026-10-13').label,'Нова серія через 11 днів');
+ assert.equal(info('2026-10-02','2026-10-02').kind,'today');
+ assert.equal(e.api.releaseInfo({last_episode_to_air:ep(3,'2026-10-02'),next_episode_to_air:ep(4,'2026-10-09')},'2026-10-02').episode,3);
+ assert.equal(info('2026-10-02','2026-02-30'),null);assert.equal(info('2026-10-02',null),null);
+});
+test('first release check seeds a baseline, later episodes notify once even after module restart',()=>{
+ const e=env(),messages=[];e.L.Noty={show:s=>messages.push(s)};e.api.follow(show,true);
+ const details=n=>({id:show.id,last_episode_to_air:ep(n,'2026-10-02')});
+ assert.equal(e.api.observeRelease(show,details(1),'2026-10-02'),false);assert.equal(e.api.flushReleases(),false);
+ assert.equal(e.api.observeRelease(show,details(2),'2026-10-02'),true);assert.equal(e.api.flushReleases(),true);assert.match(messages[0],/S2E2/);
+ const again=factory(e.root,e.L,null);again.observeRelease(show,details(2),'2026-10-02');assert.equal(again.flushReleases(),false);assert.equal(messages.length,1);
+});
+test('future, mismatched and unfollowed series never produce a release alert',()=>{
+ const e=env();e.api.follow(show,true);
+ e.api.observeRelease(show,{id:show.id,last_episode_to_air:ep(1,'2026-10-01')},'2026-10-02');
+ e.api.observeRelease(show,{id:show.id,last_episode_to_air:ep(2,'2026-10-03')},'2026-10-02');
+ e.api.observeRelease(show,{id:999,last_episode_to_air:ep(3,'2026-10-02')},'2026-10-02');
+ e.api.observeRelease({...show,id:999},{id:999,last_episode_to_air:ep(4,'2026-10-02')},'2026-10-02');
+ assert.equal(e.api.flushReleases(),false);assert.equal(e.storage.faborn_ukr_series_releases_v1_file_view[show.id].last.episode,1);
+});
+test('release notifications wait for the player and dialogs to close; marked episodes are skipped',()=>{
+ const e=env(),messages=[];let playing=true,dialog=false;e.L.Player={opened:()=>playing};e.L.Select={opened:()=>dialog};e.L.Noty={show:s=>messages.push(s)};e.api.follow(show,true);
+ e.api.observeRelease(show,{id:show.id,last_episode_to_air:ep(1,'2026-10-01')},'2026-10-02');e.api.observeRelease(show,{id:show.id,last_episode_to_air:ep(2,'2026-10-02')},'2026-10-02');
+ assert.equal(e.api.flushReleases(),false);playing=false;dialog=true;assert.equal(e.api.flushReleases(),false);dialog=false;assert.equal(e.api.flushReleases(),true);
+ e.put('23Young Sheldon',{percent:100});e.api.observeRelease(show,{id:show.id,last_episode_to_air:ep(3,'2026-10-02')},'2026-10-02');assert.equal(e.api.flushReleases(),false);assert.equal(messages.length,1);
+});
+test('notifications honor disabled setting, removal and profile boundaries',()=>{
+ const e=env();e.L.Noty={show:()=>{throw Error('unexpected notification');}};e.api.follow(show,true);e.storage.faborn_ukr_episode_notifications='off';
+ e.api.observeRelease(show,{id:show.id,last_episode_to_air:ep(1,'2026-10-01')},'2026-10-02');e.api.observeRelease(show,{id:show.id,last_episode_to_air:ep(2,'2026-10-02')},'2026-10-02');
+ e.storage.faborn_ukr_episode_notifications='on';assert.equal(e.api.flushReleases(),false);
+ e.profile('other');e.api.follow(show,true);e.api.observeRelease(show,{id:show.id,last_episode_to_air:ep(3,'2026-10-02')},'2026-10-02');assert.equal(e.api.flushReleases(),false);
+ e.profile('file_view');e.api.follow(show,false);assert.equal(Object.keys(e.storage.faborn_ukr_series_releases_v1_file_view).length,0);
+ e.api.follow(show,true);e.api.observeRelease(show,{id:show.id,last_episode_to_air:ep(3,'2026-10-02')},'2026-10-02');assert.equal(e.api.flushReleases(),false);
+});
+test('background checks are cached for six hours, never run during playback and reject old-profile replies',()=>{
+ const e=env();let playing=true;e.L.Player={opened:()=>playing};e.api.follow(show,true);e.api.checkReleases();assert.equal(e.calls.length,0);
+ playing=false;e.api.checkReleases();assert.equal(e.calls.length,1);e.calls[0].ok({id:show.id,last_episode_to_air:ep(1,'2026-10-01')});
+ e.api.checkReleases();assert.equal(e.calls.length,1);e.profile('other');e.api.follow({...show,id:5},true);e.api.checkReleases();assert.equal(e.calls.length,2);
+ e.profile('file_view');e.calls[1].ok({id:5,last_episode_to_air:ep(1,'2026-10-01')});assert.equal(e.storage.faborn_ukr_series_releases_v1_other[5],undefined);
+});

@@ -1083,6 +1083,51 @@ function registerFiles(env,files,viewed=[]){
  env.state.follows.torrent_file({type:'list_open',items:files,params:{movie:files[0].card}});
  files.forEach(element=>env.state.follows.torrent_file({type:'render',element,items:files,params:{movie:element.card,viewed}}));
 }
+test('restart seeks straight to zero, ignores stale seek frames, and synchronizes only this episode',()=>{
+ const env=kinoEnvironment({series:true}),{state,root,instance}=env;voicePlayer(env);
+ instance.open(kinoSeries);state.play('1080p');state.progress(510,1440);
+ state.timelines['12Friends']={time:400,duration:1440,percent:28,updated:1};
+ state.played.timeline.waiting_for_user=true;
+ assert.equal(instance.restart(),true);assert.equal(state.seeked,0);assert.equal(state.played.timeline.stop_recording,true);
+ state.progress(511,1440);assert.equal(state.timelines['11Friends'].time,510);
+ state.progress(0,1440);assert.equal(state.timelines['11Friends'].time,0);assert.equal(state.timelines['faborn|tmdb-tv-1668|1|1'].percent,0);
+ assert.equal(state.storage['faborn_ukr_position_tmdb-tv-1668'].time,0);assert.equal(state.timelines['12Friends'].time,400);
+ assert.equal(state.played.timeline.waiting_for_user,false);assert.equal(state.played.timeline.continued,true);
+ assert.equal(root.Lampa.Storage.field('player_timecode'),undefined);
+});
+test('failed or cancelled restart preserves the previous saved position',()=>{
+ const env=kinoEnvironment(),{state,root,instance}=env;voicePlayer(env);instance.open(kinoMovie);state.play('1080p');state.progress(500,7000);
+ assert.equal(instance.restart(),true);assert.equal(instance.restart(),false);state.fireTimer(8000);
+ assert.equal(state.played.timeline.time,500);assert.equal(state.timelines['faborn|tmdb-movie-280|0|0'].time,500);
+ assert.match(state.notices.at(-1),/Не вдалося/);instance.restart();root.Lampa.Player.close();
+ assert.equal(state.timelines['faborn|tmdb-movie-280|0|0'].time,500);
+});
+test('source window starts a completed film from zero without changing the global resume setting',()=>{
+ const env=kinoEnvironment(),{state,root,instance}=env;
+ const hash='faborn|tmdb-movie-280|0|0';state.timelines[hash]={time:7000,duration:7000,percent:100,updated:1};
+ state.storage.player_timecode='ask';const field=root.Lampa.Storage.field;root.Lampa.Storage.field=k=>k==='player_timecode'?'ask':field(k);
+ instance.open(kinoMovie);state.choose(i=>i.action==='restart');
+ assert.equal(state.played.timeline.time,0);assert.equal(state.played.timeline.percent,0);assert.equal(state.timelines[hash].percent,100);
+ state.progress(0,7000);assert.equal(state.timelines[hash].percent,0);assert.equal(state.storage.player_timecode,'ask');
+ assert.equal(state.played.faborn_from_start,undefined);root.Lampa.Player.close();
+ instance.open(kinoMovie);assert.ok(!state.menu.items.some(i=>i.action==='restart'));
+});
+test('source restart does not clear progress when the new stream fails before it starts',()=>{
+ const env=kinoEnvironment(),{state,root,instance}=env;const hash='faborn|tmdb-movie-280|0|0';
+ state.timelines[hash]={time:800,duration:7000,percent:11,updated:1};instance.open(kinoMovie);state.choose(i=>i.action==='restart');
+ root.Lampa.Player.close();assert.equal(state.timelines[hash].time,800);
+});
+test('torrent restart resets the shared online key and keeps other torrent files intact',()=>{
+ const env=kinoEnvironment({series:true}),{state,root,instance}=env;voicePlayer(env);
+ const file=torrentEpisode(env),second=torrentEpisode(env,2);registerFiles(env,[file,second]);root.Lampa.Player.play(file);state.progress(1440,1440);
+ state.timelines['12Friends']={time:500,duration:1440,percent:35,updated:1};instance.restart();state.progress(1,1440);
+ assert.equal(state.timelines['faborn-torrent|'+torrentHash+'|1'].time,0);assert.equal(state.timelines['faborn|tmdb-tv-1668|1|1'].time,0);assert.equal(state.timelines['12Friends'].time,500);
+});
+test('restart is unavailable for live TV and an unready player',()=>{
+ const env=kinoEnvironment();assert.equal(env.instance.restart(),false);voicePlayer(env);
+ env.instance.open(kinoMovie);env.state.play('1080p');env.state.played.iptv=true;assert.equal(env.instance.restart(),false);
+ env.state.played.iptv=false;env.state.nativeVideo.duration=Infinity;assert.equal(env.instance.restart(),false);
+});
 test('online to torrent to online retains exact seconds and the latest episode',()=>{
  const env=kinoEnvironment({series:true}),{state,root}=env;
  env.instance.open(kinoSeries);state.play('1080p');state.progress(510,1440);root.Lampa.Player.close();
