@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.36 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.37 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.36';
+    var VERSION = '0.1.0-beta.37';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
     var commentsUI = null, commentsScript = null;
@@ -18,8 +18,16 @@
     var pendingRequest, playbackTimer, watchedPlayback, playbackContext, historyPlayback;
     var torrentRows = [], torrentFiles = [], pendingTorrent = null, torrentListRelease = '', progressPaintTimer, progressWriting = false;
     var playbackWatchSerial = 0, playerVoiceContext = null, voiceSwitch = null, voiceResume = null, kinoRecovery = null;
+    var legacy4kHook = null, legacy4kReport = null;
     var playbackQueue = null, skipUI = null, skipScript = null, lastProgressPlayback = null;
     var restartPending = null;
+    var appReloadPrompt = null, appReloading = false, headerPrompt = null;
+    var HEADER_ICONS = {
+        reload:'<path d="M21 3v5h-5"/><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/>',
+        library:'<path d="M7 3h10M5 6h14"/><rect x="3" y="9" width="18" height="12" rx="2.5"/><path d="m10 12 5 3-5 3Z" stroke-width="1.5"/>',
+        continue:'<circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4Z" stroke-width="1.6"/>',
+        saver:'<rect x="2" y="3" width="20" height="15" rx="2.5"/><path d="M8 21h8M12 18v3M3 16l5-5 4 4 3-3 6 5"/><circle cx="16.5" cy="7.5" r="1" fill="currentColor" stroke="none"/>'
+    };
     var RESTART_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9a8 8 0 1 1 .5 7M4 4v5h5"/><path d="m10 8 6 4-6 4Z" stroke-width="1.4"/></svg>';
     var seasonMetadata = {}, seasonMetadataOrder = [];
     var directTrace = [], presentation = null;
@@ -125,6 +133,94 @@
         return safeBase(base) ? base : '';
     }
     function notify(message) { if (L && L.Noty) L.Noty.show(message); }
+    function appReloadBlocked() {
+        var doc = root.document;
+        return !!(L.Player && L.Player.opened && L.Player.opened() || doc && doc.body && doc.body.classList && doc.body.classList.contains('player--viewing') || doc && doc.querySelector && doc.querySelector('.youtube-player'));
+    }
+    function reloadApp() {
+        if (appReloadPrompt || appReloading) return;
+        if (appReloadBlocked()) return notify('Заверши перегляд відео перед перезавантаженням Lampa.');
+        if (!root.location || typeof root.location.reload !== 'function') return notify('Перезавантаження недоступне в цій збірці Lampa.');
+        var previous = L.Controller.enabled().name || 'head', prompt = {};
+        function dismiss() {
+            if (appReloadPrompt !== prompt) return;
+            appReloadPrompt = null;
+            L.Select.hide();
+            if (L.Activity && L.Activity.mixState) L.Activity.mixState();
+            L.Controller.toggle(appReloadBlocked() ? 'player' : previous);
+        }
+        appReloadPrompt = prompt;
+        L.Select.show({title:'Перезавантажити Lampa?',items:[
+            {title:'Скасувати',selected:true},
+            {title:'Перезавантажити',description:'Повторно відкрити застосунок. Налаштування, медіатека й історія залишаться.',reload:true}
+        ],onBack:dismiss,onSelect:function (item) {
+            // Ignore repeated OK and stale callbacks after closing the dialog.
+            if (appReloadPrompt !== prompt || appReloading) return;
+            dismiss();
+            if (!item.reload) return;
+            if (appReloadBlocked()) return notify('Заверши перегляд відео перед перезавантаженням Lampa.');
+            appReloading = true;
+            savePlaybackProgress(true);
+            try { root.location.reload(); }
+            catch (error) { appReloading = false;notify('Не вдалося перезавантажити Lampa. Спробуй ще раз.'); }
+        }});
+    }
+    function headerHub() {
+        if (appReloadBlocked()) { notify('Спочатку заверши перегляд відео.');return null; }
+        if (!hubUI) { loadHub();if (!hubUI) notify('Медіатека ще завантажується. Спробуй за мить.'); }
+        return hubUI;
+    }
+    function openLibrary() { var hub=headerHub();if (hub) hub.open('library'); }
+    function openContinue() {
+        if (headerPrompt) return;
+        var hub=headerHub();if (!hub) return;
+        if (!hub.continueItems) return notify('Перезавантаж Lampa, щоб оновити швидкі кнопки.');
+        var rows=hub.continueItems();
+        if (!rows.length) return notify('Немає незавершених переглядів у цьому профілі.');
+        var previous=L.Controller.enabled().name || 'head', owner=hub.profile(), prompt={};headerPrompt=prompt;
+        function dismiss() {
+            if (headerPrompt!==prompt) return;
+            headerPrompt=null;L.Select.hide();
+            if (L.Activity && L.Activity.mixState) L.Activity.mixState();
+            L.Controller.toggle(appReloadBlocked()?'player':previous);
+        }
+        L.Select.show({title:'Продовжити перегляд',items:rows.map(function(row) {
+            return {title:escapeHTML(row.movie.title || row.movie.name),subtitle:(row.episode?'Сезон '+row.season+' · Серія '+row.episode:'Фільм')+' · '+clockLabel(row.progress.time)+' · '+Math.round(row.progress.percent)+'%',row:row};
+        }),onBack:dismiss,onSelect:function(item) {
+            if (headerPrompt!==prompt) return;
+            dismiss();
+            if (hub.profile()!==owner || appReloadBlocked() || !item.row) return;
+            var movie=item.row.movie;
+            L.Activity.push({component:'full',id:movie.id,method:movie.media_type,source:movie.source,card:movie,title:movie.title || movie.name});
+        }});
+    }
+    function previewScreensaver() {
+        if (appReloadBlocked()) return notify('Заверши перегляд відео, щоб відкрити заставку.');
+        if (!saverUI) loadScreensaver();
+        if (!saverUI) return notify('Заставка ще завантажується або недоступна в цій збірці Lampa.');
+        if (saverUI.active && saverUI.active()) return;
+        if (!saverUI.preview()) notify('Не вдалося відкрити заставку. Спробуй за мить.');
+    }
+    function mountHeaderActions() {
+        if (!L.Head || !L.Head.render || !L.Head.addIcon) return;
+        var head = L.Head.render();
+        if (!head || !head.find) return;
+        var anchor = head.find('.open--settings').first();
+        [['library','Медіатека',openLibrary],['continue','Продовжити перегляд',openContinue],['saver','Заставка',previewScreensaver],['reload','Перезавантажити Lampa',reloadApp]].forEach(function(action) {
+            var button=head.find('.open--faborn-'+action[0]).first();
+            if (!button.length) {
+                button=L.Head.addIcon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+HEADER_ICONS[action[0]]+'</svg>',action[2]);
+                button.addClass('faborn-head-action open--faborn-'+action[0]).attr({role:'button','aria-label':action[1],title:action[1]});
+                if (anchor.length) anchor.after(button);
+            }
+            anchor=button;
+        });
+    }
+    function promoteSettings(event) {
+        if (!event || event.name !== 'main' || !event.body || !event.body.find) return;
+        var row = event.body.find('.settings-folder[data-component="faborn_ukr"]').first(), first = event.body.find('.settings-folder').first();
+        if (row.length && first.length && row[0] !== first[0]) first.before(row);
+    }
     function rememberController() {
         try {
             var name = L.Controller.enabled().name;
@@ -175,6 +271,7 @@
     }
     function applyAppearance() {
         if (!root.document || !root.document.createElement) return;
+        putStyle('faborn-ukr-header','.faborn-head-action{position:relative}.faborn-head-action>svg{display:block;width:100%;height:100%;flex-shrink:0}.faborn-head-action:after{content:attr(aria-label);display:none;position:absolute;top:calc(100% + .7em);left:50%;transform:translateX(-50%);width:auto;height:auto;padding:.45em .8em;border:0;border-radius:.65em;background:rgba(14,23,38,.95);color:#f1f5ff;white-space:nowrap;font-size:.75em;line-height:1.3;pointer-events:none;z-index:20}.faborn-head-action.focus:after,.faborn-head-action.hover:after{display:block}');
         var standard = storage('layout','panel') === 'classic';
         var colors = palette(storage('accent','blue')), accent = colors[0], tint = colors[1];
         var fill = colors[2] ? 'linear-gradient(120deg,'+colors[3]+' 0%,'+colors[2]+' 100%)' : 'none', ink = colors[4] || '#101827';
@@ -757,6 +854,31 @@
             else if (names.length > 1) qualities = {auto:url};
         }
         return qualities;
+    }
+    function hlsSummary(body) {
+        if (typeof body !== 'string' || body.length > 1000000 || !/^\s*#EXTM3U/.test(body)) return '';
+        var variants = [], audio = [], parts = ['HLS'];
+        function attributes(line) {
+            var out = {}, re = /([A-Z0-9-]+)=(?:"([^"]*)"|([^,]*))/g, match;
+            while ((match = re.exec(line))) out[match[1]] = match[2] === undefined ? match[3] : match[2];
+            return out;
+        }
+        body.split(/\r?\n/).forEach(function (line) {
+            if (/^#EXT-X-STREAM-INF:/.test(line)) variants.push(attributes(line));
+            if (/^#EXT-X-MEDIA:/.test(line)) { var a = attributes(line); if (a.TYPE === 'AUDIO' && a.URI) audio.push(a); }
+        });
+        // A multi-variant master does not tell us which rendition AVPlay selected.
+        if (variants.length === 1) {
+            var v = variants[0], a = audio.filter(function (item) { return item['GROUP-ID'] === v.AUDIO; })[0];
+            if (/^\d{2,5}x\d{2,5}$/.test(v.RESOLUTION)) parts.push(v.RESOLUTION);
+            if (/^[a-z0-9., _-]{1,100}$/i.test(v.CODECS)) parts.push(v.CODECS);
+            if (/^\d{1,3}(?:\.\d{1,3})?$/.test(v['FRAME-RATE'])) parts.push(v['FRAME-RATE']+' fps');
+            if (/^\d{1,9}$/.test(v.BANDWIDTH)) parts.push((+v.BANDWIDTH/1000000).toFixed(1)+' Мбіт/с');
+            if (a) parts.push('окреме аудіо'+(/^\d{1,2}(?:\/[^\s]{1,16})?$/.test(a.CHANNELS) ? ' · '+parseInt(a.CHANNELS,10)+' каналів' : ''));
+        } else if (variants.length > 1) parts.push('адаптивний · '+variants.length+' варіантів');
+        // EXT-X-MAP is evidence of fMP4; an external audio track alone is not.
+        if (/^#EXT-X-MAP:/m.test(body)) parts.push('fMP4');
+        return parts.join(' · ');
     }
     function trace(stage, outcome) {
         var line = stage + ': ' + text(outcome).substr(0,260);
@@ -1445,6 +1567,10 @@
                 if (next !== url) {
                     if (q) episode.qualities[q] = next;
                     if (episode.master === url) episode.master = next;
+                }
+                if (episode.kino && q) {
+                    if (!episode.streamInfo) episode.streamInfo = {};
+                    episode.streamInfo[q] = hlsSummary(body);
                 }
                 done(null,body);
             });
@@ -2242,6 +2368,7 @@
         pendingRequest = null;
     }
     function clearPlaybackWatch() {
+        removeLegacy4kHook();
         playbackWatchSerial++;
         if (playbackTimer) root.clearTimeout(playbackTimer);
         playbackTimer = null;
@@ -2260,9 +2387,71 @@
     }
     function kinoPlaybackStatus(state,stage) {
         if (!state) return;
+        state.stage = stage;
         // Never put signed paths, tokens or query strings in the diagnostic row.
         var hosts = state.tried.map(function (url) { var match=/^https:\/\/([^/]+)/.exec(url);return match ? match[1] : '?'; });
         save('kino_playback',state.quality+' · '+hosts.join(' → ')+' · '+stage);
+    }
+    function captureNativeState() {
+        try {
+            var player=root.webapis && root.webapis.avplay;
+            var state=player && player.getState && player.getState();
+            if (/^(NONE|IDLE|READY|PLAYING|PAUSED)$/.test(state)) save('avplay_state',state);
+        } catch (ignore) { /* An unavailable device API must not affect playback. */ }
+    }
+    function removeLegacy4kHook() {
+        var hook=legacy4kHook;legacy4kHook=null;
+        if(!hook)return;
+        hook.active=false;
+        // Do not remove another extension's wrapper installed after ours.
+        try { if(hook.player.prepareAsync===hook.wrapped)hook.player.prepareAsync=hook.original; } catch(ignore) {}
+    }
+    function legacy4kStatus(data,message) {
+        legacy4kReport={data:data,url:data.url,quality:data.quality_switched || data.faborn_quality,message:message};
+        save('legacy4k_status',message);
+    }
+    function armLegacy4k(data,state) {
+        if(!state){save('legacy4k_status','');return;}
+        if(storage('legacy4k','off')!=='on'){save('legacy4k_status','Вимкнено');return;}
+        var match=/\bTizen[\s\/]+([\d.]+)/i.exec(text(root.navigator && root.navigator.userAgent)), version=match && parseFloat(match[1]);
+        if(!(version>=2.3 && version<5) || !L.Platform || !L.Platform.is('tizen') || !L.Storage.field || L.Storage.field('player')!=='tizen'){
+            save('legacy4k_status','Не застосовується: потрібен AVPlay на Tizen 2.3–4.x');return;
+        }
+        var player=root.webapis && root.webapis.avplay;
+        if(!player || typeof player.prepareAsync!=='function' || typeof player.setStreamingProperty!=='function' || typeof player.getState!=='function'){
+            save('legacy4k_status','Недоступний API сумісності AVPlay');return;
+        }
+        try {
+            if(root.webapis.productinfo && root.webapis.productinfo.isUdPanelSupported && root.webapis.productinfo.isUdPanelSupported()===false){save('legacy4k_status','Панель телевізора не підтримує UHD');return;}
+        } catch(ignore) { /* The property itself can still be supported without productinfo permission. */ }
+        var quality=data.quality_switched || data.faborn_quality;
+        if(!legacy4kReport || legacy4kReport.data!==data || legacy4kReport.url!==data.url || legacy4kReport.quality!==quality)
+            save('legacy4k_status',quality==='2160p'?'Очікування підготовки UHD-декодера':'Звичайний запуск · '+quality);
+        var hook={player:player,original:player.prepareAsync,active:true};
+        hook.wrapped=function(){
+            // The native quality handler runs before plugin listeners. Read the current
+            // playdata here, immediately after open() and before prepareAsync().
+            if(hook.active && watchedPlayback===data && L.Player.playdata && L.Player.playdata()===data){
+                var current=data.quality_switched || data.faborn_quality;
+                if(storage('legacy4k','off')==='on' && current==='2160p'){
+                    try {
+                        if(player.getState()==='IDLE'){
+                            player.setStreamingProperty('SET_MODE_4K','TRUE');
+                            legacy4kStatus(data,'UHD-декодер увімкнено · Tizen '+match[1]);
+                        } else legacy4kStatus(data,'UHD-режим пропущено: AVPlay не в IDLE');
+                    } catch(error){
+                        var name=/^(?:[A-Za-z]+Error)$/.test(text(error && error.name))?error.name:'помилка API';
+                        legacy4kStatus(data,'Звичайний запуск: UHD-режим недоступний · '+name);
+                    }
+                } else legacy4kStatus(data,'Звичайний запуск · '+current);
+            }
+            return hook.original.apply(this,arguments);
+        };
+        try {
+            player.prepareAsync=hook.wrapped;
+            if(player.prepareAsync!==hook.wrapped)throw new Error('read only');
+            legacy4kHook=hook;
+        } catch(ignore){hook.active=false;save('legacy4k_status','Ця збірка AVPlay не дозволяє режим сумісності');}
     }
     function recoverKinoConnection(data,message) {
         if (!data || watchedPlayback !== data || !L.Player.playdata || L.Player.playdata() !== data || voiceSwitch) return false;
@@ -2306,6 +2495,7 @@
     function playbackStarted() {
         var state = watchedPlayback && kinoPlaybackState(watchedPlayback);
         if (state) kinoPlaybackStatus(state,'відтворення почалося');
+        if (watchedPlayback) { save('last_error',''); captureNativeState(); }
         clearPlaybackWatch();
     }
     function playbackProblem(message, data) {
@@ -2313,6 +2503,9 @@
         if (L.Player.playdata && L.Player.playdata() !== data) { clearPlaybackWatch(); return; }
         var context = playbackContext, catalog = context && context.catalog || currentCatalog;
         var found = catalog && locate(catalog, data.faborn_title, data.faborn_release, data.faborn_episode);
+        var kino = kinoPlaybackState(data);
+        if (kino && !/адреси не відкрилися|помилка перемикання/.test(kino.stage || '')) kinoPlaybackStatus(kino,'не запустилося');
+        captureNativeState();
         clearPlaybackWatch();
         lastDiagnostic = message;
         save('last_error', message);
@@ -2336,7 +2529,19 @@
         clearPlaybackWatch();
         if (!data || !data.faborn_title || !mediaURL(data.faborn_url)) return;
         watchedPlayback = data;
-        kinoPlaybackStatus(kinoPlaybackState(data),'підключення');
+        var state = kinoPlaybackState(data), catalog = playbackContext && playbackContext.catalog;
+        var found = catalog && locate(catalog,data.faborn_title,data.faborn_release,data.faborn_episode);
+        if (lastDiagnostic === storage('last_error','')) lastDiagnostic = '';
+        save('last_error','');
+        save('avplay_state','');
+        save('stream_format',state && state.episode.streamInfo && state.episode.streamInfo[state.quality] || '');
+        if (found) {
+            save('last_launch',found.title.title+' · '+data.faborn_quality+' · '+sourceName(found.release.source)+' · '+voiceLabel(found.release,found.episode)+
+                (found.title.type === 'tv' ? ' · S'+data.season+'E'+data.episode : ''));
+            if (found.title.type !== 'tv') save('autoplay_status','');
+        }
+        if (state) kinoPlaybackStatus(state,'підключення'); else save('kino_playback','');
+        armLegacy4k(data,state);
         playbackTimer = root.setTimeout(function () {
             var message='Плеєр не почав відтворення за 45 секунд. Посилання могло змінитися або телевізор не зміг відкрити цей потік.';
             if (!recoverKinoConnection(data,message)) playbackProblem(message,data);
@@ -2393,7 +2598,8 @@
         session.uiFocus=queue.title.type === 'tv' ? 'episode' : 'play';
     }
     function queueStatus(queue,message) {
-        if (!queue || queue.title.type !== 'tv' || !queue.current) return;
+        if (!queue || !queue.current) return;
+        if (queue.title.type !== 'tv') { save('autoplay_status',''); return; }
         var entry=queue.current, index=queue.entries.indexOf(entry), next=queue.entries[index+1];
         save('autoplay_status',sourceName(entry.release.source)+' · S'+entry.episode.season+'E'+entry.episode.episode+
             (next ? ' → S'+next.episode.season+'E'+next.episode.episode : ' · остання доступна серія')+
@@ -2491,7 +2697,8 @@
         queueStatus(queue,(L.Storage.field && L.Storage.field('playlist_next') ? 'Автоперехід увімкнено' : 'Автоперехід вимкнено в Lampa')+' · очікування завершення');
         setPlayerVoices(data,queue.movie,queue.catalog,queue.title,entry.release,entry.episode);
         playbackContext={movie:queue.movie,catalog:queue.catalog};
-        save('last_launch',queue.title.title+' · '+data.faborn_quality+' · '+sourceName(entry.release.source)+' · '+entry.release.voice+' · S'+data.season+'E'+data.episode);
+        save('last_launch',queue.title.title+' · '+data.faborn_quality+' · '+sourceName(entry.release.source)+' · '+entry.release.voice+
+            (queue.title.type === 'tv' ? ' · S'+data.season+'E'+data.episode : ''));
         if (L.Player.callback) L.Player.callback(function () { returnFromPlayer(queue); });
     }
     function prepareEpisodeQueue(movie,catalog,title,release,episode,data,preference) {
@@ -2526,8 +2733,15 @@
             if (L.Manifest && L.Manifest.app_version) lines.push('Версія Lampa: ' + L.Manifest.app_version);
             if (L.Storage.field) lines.push('Плеєр Lampa: ' + L.Storage.field('player') + ' · для бети потрібен Tizen / AVPlay');
             lines.push('AVPlay API: ' + (root.webapis && root.webapis.avplay ? 'доступний' : 'недоступний'));
+            var platform = /\bTizen[\s\/]+([\d.]+)/i.exec(text(root.navigator && root.navigator.userAgent)), model = '';
+            try { if (root.webapis && root.webapis.productinfo && root.webapis.productinfo.getModel) model = text(root.webapis.productinfo.getModel()).replace(/[^\w .-]/g,'').slice(0,60); } catch (ignore) { /* Some app packages lack the productinfo privilege. */ }
+            if (model || platform) lines.push('Телевізор: '+[model,platform ? 'Tizen '+platform[1] : ''].filter(Boolean).join(' · '));
+            try { if (root.webapis && root.webapis.productinfo && root.webapis.productinfo.isUdPanelSupported) lines.push('Панель UHD: '+(root.webapis.productinfo.isUdPanelSupported() ? 'підтримується' : 'не підтримується')); } catch (ignore) { /* Older app packages may not expose this capability. */ }
+            if (storage('avplay_state','')) lines.push('Стан AVPlay останнього запуску: '+storage('avplay_state',''));
+            if (storage('legacy4k_status','')) lines.push('4K старого Tizen: '+storage('legacy4k_status',''));
             lines.push('Сесія KinoBase: '+storage('kino_transport','Звичайний запит'));
             if (storage('kino_playback','')) lines.push('Потік KinoBase: '+storage('kino_playback',''));
+            if (storage('stream_format','')) lines.push('Формат потоку: '+storage('stream_format',''));
             if (interfaceUI && interfaceUI.ratingStatus && interfaceUI.ratingStatus()) lines.push('Рейтинги: '+interfaceUI.ratingStatus());
 
             if (storage('last_error', '')) lines.push('Остання помилка плеєра: ' + storage('last_error', ''));
@@ -2723,6 +2937,7 @@
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_home',type:'select',values:{on:'Faborn · компактні постери',off:'Стандартна Lampa'},default:'on'},field:{name:'Головний екран',description:'Шість постерів у ряд, оцінки, прогрес і один опис вибраного фільму. Після зміни повторно відкрий головну.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_discover_tab',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Вкладка «Що подивитися»',description:'Окремий пункт меню: три фільми за настроєм, вільним часом і оцінкою.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_catalog_series',type:'select',values:{on:'Faborn · сортування',off:'Звичайна Lampa'},default:'on'},field:{name:'Каталог серіалів',description:'Меню «Серіали» для TMDB: популярні, рейтинг або новинки; поріг оцінок і країни. Типово — всі країни, популярні з 100+ оцінками. Вибір зберігається.'}});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_catalog_movies',type:'select',values:{on:'Faborn · сортування',off:'Звичайна Lampa'},default:'on'},field:{name:'Каталог фільмів',description:'Меню «Фільми» для TMDB: популярні, рейтинг або новинки; поріг оцінок і країни. Типово — всі країни, популярні з 100+ оцінками. Вибір зберігається окремо від серіалів.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_series_tab',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Вкладка «Медіатека»',description:'Фільми й серіали поточного профілю. «+» у картці — додати; після 80% перегляду фільм автоматично потрапляє до «Переглянуто».'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_watched',type:'button'},field:{name:'Переглянуте та перенесення',description:'Позначити серіал / сезон, скасувати відмітки або перенести медіатеку й прогрес іншого профілю на цьому пристрої.'},onChange:function(){if(hubUI)hubUI.progressTools();else notify('Медіатека ще завантажується. Спробуй за мить.');}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_episode_countdown',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Відлік до нової серії',description:'Сьогодні, завтра або кількість днів у картці та медіатеці. Дата виходу за TMDB, без гарантії наявності озвучення.'},onChange:applyAppearance});
@@ -2747,6 +2962,7 @@
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinobase:'KinoBase', kinoukr:'KinoUkr'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найвища доступна', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: 'Підсвічує варіант у списку джерел.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_kino_session',type:'select',values:{auto:'Автоматично',direct:'Лише звичайний запит'},default:'auto'},field:{name:'Сесія KinoBase',description:'Після помилки сесії повторює запит через мережевий API Samsung, якщо він доступний у застосунку. Окремий сервер не потрібен.'}});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_legacy4k',type:'select',values:{off:'Вимкнено',on:'Увімкнено · тест сумісності'},default:'off'},field:{name:'4K на старому Tizen',description:'Лише KinoBase 2160p та Tizen 2.3–4.x: явно вмикає UHD-декодер перед запуском. Для наступного відкриття відео. Не змінює кодек; результат видно у діагностиці.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_refresh', type: 'button'}, field: {name: 'Оновити індекс із GitHub'}, onChange: function () {
             loadCatalog(true, function (error, catalog) { notify(error ? error.message : 'Індекс оновлено: ' + catalog.titles.length + ' назв'); });
         }});
@@ -2873,6 +3089,9 @@
             });
         }
         settings();
+        if (L.Settings && L.Settings.listener) L.Settings.listener.follow('open',promoteSettings);
+        mountHeaderActions();
+        L.Listener.follow('app',function (event) { if (event.type === 'ready') mountHeaderActions(); });
         applyAppearance();
         loadInterface();
         loadComments();
@@ -2889,13 +3108,13 @@
         attempt();
     }
     return {
-        version: VERSION, name: NAME, boot: boot, open: open, openTorrents:openTorrents, restart:restartPlayback, torrentRequest:torrentRequest, buttonMarkup:buttonMarkup,
+        version: VERSION, name: NAME, boot: boot, open: open, openTorrents:openTorrents, restart:restartPlayback, reload:reloadApp, torrentRequest:torrentRequest, buttonMarkup:buttonMarkup,
         // Pure helpers are also used by the offline package checks.
         normalize: normalize, matchTitles: matchTitles, mediaURL: mediaURL,
         safeBase: safeBase, validCatalog: validCatalog, qualityNames: qualityNames,
         pickURL: pickURL, timelineKey: timelineKey, availablePlaylist: availablePlaylist, escapeHTML: escapeHTML,
         torrentIdentity:torrentIdentity,torrentProgressState:torrentProgressState,prepareTorrentProgress:prepareTorrentProgress,
         audioLanguage:audioLanguage, sourceGroups:sourceGroups, playerVoiceRows:playerVoiceRows, kinoPage:kinoPage, kinoEntries:kinoEntries, kinoDecode:kinoDecode, kinoCandidate:kinoCandidate,
-        providers:PROVIDERS, providerSearch:providerSearch, providerPage:providerPage, playerEntries:playerEntries, sameTitle:sameTitle, parseSearch:parseSearch, parseSource:parseSource, addEpisodeRefs:addEpisodeRefs, parseEmbed:parseEmbed, parseMaster:parseMaster, uakinoURL:uakinoURL, embedURL:embedURL
+        providers:PROVIDERS, providerSearch:providerSearch, providerPage:providerPage, playerEntries:playerEntries, sameTitle:sameTitle, parseSearch:parseSearch, parseSource:parseSource, addEpisodeRefs:addEpisodeRefs, parseEmbed:parseEmbed, parseMaster:parseMaster, hlsSummary:hlsSummary, uakinoURL:uakinoURL, embedURL:embedURL
     };
 }));

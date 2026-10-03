@@ -10,6 +10,28 @@ function env(){
 const show={id:71728,name:'Юний Шелдон',original_name:'Young Sheldon',first_air_date:'2017-09-25',media_type:'tv',source:'tmdb'};
 const film={id:100,title:'Фільм',original_title:'Movie',release_date:'2023-01-01',vote_average:8,runtime:89,source:'tmdb'};
 const episodes=[1,2,3,4].map(n=>({season_number:2,episode_number:n,name:'Серія '+n,air_date:n===4?'2099-01-01':'2023-01-01'}));
+test('header continue combines online/torrent history and library with newest progress first, without requests',()=>{
+ const e=env();e.history.push(film,show,film);e.api.follow(show,true);
+ e.storage.faborn_ukr_poster_episode_index={'tv:71728':{episodes:['2:1']}};
+ e.put('Movie',{percent:30,time:900,updated:20});e.put('faborn|tmdb-tv-71728|2|1',{percent:40,time:600,updated:30});
+ const rows=e.api.continueItems();assert.deepEqual(rows.map(r=>r.movie.id),[71728,100]);assert.equal(rows[0].season,2);assert.equal(rows[0].progress.time,600);assert.equal(e.calls.length,0);
+ e.put('21Young Sheldon',{percent:50,time:750,updated:40});assert.equal(e.api.continueItems()[0].progress.time,750);
+});
+test('header continue excludes completed, reset, manually watched and unknown titles and reads current profile only',()=>{
+ const e=env();e.history.push(film,show,{...film,id:200},{id:0,title:'Invalid'});e.api.follow(show,true);
+ e.storage['faborn_ukr_position_tmdb-tv-71728']={season:2,episode:1,time:600,percent:40};
+ e.put('Movie',{percent:80,time:900,updated:20});assert.deepEqual(e.api.continueItems(),[]);
+ e.put('Movie',{percent:79,time:900,updated:21});e.put('21Young Sheldon',{percent:40,time:600,updated:30});assert.equal(e.api.continueItems().length,3);
+ e.viewed[film.id]=true;assert.deepEqual(e.api.continueItems().map(r=>r.movie.id),[71728,200]);
+ e.put('21Young Sheldon',{percent:100,time:1500,updated:31});e.put('Movie',{percent:0,time:0,updated:32});assert.deepEqual(e.api.continueItems(),[]);
+ e.profile('other');assert.deepEqual(e.api.continueItems(),[]);assert.equal(e.calls.length,0);
+});
+test('header continue is bounded and never enumerates seasons or fetches metadata',()=>{
+ const e=env();e.history.push(...Array.from({length:130},(_,i)=>({...film,id:i+1,original_title:'Film '+i,seasons:[{season_number:1,episode_count:9999}]})));
+ for(let i=0;i<130;i++)e.put('Film '+i,{percent:20,time:300,updated:i+1});
+ const rows=e.api.continueItems();assert.equal(rows.length,20);assert.equal(rows[0].movie.id,100);assert.equal(e.calls.length,0);
+ e.L.Timeline.view=()=>null;assert.deepEqual(e.api.continueItems(),[]);
+});
 test('new menu module is ES5 for Tizen',()=>{require('../vendor/acorn').parse(fs.readFileSync(require.resolve('../lib/faborn-hub'),'utf8'),{ecmaVersion:5});});
 test('following is explicit, idempotent and persists through module recreation',()=>{
  const e=env();assert.equal(e.api.list().length,0);assert.equal(e.api.follow(show,true).changed,true);assert.equal(e.api.follow(show,true).changed,false);
@@ -277,9 +299,40 @@ test('series catalogue preferences persist and reject injected or malformed filt
 });
 test('series menu routing respects native mode and other catalogues without changing the library',()=>{
  const e=env(),calls=[];e.L.Activity={push:o=>calls.push(o)};let aborted=0;const event={type:'action',action:'tv',abort(){aborted++;}};
- e.api.catalogMenu({...event,action:'movie'});e.api.catalogMenu({...event,action:'faborn_series'});assert.equal(calls.length,0);
+ e.api.catalogMenu({...event,action:'anime'});e.api.catalogMenu({...event,action:'faborn_series'});assert.equal(calls.length,0);
  e.storage.source='cub';e.api.catalogMenu(event);assert.equal(calls.length,0);
  e.storage.source='tmdb';e.storage.faborn_ukr_catalog_series='off';e.api.catalogMenu(event);assert.equal(calls.length,0);
  e.storage.faborn_ukr_catalog_series='on';e.storage.faborn_ukr_catalog_tv={sort:'new',votes:20,country:'all'};e.api.catalogMenu(event);
  assert.equal(aborted,1);assert.equal(calls.length,1);assert.equal(calls[0].component,'faborn_catalog');assert.equal(calls[0].sort_by,'first_air_date.desc');assert.equal(calls[0].page,1);assert.equal(e.api.list().length,0);
+});
+test('film catalogue uses the movie endpoint and release dates with the same vote and country filters',()=>{
+ const {api}=env(),q=api.catalogRequest({},3,'2026-10-03','movie');
+ assert.equal(q.url,'discover/movie');assert.equal(q.fabornCatalogType,'movie');assert.equal(q.title,'Фільми · Популярні');
+ assert.equal(q.page,3);assert.equal(q.sort_by,'popularity.desc');assert.equal(q.filter['vote_count.gte'],100);assert.equal(q.filter['primary_release_date.lte'],'2026-10-03');
+ assert.equal(q.filter.include_video,'false');assert.equal(q.filter.include_adult,'false');
+ assert.ok(!q.filter.with_type);assert.ok(!q.filter['first_air_date.lte']);assert.ok(!q.filter.include_null_first_air_dates);assert.ok(!q.filter.with_origin_country);
+ assert.equal(api.catalogRequest({sort:'rating'},1,'2026-10-03','movie').sort_by,'vote_average.desc');
+ assert.equal(api.catalogRequest({sort:'new'},1,'2026-10-03','movie').sort_by,'primary_release_date.desc');
+ const selected={sort:'rating',votes:500,country:'GB',format:'series'};
+ const first=api.catalogRequest(selected,1,'2026-10-03','movie'),next=api.catalogRequest(selected,2,'2026-10-03','movie');
+ assert.deepEqual(first.filter,next.filter);assert.equal(next.filter.with_origin_country,'GB');assert.equal(next.filter['vote_count.gte'],500);assert.ok(!next.fabornCatalog.format);
+});
+test('movie and series catalogues restore independent saved filters without touching library groups',()=>{
+ const e=env(),calls=[];e.L.Activity={push:o=>calls.push(o)};e.storage.source='tmdb';
+ e.storage.faborn_ukr_catalog_movie={sort:'rating',votes:500,country:'US'};e.storage.faborn_ukr_catalog_tv={sort:'new',votes:20,country:'GB',format:'all'};
+ e.api.saveMovie(film,'wanted');let aborted=0;const event=action=>({type:'action',action,abort(){aborted++;}});
+ e.api.catalogMenu(event('movie'));e.api.catalogMenu(event('tv'));
+ assert.equal(aborted,2);assert.equal(calls[0].url,'discover/movie');assert.equal(calls[0].sort_by,'vote_average.desc');assert.equal(calls[0].filter.with_origin_country,'US');
+ assert.equal(calls[1].url,'discover/tv');assert.equal(calls[1].sort_by,'first_air_date.desc');assert.equal(calls[1].filter.with_origin_country,'GB');assert.ok(!calls[1].filter.with_type);
+ assert.equal(e.api.movieList()[0].libraryState,'wanted');
+ const reloaded=factory(e.root,e.L,null);assert.deepEqual(reloaded.catalogPreferences(e.storage.faborn_ukr_catalog_movie,'movie'),calls[0].fabornCatalog);
+});
+test('movie catalogue native switch is independent and does not intercept other sources or actions',()=>{
+ const e=env(),calls=[];e.L.Activity={push:o=>calls.push(o)};let aborted=0;const event={type:'action',action:'movie',abort(){aborted++;}};
+ e.storage.source='cub';e.api.catalogMenu(event);assert.equal(calls.length,0);
+ e.storage.source='tmdb';e.storage.faborn_ukr_catalog_movies='off';e.api.catalogMenu(event);assert.equal(calls.length,0);
+ e.storage.faborn_ukr_catalog_movies='on';e.storage.faborn_ukr_catalog_series='off';e.api.catalogMenu(event);assert.equal(calls.length,1);
+ e.api.catalogMenu({...event,action:'tv'});e.api.catalogMenu({...event,action:'faborn_series'});e.api.catalogMenu({...event,type:'focus'});assert.equal(calls.length,1);assert.equal(aborted,1);
+ const invalid=e.api.catalogRequest({sort:'bad',votes:-1,country:'US|bad'},9000,'2026-99-99','movie');
+ assert.equal(invalid.page,1);assert.equal(invalid.sort_by,'popularity.desc');assert.equal(invalid.filter['vote_count.gte'],100);assert.ok(!invalid.filter.with_origin_country);
 });

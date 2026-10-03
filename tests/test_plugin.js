@@ -100,6 +100,8 @@ function environment(options = {}) {
     if (options.document) root.document = options.document;
     if (options.jQuery) root.jQuery = options.jQuery;
     if (options.panelEvents) root.Lampa.PlayerPanel = {listener:{follow(k,fn){options.panelEvents[k]=fn;}}};
+    if (options.settings) root.Lampa.Settings = options.settings;
+    if (options.head) root.Lampa.Head = options.head;
     if (options.storage) Object.assign(state.storage,options.storage);
     if (options.lampaSettings) root.lampa_settings=options.lampaSettings;
     const instance = factory(root); instance.boot();
@@ -129,6 +131,61 @@ function environment(options = {}) {
     };
     return {state, root, instance};
 }
+
+test('app reload requires a deliberate choice, leaves storage intact and ignores stale OK',()=>{
+    const e=environment({storage:{faborn_ukr_accent:'mint',account:{id:'profile'},file_view:{film:{time:123}}}});let calls=0;
+    e.root.location={reload(){calls++;}};e.state.controller='head';const saved=JSON.stringify(e.state.storage);
+    e.instance.reload();const cancelled=e.state.menu;
+    assert.equal(calls,0);assert.equal(cancelled.items[0].selected,true);assert.ok(!cancelled.items[0].reload);
+    e.instance.reload();assert.equal(e.state.menu,cancelled);cancelled.onBack();assert.equal(e.state.controller,'head');
+    cancelled.onSelect({reload:true});assert.equal(calls,0);
+    e.instance.reload();e.state.choose(item=>!item.reload);assert.equal(calls,0);assert.equal(e.state.controller,'head');
+    e.instance.reload();const confirmed=e.state.menu;cancelled.onSelect({reload:true});cancelled.onBack();assert.equal(e.state.menu,confirmed);assert.equal(calls,0);
+    confirmed.onSelect({reload:true});confirmed.onSelect({reload:true});e.instance.reload();
+    assert.equal(calls,1);assert.equal(e.state.menu,null);assert.equal(JSON.stringify(e.state.storage),saved);
+});
+test('app reload cannot interrupt playing, paused or newly started video',()=>{
+    const e=environment();let calls=0,opened=true;e.root.location={reload(){calls++;}};e.root.Lampa.Player.opened=()=>opened;
+    e.instance.reload();assert.equal(calls,0);assert.equal(e.state.menu,null);assert.match(e.state.notices.pop(),/Заверши перегляд/);
+    opened=false;e.root.document.body={classList:{contains:c=>c==='player--viewing'}};
+    e.instance.reload();assert.equal(e.state.menu,null);delete e.root.document.body;
+    e.instance.reload();const menu=e.state.menu;opened=true;menu.onSelect({reload:true});
+    assert.equal(calls,0);assert.equal(e.state.controller,'player');assert.equal(e.state.menu,null);
+});
+test('failed or unavailable reload recovers its controller and allows another attempt',()=>{
+    const e=environment();e.state.controller='head';e.instance.reload();assert.equal(e.state.menu,null);
+    e.root.location={reload(){throw Error('unavailable');}};e.instance.reload();e.state.choose(i=>i.reload);
+    assert.equal(e.state.controller,'head');assert.match(e.state.notices.pop(),/Не вдалося/);
+    let calls=0;e.root.location.reload=()=>calls++;e.instance.reload();e.state.choose(i=>i.reload);assert.equal(calls,1);
+});
+test('settings open moves the existing Faborn folder first without losing or duplicating other folders',()=>{
+    const events={},settings={listener:{follow(name,fn){events[name]=fn;}}},e=environment({settings});
+    const a={id:'interface'},b={id:'player'},f={id:'faborn_ukr'},extra={id:'other-plugin'},rows=[a,b,f];
+    const wrap=node=>({0:node,length:node?1:0,first(){return this;},before(row){rows.splice(rows.indexOf(row[0]),1);rows.splice(rows.indexOf(node),0,row[0]);}});
+    const body={find(selector){return wrap(selector.includes('faborn_ukr')?rows.find(x=>x.id==='faborn_ukr'):rows[0]);}};
+    events.open({name:'player',body});assert.deepEqual(rows,[a,b,f]);
+    events.open({name:'main',body});events.open({name:'main',body});assert.deepEqual(rows,[f,a,b]);
+    rows.unshift(extra);events.open({name:'main',body});assert.deepEqual(rows,[f,extra,a,b]);
+    rows.splice(0,1);events.open({name:'main',body});assert.deepEqual(rows,[extra,a,b]);e.instance.boot();
+});
+test('all four header actions mount once in order through the native API, including delayed app ready',()=>{
+    let ready=false;const nodes={},order=['settings'];
+    const wrap=name=>({length:name?1:0,first(){return this;},after(button){order.splice(order.indexOf(name)+1,0,button.name);}});
+    const head={render(){return ready?{find(selector){const name=selector==='.open--settings'?'settings':selector.replace('.open--faborn-','');return nodes[name] || wrap(name==='settings'?name:null);}}:null;},addIcon(svg,action){
+        assert.match(svg,/viewBox="0 0 24 24"/);const node=wrap('');node.length=1;node.action=action;
+        node.addClass=classes=>{node.name=classes.split('open--faborn-')[1];nodes[node.name]=node;node.after=wrap(node.name).after;return node;};
+        node.attr=attrs=>{node.attrs=attrs;return node;};return node;
+    }};
+    const e=environment({head});assert.equal(Object.keys(nodes).length,0);ready=true;e.state.follows.app({type:'ready'});e.state.follows.app({type:'ready'});e.instance.boot();
+    assert.deepEqual(order,['settings','library','continue','saver','reload']);assert.equal(Object.keys(nodes).length,4);
+    assert.deepEqual(Object.values(nodes).map(n=>n.attrs['aria-label']),['Медіатека','Продовжити перегляд','Заставка','Перезавантажити Lampa']);
+    nodes.library.action();assert.match(e.state.notices.pop(),/Медіатека ще завантажується/);
+    nodes.continue.action();assert.equal(e.state.menu,null);assert.match(e.state.notices.pop(),/Медіатека ще завантажується/);
+    nodes.saver.action();assert.match(e.state.notices.pop(),/Заставка ще завантажується/);
+    e.root.Lampa.Player.opened=()=>true;nodes.library.action();assert.match(e.state.notices.pop(),/заверши перегляд/);nodes.saver.action();assert.match(e.state.notices.pop(),/Заверши перегляд/);
+    e.root.Lampa.Player.opened=()=>false;e.root.location={reload(){throw Error('Must not reload on icon press');}};
+    nodes.reload.action();assert.equal(e.state.menu.title,'Перезавантажити Lampa?');
+});
 
 test('comment modes default to sources, migrate an explicit opt-out, and preserve a saved choice',()=>{
     for(const [storage,expected] of [[{},'sources'],[{faborn_ukr_source_comments:'off'},'native'],[{faborn_ukr_comments:'off'},'off'],[{faborn_ukr_comments:'all'},'all']]){
@@ -992,6 +1049,104 @@ function voicePlayer(env) {
 function kinoConnectionError(state) {
  state.nativeEvents.error({error:'code [15] PLAYER_ERROR_CONNECTION_FAILED'});state.fireTimer(0);
 }
+test('a new movie launch clears a previous error and series diagnostic without S0E0',()=>{
+ const env=kinoEnvironment({series:true}),{state}=env;
+ env.instance.open(kinoSeries);state.play('1080p');state.nativeEvents.error({error:'PLAYER_ERROR_NOT_SUPPORTED_FORMAT'});state.fireTimer(0);
+ assert.match(state.storage.faborn_ukr_autoplay_status,/S1E1/);
+ assert.match(state.storage.faborn_ukr_last_error,/NOT_SUPPORTED/);
+ env.instance.open(kinoMovie);state.play('2160p');
+ assert.equal(state.storage.faborn_ukr_last_error,'');assert.equal(state.storage.faborn_ukr_autoplay_status,'');
+ assert.match(state.storage.faborn_ukr_last_launch,/Термінатор.*2160p.*KinoBase/);
+ assert.doesNotMatch(state.storage.faborn_ukr_last_launch,/S0E0/);
+ assert.match(state.storage.faborn_ukr_stream_format,/3840x2160.*окреме аудіо/);
+ state.params.find(p=>p.param.name==='faborn_ukr_diagnostic').onChange();
+ assert.ok(!state.menu.items.some(row=>/NOT_SUPPORTED|S1E1/.test(row.title)));
+});
+test('KinoBase format diagnostics follow the selected quality and remove old startup errors',()=>{
+ const panelEvents={},env=voicePlayer(kinoEnvironment({panelEvents})),{state}=env;
+ env.instance.open(kinoMovie);state.play('2160p');state.videoEvents.loadeddata();
+ const data=state.played;state.storage.faborn_ukr_last_error='previous failure';
+ data.quality_switched='1080p';data.url=data.quality['1080p'];panelEvents.quality({name:'1080p',url:data.url});
+ assert.equal(state.storage.faborn_ukr_last_error,'');assert.match(state.storage.faborn_ukr_last_launch,/1080p/);
+ // A native quality switch has not fetched this manifest; do not label it using the old 4K metadata.
+ assert.doesNotMatch(state.storage.faborn_ukr_stream_format,/3840x2160/);
+ state.videoEvents.loadeddata();assert.match(state.storage.faborn_ukr_kino_playback,/1080p.*відтворення почалося/);
+});
+test('failed KinoBase startup does not retain a connecting status or override known mirror exhaustion',()=>{
+ const env=kinoEnvironment(),{state}=env;env.root.webapis={avplay:{getState(){return 'IDLE';}}};env.instance.open(kinoMovie);state.play('2160p');state.fireTimer(45000);
+ assert.match(state.storage.faborn_ukr_kino_playback,/не запустилося/);
+ assert.match(state.storage.faborn_ukr_last_error,/45 секунд/);
+ assert.equal(state.storage.faborn_ukr_avplay_state,'IDLE');
+});
+test('a different Faborn provider clears KinoBase format and host diagnostics',()=>{
+ const env=environment(),{state}=env;
+ Object.assign(state.storage,{faborn_ukr_kino_playback:'2160p · previous.redcdn.org',faborn_ukr_stream_format:'3840x2160',faborn_ukr_last_error:'old error'});
+ filmQualityMenu(env);state.play('1080p');
+ assert.equal(state.storage.faborn_ukr_kino_playback,'');assert.equal(state.storage.faborn_ukr_stream_format,'');assert.equal(state.storage.faborn_ukr_last_error,'');
+});
+test('device diagnostics use the model and Tizen version and tolerate unavailable platform APIs',()=>{
+ const env=environment(),{state,root}=env;root.navigator={userAgent:'Mozilla/5.0 (SMART-TV; Linux; Tizen 6.5)'};
+ root.webapis={avplay:{},productinfo:{getModel(){return 'QA-SAMSUNG-UHD';},isUdPanelSupported(){return true;}}};
+ const diagnostic=()=>state.params.find(p=>p.param.name==='faborn_ukr_diagnostic').onChange();
+ diagnostic();assert.ok(state.menu.items.some(row=>row.title==='Телевізор: QA-SAMSUNG-UHD · Tizen 6.5'));
+ assert.ok(state.menu.items.some(row=>row.title==='Панель UHD: підтримується'));
+ root.webapis.productinfo.getModel=()=>{throw new Error('SecurityError');};diagnostic();
+ assert.ok(state.menu.items.some(row=>row.title==='Телевізор: Tizen 6.5'));
+});
+function legacyNative(env,options={}){
+ const events=[],player={state:'IDLE',getState(){return this.state;},setStreamingProperty(name,value){
+  assert.equal(this,player);events.push({name,value,state:this.state});if(options.propertyError)throw Object.assign(new Error('private URL must not be logged'),{name:'NotSupportedError'});
+ },prepareAsync(ok,fail){assert.equal(this,player);events.push({prepare:true,ok,fail});return 'native-result';}};
+ const original=player.prepareAsync;
+ if(options.readOnly)Object.defineProperty(player,'prepareAsync',{value:original,writable:false});
+ env.root.navigator={userAgent:'Mozilla/5.0 (SMART-TV; Tizen '+(options.version||'3.0')+')'};
+ env.root.webapis={avplay:player,productinfo:{isUdPanelSupported(){return options.uhd!==false;}}};
+ env.state.storage.faborn_ukr_legacy4k=options.enabled===false?'off':'on';
+ return {player,original,events};
+}
+test('legacy UHD opts in only on old Tizen and configures IDLE before native preparation',()=>{
+ for(const version of ['2.4','3.0','4.0']){
+  const e=kinoEnvironment(),n=legacyNative(e,{version});e.instance.open(kinoMovie);e.state.play('2160p');
+  const ok=()=>{},fail=()=>{};assert.notEqual(n.player.prepareAsync,n.original);
+  assert.equal(n.player.prepareAsync(ok,fail),'native-result');assert.deepEqual(n.events,[{name:'SET_MODE_4K',value:'TRUE',state:'IDLE'},{prepare:true,ok,fail}]);
+  assert.match(e.state.storage.faborn_ukr_legacy4k_status,/UHD-декодер увімкнено/);assert.equal(e.state.played.faborn_quality,'2160p');
+  e.root.Lampa.Player.close();assert.equal(n.player.prepareAsync,n.original);
+ }
+});
+test('legacy UHD leaves default, modern Tizen, unknown version and FHD panels unchanged',()=>{
+ for(const options of [{enabled:false},{version:'5.0'},{version:'6.5'},{version:'unknown'},{uhd:false}]){
+  const e=kinoEnvironment(),n=legacyNative(e,options);e.instance.open(kinoMovie);e.state.play('2160p');n.player.prepareAsync();
+  assert.equal(n.player.prepareAsync,n.original);assert.equal(n.events.length,1);assert.equal(n.events[0].prepare,true);
+ }
+ const e=environment();assert.equal(e.state.params.find(p=>p.param.name==='faborn_ukr_legacy4k').param.default,'off');
+});
+test('legacy UHD observes native quality changes before plugin listeners without changing 1080p',()=>{
+ const panelEvents={},e=voicePlayer(kinoEnvironment({panelEvents})),n=legacyNative(e);e.instance.open(kinoMovie);e.state.play('1080p');n.player.prepareAsync();assert.equal(n.events.length,1);
+ const data=e.state.played;data.quality_switched='2160p';data.url=data.quality['2160p'];n.player.prepareAsync();
+ assert.equal(n.events[1].name,'SET_MODE_4K');panelEvents.quality({name:'2160p',url:data.url});
+ assert.match(e.state.storage.faborn_ukr_legacy4k_status,/UHD-декодер увімкнено/);
+ data.quality_switched='1080p';data.url=data.quality['1080p'];n.player.prepareAsync();assert.equal(n.events.filter(r=>r.name).length,1);
+ assert.match(e.state.storage.faborn_ukr_legacy4k_status,/Звичайний запуск · 1080p/);
+});
+test('legacy UHD property failures and read-only adapters retain ordinary native playback',()=>{
+ for(const options of [{propertyError:true},{readOnly:true}]){
+  const e=kinoEnvironment(),n=legacyNative(e,options);e.instance.open(kinoMovie);e.state.play('2160p');const ok=()=>{},fail=()=>{};
+  assert.equal(n.player.prepareAsync(ok,fail),'native-result');assert.deepEqual(n.events.at(-1),{prepare:true,ok,fail});assert.equal(e.state.closed,undefined);
+  assert.doesNotMatch(e.state.storage.faborn_ukr_legacy4k_status,/private URL/);
+ }
+ const e=kinoEnvironment(),n=legacyNative(e);n.player.state='PLAYING';e.instance.open(kinoMovie);e.state.play('2160p');n.player.prepareAsync();
+ assert.equal(n.events.length,1);assert.match(e.state.storage.faborn_ukr_legacy4k_status,/не в IDLE/);
+});
+test('legacy UHD cannot affect a foreign player or remove a later extension wrapper',()=>{
+ const e=kinoEnvironment(),n=legacyNative(e);e.instance.open(kinoMovie);e.state.play('2160p');const old=n.player.prepareAsync;
+ const other=function(){return old.apply(this,arguments);};n.player.prepareAsync=other;e.root.Lampa.Player.play({url:'https://other.example/test.m3u8'});
+ assert.equal(n.player.prepareAsync,other);n.player.prepareAsync();assert.equal(n.events.length,1);assert.equal(n.events[0].prepare,true);
+});
+test('legacy UHD is applied again for the same 4K mirror while keeping quality and playback position',()=>{
+ const e=voicePlayer(kinoEnvironment({mirrors:true})),n=legacyNative(e);e.instance.open(kinoMovie);e.state.play('2160p');n.player.prepareAsync();
+ kinoConnectionError(e.state);n.player.prepareAsync();assert.equal(n.events.filter(r=>r.name==='SET_MODE_4K').length,2);
+ assert.equal(e.state.played.faborn_quality,'2160p');e.state.videoEvents.loadeddata();assert.equal(e.state.seeked,510);
+});
 test('KinoBase AVPlay failure retries the exact-quality alternate master inside the same player',()=>{
  const env=voicePlayer(kinoEnvironment({series:true,english:true})),{state}=env;
  state.timelines['faborn|tmdb-tv-1668|1|1']={time:510,duration:1440,percent:35};

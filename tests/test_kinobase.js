@@ -24,6 +24,20 @@ test('external audio retains its parent HLS playlist',()=>{
  assert.deepEqual(api.parseMaster(body,url),{'2160p':url});
  assert.deepEqual(api.parseMaster(body+'\n#EXT-X-STREAM-INF:RESOLUTION=1920x1080,AUDIO="audio"\nlow.m3u8',url),{auto:url});
 });
+test('HLS diagnostics show declared codecs and audio without copying signed addresses',()=>{
+ const body='#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio0",CHANNELS="6",URI="https://audio.redcdn.org/private?token=secret"\n#EXT-X-STREAM-INF:BANDWIDTH=11605873,RESOLUTION=3840x2160,FRAME-RATE=24.000,CODECS="avc1.640032,mp4a.40.2",AUDIO="audio0"\nhttps://video.redcdn.org/private?token=secret';
+ const summary=api.hlsSummary(body);
+ assert.match(summary,/3840x2160.*avc1\.640032,mp4a\.40\.2.*24\.000 fps.*11\.6 Мбіт\/с.*окреме аудіо · 6 каналів/);
+ assert.doesNotMatch(summary,/https|redcdn|private|secret|fMP4/);
+ assert.match(api.hlsSummary('#EXTM3U\n#EXT-X-MAP:URI="private.mp4"\n#EXTINF:6,\nprivate.m4s'),/fMP4/);
+ assert.doesNotMatch(api.hlsSummary(body.replace('GROUP-ID="audio0"','GROUP-ID="other"')),/окреме аудіо/);
+});
+test('HLS diagnostics do not guess selected variants or retain malformed metadata',()=>{
+ assert.equal(api.hlsSummary('#EXTM3U\n#EXT-X-STREAM-INF:RESOLUTION=3840x2160\na.m3u8\n#EXT-X-STREAM-INF:RESOLUTION=1920x1080\nb.m3u8'),'HLS · адаптивний · 2 варіантів');
+ assert.equal(api.hlsSummary('#EXTM3U\n#EXT-X-STREAM-INF:RESOLUTION="<script>",CODECS="https://private/secret",BANDWIDTH=Infinity\na.m3u8'),'HLS');
+ assert.equal(api.hlsSummary('<html>Access denied</html>'),'');
+ assert.equal(api.hlsSummary('#EXTM3U\n'+'x'.repeat(1000001)),'');
+});
 test('nested seasons retain languages, selected tracks and allowed mirrors',()=>{
  const file='[720p]{1+1 (Украинский)}https://a.redcdn.org/720/master-v1-a3.m3u8 or https://b.threnet.xyz/720/master-v1-a3.m3u8;{Paramount (Русский)}https://a.redcdn.org/720/master-v1-a1.m3u8;{English}https://a.redcdn.org/720/master-v1-a4.m3u8;{Підміна}https://redcdn.org.evil.test/master.m3u8';
  const entries=api.kinoEntries(['p',JSON.stringify([{title:'2 сезон',folder:[{title:'7 серия',file}]}])],{type:'tv',voice:'Озвучення'});

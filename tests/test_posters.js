@@ -1,8 +1,19 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),factory=require('../lib/faborn-ui');
-function setup(){const values={},marks={},favorites={};let profile=0;const L={Storage:{get:(k,f)=>values[k]??f,set:(k,v)=>values[k]=v},Utils:{hash:s=>s},Timeline:{view:k=>(marks[profile+'|'+k]||{})},Favorite:{check:m=>favorites[m.id]||{}}};const ui=factory({},L,null);return {ui,values,marks,favorites,profile:p=>profile=p,put:(k,v)=>marks[profile+'|'+k]=v};}
+function setup(){const values={},marks={},favorites={};let profile=0;const L={Storage:{get:(k,f)=>values[k]??f,set:(k,v)=>values[k]=v},Utils:{hash:s=>s},Timeline:{filename:()=>profile?'file_view_'+profile:'file_view',view:k=>(marks[profile+'|'+k]||{})},Favorite:{check:m=>favorites[m.id]||{}}};const ui=factory({},L,null);return {ui,values,marks,favorites,profile:p=>profile=p,put:(k,v)=>marks[profile+'|'+k]=v};}
 const movie={id:872585,original_title:'Oppenheimer',title:'Оппенгеймер',release_date:'2023-07-19'},tv={id:136311,original_name:'Shrinking',name:'Правдива терапія',first_air_date:'2023-01-27'};
 test('manual viewed films use a complete accessible state and never truncated text',()=>{const {ui,favorites}=setup();favorites[movie.id]={viewed:true};assert.deepEqual(ui.posterProgress(movie),{label:'',detail:'Переглянуто',done:true,percent:100,newSeason:0});});
+test('library watched films are marked on posters at 80 percent and without a native favorite',()=>{
+ const {ui,values,put,profile}=setup();values.faborn_ukr_my_movies_v1_file_view=[{...movie,libraryState:'watched'}];
+ assert.equal(ui.posterProgress(movie).done,true);put('Oppenheimer',{percent:80,time:800,updated:10});assert.equal(ui.posterProgress(movie).done,true);
+ profile(1);assert.equal(ui.posterProgress(movie).detail,'');profile(0);values.faborn_ukr_my_movies_v1_file_view[0].libraryState='wanted';assert.equal(ui.posterProgress(movie).done,false);
+ values.faborn_ukr_my_movies_v1_file_view=[];assert.equal(ui.posterProgress(movie).done,false);
+});
+test('movie library cannot mark an unrelated source, series or invalid storage as watched',()=>{
+ const {ui,values}=setup();for(const rows of [{},null,[null],[{...movie,libraryState:'wanted'}],[{...movie,source:'other',libraryState:'watched'}],[{...movie,media_type:'tv',libraryState:'watched'}],[{...movie,id:136311,libraryState:'watched'}]]){
+  values.faborn_ukr_my_movies_v1_file_view=rows;assert.equal(ui.posterProgress(movie).detail,'');assert.equal(ui.posterProgress(tv).detail,'');
+ }
+});
 test('TV last episode follows actual latest timeline update across online and torrent keys',()=>{const {ui,put}=setup();ui.rememberEpisode('tmdb-tv-136311',{season:2,episode:7});put('faborn|tmdb-tv-136311|2|7',{percent:100,time:1700,updated:10});let p=ui.posterProgress(tv);assert.equal(p.label,'S2 · E7');assert.equal(p.done,true);put('27Shrinking',{percent:30,time:510,updated:20});p=ui.posterProgress(tv);assert.equal(p.done,false);assert.equal(p.percent,30);assert.equal(p.detail,'Продовжити: сезон 2, серія 7');});
 test('episode index stores identity only and cannot leak watched state into another profile',()=>{const {ui,put,profile,values}=setup();ui.rememberEpisode('tmdb-tv-136311',{season:2,episode:7,url:'secret'});put('faborn|tmdb-tv-136311|2|7',{percent:95,updated:10});assert.equal(ui.posterProgress(tv).done,true);profile(1);assert.equal(ui.posterProgress(tv).detail,'');assert.ok(!JSON.stringify(values).includes('secret'));});
 test('reset progress wins over an older completed mark',()=>{const {ui,put}=setup();ui.rememberEpisode('tmdb-tv-136311',{season:2,episode:7});put('faborn|tmdb-tv-136311|2|7',{percent:100,updated:10});put('27Shrinking',{percent:0,updated:20});assert.equal(ui.posterProgress(tv).detail,'');});
