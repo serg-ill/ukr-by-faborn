@@ -52,7 +52,7 @@ def validate(root=ROOT):
     plugin = (root / 'ukr-by-faborn.js').read_text(encoding='utf-8')
     assert VERSION in plugin and 'ukr by Faborn' in plugin
     assert 'eval(' not in plugin and 'new Function' not in plugin
-    for path in ['index.html', 'assets/icon.svg', '.github/workflows/pages.yml', 'README.md', 'lib/faborn-ui.js', 'lib/faborn-hub.js', 'lib/faborn-screensaver.js', 'lib/faborn-skip.js', 'lib/STARFIELD-LICENSE', 'lib/SAVER-WARP-LICENSE', 'lib/SAVER-MATRIX-LICENSE']:
+    for path in ['index.html', 'assets/icon.svg', '.github/workflows/pages.yml', 'README.md', 'lib/faborn-ui.js', 'lib/faborn-comments.js', 'lib/faborn-hub.js', 'lib/faborn-screensaver.js', 'lib/faborn-skip.js', 'lib/STARFIELD-LICENSE', 'lib/SAVER-WARP-LICENSE', 'lib/SAVER-MATRIX-LICENSE']:
         assert (root / path).is_file(), 'Missing ' + path
     print('Validated: %d titles, %d indexed entries, %d unique episode IDs' % (len(title_ids), count, len(episode_ids)))
     return count

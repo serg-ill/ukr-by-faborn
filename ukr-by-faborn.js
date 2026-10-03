@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.31 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.32 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,9 +8,10 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.31';
+    var VERSION = '0.1.0-beta.32';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
+    var commentsUI = null, commentsScript = null;
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
     var pendingRequest, playbackTimer, watchedPlayback, playbackContext, historyPlayback;
@@ -1136,6 +1137,7 @@
             var title, playerError;
             try { title = providerPage(body,url); } catch (e) { return done(e); }
             if (!sameTitle(movie,title,true)) return done(new Error('Назва, рік або тип не збігаються з карткою.'));
+            if (commentsUI && storage('source_comments','on') !== 'off') commentsUI.remember(movie,url,body);
             title.originalLanguage = /^[a-z]{2}$/.test(text(movie.original_language)) ? movie.original_language : '';
             title.releases = title.releases.filter(function (r) {
                 r.audioLanguage = audioLanguage(r.voice,title.audioLanguage,title.originalLanguage);
@@ -2456,6 +2458,21 @@
         interfaceScript.onerror = function () { interfaceScript = null; };
         root.document.head.appendChild(interfaceScript);
     }
+    function loadComments() {
+        if (!root.document || !root.document.querySelector || commentsUI || commentsScript || !baseURL()) return;
+        function ready() {
+            if (typeof root.FabornComments !== 'function') return;
+            commentsUI = root.FabornComments(root,L,$,{request:xhr,providers:PROVIDERS,providerSearch:providerSearch,providerPage:providerPage,sameTitle:sameTitle});
+            commentsUI.install();
+            if (lastFullEvent) commentsUI.full(lastFullEvent);
+        }
+        if (typeof root.FabornComments === 'function') return ready();
+        commentsScript = root.document.createElement('script');
+        commentsScript.src = baseURL()+'lib/faborn-comments.js?v='+VERSION; commentsScript.async = true;
+        commentsScript.onload = ready;
+        commentsScript.onerror = function () { commentsScript = null; };
+        root.document.head.appendChild(commentsScript);
+    }
     function loadHub() {
         if (!root.document || !root.document.querySelector || hubUI || hubScript || !baseURL()) return;
         function ready() {
@@ -2533,6 +2550,7 @@
         var api = L.SettingsApi;
         if (!api || !api.addComponent || !api.addParam) return;
         api.addComponent({component: 'faborn_ukr', name: NAME, icon: ICON});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_source_comments',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Коментарі з джерел',description:'Компактні відгуки UAFix та UASerials під описом. Завантажуються при переході до ряду; OK — повний текст. Після зміни повторно відкрий картку.'},onChange:function(){if(commentsUI)commentsUI.changed();else loadComments();}});
         ['intro','credits','source'].forEach(function(kind) {
             api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_skip_'+kind,type:'select',values:{on:'Увімкнено',off:'Вимкнено'},default:'off'},field:{name:kind==='intro' ? 'Пропуск вступу за мітками' : kind==='credits' ? 'Пропуск титрів за мітками' : 'Пропуск за мітками джерела',description:kind==='source' ? 'Відрізки, позначені в самому відео. Кнопка «Пропустити фрагмент» з відліком 7 секунд; Назад — скасувати. Доступно, якщо джерело передає мітки.' : 'Кнопка з відліком 7 секунд на мітці відео. OK — одразу, Назад — скасувати. Без міток нічого не пропускається.'},onChange:function(){if(skipUI)skipUI.start(L.Player.playdata());}});
         });
@@ -2686,6 +2704,7 @@
         settings();
         applyAppearance();
         loadInterface();
+        loadComments();
         loadHub();
         loadScreensaver();
         loadSkip();
