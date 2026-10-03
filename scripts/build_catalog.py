@@ -18,7 +18,7 @@ from urllib.parse import urljoin, urlsplit
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.1.0-beta.38"
+VERSION = "0.1.0-beta.39"
 SOURCE_HOSTS = {"uakino": "uakino.best", "kinoukr": "kinoukr.tv"}
 
 

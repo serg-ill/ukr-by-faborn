@@ -21,10 +21,10 @@ test('series studio badges use real networks with production fallback and never 
  assert.equal(ui.releaseInfo({...data,media_type:'tv',networks:[{name:' '}]}).studios[0].kind,'studio');
  assert.equal(ui.releaseInfo({production_companies:'Netflix'}).studios.length,0);
 });
-test('studio badges escape external names and accept only TMDB logo paths',()=>{
+test('all studio badges remain visible, escape external names and accept only TMDB logo paths',()=>{
  const {ui,L}=environment(),requests=[];L.TMDB={image:path=>{requests.push(path);return 'https://image.tmdb.org/'+path;}};
  const info=ui.releaseInfo({production_companies:[{name:'A <img onerror=x>',logo_path:'/real-logo_1.png'},{name:'B',logo_path:'https://tracker.test/image.png'},{name:'C',logo_path:'/../secret.png'},{name:'D',logo_path:'/broken.svg?x=y'}]});
- assert.deepEqual(requests,['t/p/w92/real-logo_1.png']);const html=ui.releaseMarkup(info);assert.ok(!html.includes('<img onerror'));assert.match(html,/A &lt;img onerror=x&gt;/);assert.ok(!html.includes('tracker.test'));assert.match(html,/>\+2<\/span>/);
+ assert.deepEqual(requests,['t/p/w92/real-logo_1.png']);const html=ui.releaseMarkup(info);assert.ok(!html.includes('<img onerror'));assert.match(html,/A &lt;img onerror=x&gt;/);assert.ok(!html.includes('tracker.test'));assert.equal((html.match(/class="fbr-release-chip fbr-release-studio /g)||[]).length,4);for(const name of ['B','C','D'])assert.ok(html.includes('>'+name+'</span>'));assert.ok(!html.includes('fbr-release-more'));assert.equal((html.match(/fbr-release-studio--1/g)||[]).length,2);
 });
 test('TV quality is explicitly limited to the episode that was searched',()=>{const {ui}=environment();assert.ok(ui.qualityFacts({qualities:['1080p'],season:2,episode:1}).some(b=>b.label==='S2E1'));assert.ok(!ui.qualityFacts({qualities:['4K HDR']}).length);});
 test('quality cache expires and cannot be supplied by an unrelated title or future timestamp',()=>{const {ui,data}=environment(),m={id:1};ui.learn(m,{qualities:['1080p']});const entry=data.faborn_ukr_quality_cache['movie:1'];assert.equal(ui.cachedQuality({id:2}),null);assert.ok(ui.cachedQuality(m));assert.equal(ui.cachedQuality(m,entry.checkedAt+86400001),null);entry.checkedAt=Date.now()+120000;assert.equal(ui.cachedQuality(m),null);});
