@@ -299,6 +299,50 @@ function filmQualityMenu(env) {
     env.instance.open({title: 'Бджоляр', original_title: 'The Beekeeper', release_date: '2024-01-10'});
 }
 
+function betaEnvironment(options={}) {
+    const e=environment({...options,storage:{...options.storage,faborn_ukr_player:'beta'}});
+    let spec,active=false;const choices=[];
+    e.root.webapis={avplay:{getState(){return active?'PLAYING':'NONE';}}};
+    e.root.FabornPlayer=()=>({available:()=>true,active:()=>active,apply(){},play(value){spec=value;active=true;},close(restore=true){active=false;spec.onClose(restore);},change(action){choices.push(action);spec.request(action,(error,value)=>{if(error)e.state.notices.push(error.message);else spec=value;});}});
+    return Object.assign(e,{choices,getSpec:()=>spec,close(){active=false;spec.onClose(true);},active:()=>active});
+}
+test('online player setting explicitly offers an opt-in beta while Lampa remains default',()=>{
+    const e=environment(),p=e.state.params.find(p=>p.param.name==='faborn_ukr_player');
+    assert.equal(p.param.default,'lampa');assert.deepEqual(p.param.values,{lampa:'Lampa',beta:'Faborn Player · бета'});
+    filmQualityMenu(e);e.state.play('1080p');assert.ok(e.state.played);assert.equal(e.state.requests.some(r=>r.url.includes('faborn-player.js')),false);
+});
+test('selected beta bypasses native Lampa even with another global player and persists shared progress',()=>{
+    const e=betaEnvironment({player:'inner'});e.instance.open({id:866398,title:'Бджоляр',original_title:'The Beekeeper',release_date:'2024-01-10'});e.state.play('1080p');
+    assert.ok(e.getSpec());assert.equal(e.state.played,null);assert.equal(e.state.storage.player,undefined);
+    e.getSpec().onTime({current:300,duration:6000,force:true});
+    assert.equal(e.state.timelines['faborn|tmdb-movie-866398|0|0'].time,300);
+    assert.equal(e.state.timelines['The Beekeeper'].time,300);assert.equal(e.state.history[0].card.id,866398);
+    const before=e.state.requests.length;e.close();assert.equal(e.state.requests.length,before);assert.ok(e.state.menu.items.some(i=>i.group));
+    e.state.play('1080p');assert.equal(e.getSpec().time,300);e.close();
+});
+test('beta without an available Samsung API returns to sources and never silently opens Lampa',()=>{
+    const e=environment({storage:{faborn_ukr_player:'beta'}});filmQualityMenu(e);e.state.play('1080p');assert.equal(e.state.played,null);assert.equal(e.state.menu.title,'Faborn Player · бета');e.state.menu.onBack();assert.ok(e.state.menu.items.some(i=>i.group));
+});
+test('beta change refreshes exact quality, rejects unavailable selection and leaves old progress intact',()=>{
+    const e=betaEnvironment();e.state.catalog=JSON.parse(JSON.stringify(catalog));e.state.catalog.titles.forEach(t=>t.releases.forEach(r=>r.episodes.forEach(ep=>{delete ep.embed;})));
+    filmQualityMenu(e);e.state.play('1080p');const before=e.getSpec();before.onTime({current:312,duration:6000,force:true});
+    let error,next;before.request({type:'quality',quality:'1440p'},(err,value)=>{error=err;next=value;});
+    assert.ok(error);assert.equal(next,undefined);
+    before.request({type:'quality',quality:'720p'},(err,value)=>{error=err;next=value;});assert.equal(error,null);assert.equal(next.quality,'720p');assert.equal(next.time,312);assert.equal(e.state.played,null);e.close();
+});
+test('profile change prevents beta progress being written into the new account',()=>{
+    const e=betaEnvironment();let owner='first';e.root.Lampa.Timeline.filename=()=>owner;filmQualityMenu(e);e.state.play('1080p');
+    e.getSpec().onTime({current:100,duration:6000,force:true});const recorded=JSON.stringify(e.state.timelines);owner='second';e.getSpec().onTime({current:200,duration:6000,force:true});
+    assert.equal(JSON.stringify(e.state.timelines),recorded);assert.equal(e.active(),false);assert.match(e.state.notices.at(-1),/Профіль/);
+});
+test('closing beta cancels a quality request and late data cannot start playback',()=>{
+    const options={},e=betaEnvironment(options);filmQualityMenu(e);e.state.play('1080p');
+    // Use a queued XHR response after the established source discovery.
+    const original=e.root.XMLHttpRequest.prototype.send;e.root.XMLHttpRequest.prototype.send=function(){this.pending=true;};let called=false;
+    e.getSpec().request({type:'quality',quality:'720p'},()=>{called=true;});const req=e.state.requests.at(-1);e.close();assert.ok(req.aborted);
+    req.status=200;req.responseText='#EXTM3U\n#EXTINF:6,\nvideo.ts';req.onload();assert.equal(called,false);assert.equal(e.state.played,null);e.root.XMLHttpRequest.prototype.send=original;
+});
+
 test('selected manifest is checked immediately before AVPlay, and a 404 is not played', () => {
     const options = {}; const env = environment(options); filmQualityMenu(env);
     options.failure = true; env.state.play('1080p');
