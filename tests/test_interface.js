@@ -8,6 +8,24 @@ test('ratings preserve each source scale and reject missing or impossible number
 test('late source scores update existing rows without producing duplicates',()=>{const {ui}=environment();const r=ui.ratingFacts({vote_average:8,imdb_rating:8},{imdb:'8,8'});assert.equal(r.length,2);assert.equal(r[1].value,'8.8');});
 test('rating labels are escaped before inserting them into the interface',()=>{const {ui}=environment();assert.ok(!ui.ratingMarkup([{id:'imdb',name:'<img onerror=x>',value:'<script>',scale:'%'}]).includes('<script>'));assert.match(ui.ratingMarkup([{id:'imdb',name:'A&B',value:8,scale:'/10'}]),/A&amp;B/);});
 test('quality badges do not guess HDR, Dolby Vision or surround from 4K',()=>{const {ui}=environment();assert.deepEqual(ui.qualityFacts({qualities:['2160p'],languages:['uk','en']}),[{icon:'quality',label:'4K',kind:'4k'},{icon:'globe',label:'UA / EN',kind:'language'}]);assert.deepEqual(ui.qualityFacts(null),[]);});
+test('release badges use the film premiere or first TV air date and reject impossible dates',()=>{
+ const {ui}=environment();assert.equal(ui.releaseInfo({release_date:'2023-07-19'}).date,'19.07.2023');
+ const tv=ui.releaseInfo({media_type:'tv',release_date:'2026-01-01',first_air_date:'2024-02-29'});assert.equal(tv.date,'29.02.2024');assert.equal(tv.label,'Прем’єра');
+ for(const release_date of ['2023-02-29','2026-02-30','2026-13-01','2026-00-01','2026-01-00','2026','',null])assert.equal(ui.releaseInfo({release_date}).date,'');
+ assert.equal(ui.releaseInfo({release_date:'2027-12-31'}).date,'31.12.2027');assert.equal(ui.releaseMarkup(ui.releaseInfo(null)),'');
+});
+test('series studio badges use real networks with production fallback and never infer a film streaming provider',()=>{
+ const {ui}=environment(),data={networks:[{name:'Apple TV'},{name:' Apple   TV '},null],production_companies:[{name:'Warner Bros.'}]};
+ assert.deepEqual(ui.releaseInfo({...data,media_type:'tv'}).studios.map(x=>[x.name,x.kind]),[['Apple TV','network']]);
+ assert.deepEqual(ui.releaseInfo(data).studios.map(x=>x.name),['Warner Bros.']);
+ assert.equal(ui.releaseInfo({...data,media_type:'tv',networks:[{name:' '}]}).studios[0].kind,'studio');
+ assert.equal(ui.releaseInfo({production_companies:'Netflix'}).studios.length,0);
+});
+test('studio badges escape external names and accept only TMDB logo paths',()=>{
+ const {ui,L}=environment(),requests=[];L.TMDB={image:path=>{requests.push(path);return 'https://image.tmdb.org/'+path;}};
+ const info=ui.releaseInfo({production_companies:[{name:'A <img onerror=x>',logo_path:'/real-logo_1.png'},{name:'B',logo_path:'https://tracker.test/image.png'},{name:'C',logo_path:'/../secret.png'},{name:'D',logo_path:'/broken.svg?x=y'}]});
+ assert.deepEqual(requests,['t/p/w92/real-logo_1.png']);const html=ui.releaseMarkup(info);assert.ok(!html.includes('<img onerror'));assert.match(html,/A &lt;img onerror=x&gt;/);assert.ok(!html.includes('tracker.test'));assert.match(html,/>\+2<\/span>/);
+});
 test('TV quality is explicitly limited to the episode that was searched',()=>{const {ui}=environment();assert.ok(ui.qualityFacts({qualities:['1080p'],season:2,episode:1}).some(b=>b.label==='S2E1'));assert.ok(!ui.qualityFacts({qualities:['4K HDR']}).length);});
 test('quality cache expires and cannot be supplied by an unrelated title or future timestamp',()=>{const {ui,data}=environment(),m={id:1};ui.learn(m,{qualities:['1080p']});const entry=data.faborn_ukr_quality_cache['movie:1'];assert.equal(ui.cachedQuality({id:2}),null);assert.ok(ui.cachedQuality(m));assert.equal(ui.cachedQuality(m,entry.checkedAt+86400001),null);entry.checkedAt=Date.now()+120000;assert.equal(ui.cachedQuality(m),null);});
 test('quality cache stays bounded without storing stream URLs',()=>{const {ui,data}=environment();for(let n=1;n<210;n++)ui.learn({id:n},{qualities:['720p'],url:'https://private.example/token'});assert.equal(Object.keys(data.faborn_ukr_quality_cache).length,180);assert.ok(!JSON.stringify(data).includes('private.example'));});
