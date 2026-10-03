@@ -641,6 +641,18 @@ test('appearance settings expose both layouts, fallback, reversible global theme
     assert.equal(Object.keys(state.storage).filter(k => !k.startsWith('faborn_ukr_')).length, 0);
 });
 
+test('player glass opacity is saved independently from iOS menu opacity',()=>{
+ const nodes={},env=environment({jQuery:()=>({length:0,append(){return this;},toggleClass(){return this;}}),document:{createElement(){return {};},getElementById(id){return nodes[id];},getElementsByTagName(){return [];},body:{appendChild(n){nodes[n.id]=n;}}}});
+ const change=(key,value)=>{env.state.storage['faborn_ukr_'+key]=value;env.state.params.find(p=>p.param.name==='faborn_ukr_'+key).onChange(value);};
+ const styles=selector=>nodes['faborn-ukr-theme'].textContent.split('}').filter(rule=>rule.split('{')[0].split(',').includes('body.faborn-glass '+selector)).join('}');
+ change('theme','ios');const player=styles('.player-panel__body');change('glass_transparency','max');
+ assert.equal(styles('.player-panel__body'),player);const menu=styles('.settings__content');
+ change('player_transparency','max');assert.notEqual(styles('.player-panel__body'),player);assert.equal(styles('.settings__content'),menu);
+ change('glass_transparency','solid');assert.match(styles('.player-panel__body'),/rgba\(10,18,30,0.56\)/);
+ change('player_transparency','solid');assert.match(styles('.player-panel__body'),/rgba\(10,18,30,1\)/);
+ assert.equal(env.state.storage.faborn_ukr_glass_transparency,'solid');assert.equal(env.state.storage.faborn_ukr_player_transparency,'solid');
+ change('theme','off');assert.equal(nodes['faborn-ukr-theme'].textContent,'');change('theme','ios');assert.match(styles('.player-panel__body'),/rgba\(10,18,30,1\)/);
+});
 test('iOS activates from classic, persists across layouts, and can be completely removed', () => {
     const nodes = {}, classes = new Set();
     const jq = () => ({length: 0, append() {return this;}, toggleClass(name,enabled) {if(enabled)classes.add(name);else classes.delete(name);return this;}});
@@ -977,6 +989,68 @@ function voicePlayer(env) {
  root.Lampa.PlayerPanel={setTracks(rows){state.panelTracks=rows;},quality(q,url){state.panelQuality=q;},setTranslate(){}};
  return env;
 }
+function kinoConnectionError(state) {
+ state.nativeEvents.error({error:'code [15] PLAYER_ERROR_CONNECTION_FAILED'});state.fireTimer(0);
+}
+test('KinoBase AVPlay failure retries the exact-quality alternate master inside the same player',()=>{
+ const env=voicePlayer(kinoEnvironment({series:true,english:true})),{state}=env;
+ state.timelines['faborn|tmdb-tv-1668|1|1']={time:510,duration:1440,percent:35};
+ env.instance.open(kinoSeries);state.play('1080p',r=>r.release.audioLanguage==='en');
+ const data=state.played,timeline=data.timeline,playlist=state.playlist;state.nativeVideo.currentTime=0;state.nativeVideo.paused=true;
+ kinoConnectionError(state);
+ assert.equal(state.played,data);assert.equal(data.timeline,timeline);assert.equal(state.playlist,playlist);
+ assert.equal(state.closed,undefined);assert.equal(state.controller,'player');assert.equal(data.voice_name,'Оригинал');
+ assert.match(state.changedURL,/^https:\/\/mirror.threnet.xyz\/1080\/s1e1\/v1\/master-v1-a3.m3u8$/);
+ assert.equal(data.faborn_quality,'1080p');assert.equal(data.season,1);assert.equal(data.episode,1);assert.equal(timeline.stop_recording,true);
+ state.videoEvents.loadeddata();assert.equal(state.seeked,510);assert.equal(state.nativeVideo.paused,true);assert.equal(timeline.stop_recording,undefined);
+ assert.match(state.storage.faborn_ukr_kino_playback,/primary.redcdn.org → mirror.threnet.xyz.*відтворення почалося/);
+ assert.ok(!state.storage.faborn_ukr_kino_playback.includes('/s1e1'));
+});
+test('duplicate Tizen errors and old-video handlers cannot exhaust the next mirror',()=>{
+ const env=voicePlayer(kinoEnvironment()),{state}=env;env.instance.open(kinoMovie);state.play('2160p');
+ const old=state.nativeEvents.error;old({error:15});state.videoEvents.error({error:15});state.fireTimer(0);state.fireTimer(0);
+ old({error:15});assert.equal(state.videoDestroyed,1);assert.equal(state.closed,undefined);assert.match(state.changedURL,/mirror/);
+});
+test('KinoBase retry restores the quality map removed by Lampa for a single resolution',()=>{
+ const env=voicePlayer(kinoEnvironment()),{state}=env;env.instance.open(kinoMovie);state.play('1080p');
+ delete state.played.quality;kinoConnectionError(state);
+ assert.equal(state.closed,undefined);assert.match(state.changedURL,/mirror/);assert.equal(state.played.quality['1080p'],state.changedURL);
+});
+test('KinoBase exhausts mirrors once then restores the normal retry and quality menu',()=>{
+ const env=voicePlayer(kinoEnvironment()),{state}=env;env.instance.open(kinoMovie);state.play('1080p');
+ kinoConnectionError(state);kinoConnectionError(state);
+ assert.equal(state.videoDestroyed,1);assert.equal(state.closed,true);assert.equal(state.menu.title,'Відео не запустилося');
+ assert.deepEqual(state.menu.items.map(r=>r.action),['retry','quality','release']);
+ assert.match(state.storage.faborn_ukr_kino_playback,/адреси не відкрилися/);
+});
+test('closing the player before a queued connection error prevents any retry',()=>{
+ const env=voicePlayer(kinoEnvironment()),{state}=env;env.instance.open(kinoMovie);state.play('1080p');
+ state.nativeEvents.error({error:15});env.root.Lampa.Player.close();state.fireTimer(0);
+ assert.equal(state.videoDestroyed,undefined);assert.equal(state.played,null);assert.notEqual(state.controller,'player');
+});
+test('KinoBase startup timeout tries its alternate without changing selected quality',()=>{
+ const env=voicePlayer(kinoEnvironment()),{state}=env;env.instance.open(kinoMovie);state.play('720p');state.fireTimer(45000);
+ assert.match(state.changedURL,/mirror.threnet.xyz\/720\//);assert.equal(state.played.faborn_quality,'720p');
+ state.fireTimer(45000);assert.equal(state.closed,true);assert.equal(state.videoDestroyed,1);
+});
+test('unsupported media errors never trigger a KinoBase mirror loop',()=>{
+ const env=voicePlayer(kinoEnvironment()),{state}=env;env.instance.open(kinoMovie);state.play('2160p');
+ state.nativeEvents.error({error:'PLAYER_ERROR_NOT_SUPPORTED_FORMAT'});state.fireTimer(0);
+ assert.equal(state.videoDestroyed,undefined);assert.equal(state.closed,true);
+});
+test('explicit quality changes reset the mirror attempt list and preserve the new quality',()=>{
+ const panelEvents={},env=voicePlayer(kinoEnvironment({panelEvents})),{state}=env;
+ env.instance.open(kinoMovie);state.play('1080p');kinoConnectionError(state);state.videoEvents.loadeddata();
+ const data=state.played;data.url=data.quality['720p'];data.quality_switched='720p';panelEvents.quality({name:'720p',url:data.url});
+ kinoConnectionError(state);assert.match(state.changedURL,/mirror.threnet.xyz\/720\//);assert.equal(state.closed,undefined);
+});
+test('KinoBase connection retry remains compatible with next-episode lazy resolution',()=>{
+ const env=voicePlayer(kinoEnvironment({series:true})),{state}=env;
+ env.instance.open(kinoSeries);state.play('1080p');kinoConnectionError(state);state.videoEvents.loadeddata();
+ advanceFixture(env);state.fireTimer(0);
+ assert.equal(state.played.episode,2);assert.equal(state.played.faborn_quality,'1080p');kinoConnectionError(state);
+ assert.match(state.changedURL,/mirror.threnet.xyz\/1080\/s1e2\//);assert.equal(state.closed,undefined);
+});
 test('player translations contain only the same source, episode and exact quality, with mirrors grouped',()=>{
  const make=(id,source,language,q,ep=2)=>({id,source,voice:id,audioLanguage:language,episodes:[{id,season:1,episode:ep,resolvedAt:1,qualities:{[q]:'https://ashdi.vip/'+id+'.m3u8'}}]});
  const ua=make('UA','uaserials','uk','1080p');

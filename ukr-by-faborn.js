@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.34 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.35 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.34';
+    var VERSION = '0.1.0-beta.35';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
     var commentsUI = null, commentsScript = null;
@@ -17,7 +17,7 @@
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
     var pendingRequest, playbackTimer, watchedPlayback, playbackContext, historyPlayback;
     var torrentRows = [], torrentFiles = [], pendingTorrent = null, torrentListRelease = '', progressPaintTimer, progressWriting = false;
-    var playbackWatchSerial = 0, playerVoiceContext = null, voiceSwitch = null, voiceResume = null;
+    var playbackWatchSerial = 0, playerVoiceContext = null, voiceSwitch = null, voiceResume = null, kinoRecovery = null;
     var playbackQueue = null, skipUI = null, skipScript = null, lastProgressPlayback = null;
     var restartPending = null;
     var RESTART_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9a8 8 0 1 1 .5 7M4 4v5h5"/><path d="m10 8 6 4-6 4Z" stroke-width="1.4"/></svg>';
@@ -228,13 +228,15 @@
     function glassCSS(accent,tint,fill,ink) {
         var base = 'body.faborn-glass', css = '';
         var levels = {
-            solid:{surface:1,chrome:1,button:1,legacy:1,legacyButton:1,player:1,veil:.48},
-            low:{surface:.9,chrome:.88,button:.7,legacy:1,legacyButton:.96,player:.97,veil:.4},
-            standard:{surface:.74,chrome:.72,button:.46,legacy:1,legacyButton:.9,player:.94,veil:.32},
-            high:{surface:.54,chrome:.52,button:.3,legacy:.9,legacyButton:.8,player:.84,veil:.24},
-            max:{surface:.34,chrome:.32,button:.18,legacy:.78,legacyButton:.68,player:.74,veil:.16}
+            solid:{surface:1,chrome:1,button:1,legacy:1,legacyButton:1,veil:.48},
+            low:{surface:.9,chrome:.88,button:.7,legacy:1,legacyButton:.96,veil:.4},
+            standard:{surface:.74,chrome:.72,button:.46,legacy:1,legacyButton:.9,veil:.32},
+            high:{surface:.54,chrome:.52,button:.3,legacy:.9,legacyButton:.8,veil:.24},
+            max:{surface:.34,chrome:.32,button:.18,legacy:.78,legacyButton:.68,veil:.16}
         };
         var glass = levels[storage('glass_transparency','standard')] || levels.standard;
+        var playerGlass = {solid:1,low:.9,standard:.8,high:.68,max:.56}[storage('player_transparency','standard')];
+        if (playerGlass === undefined) playerGlass = .8;
         var edge = 'inset 0 1px 0 rgba(255,255,255,.28),inset 0 -1px 0 rgba(255,255,255,.06),0 1.2em 3em rgba(0,0,0,.32)';
         var sheen = 'linear-gradient(145deg,rgba(255,255,255,.15),rgba(255,255,255,.025) 45%,rgba(255,255,255,.07))';
         var surfaces = '.settings__content,.selectbox__content,.modal__content,.settings-input__content,.fbr-window';
@@ -275,8 +277,49 @@
         rule('.card__img,.card__view,.full-episode','border-radius:1.1em');
         rule('.card.focus .card__view::after,.card-episode.focus .full-episode::after','border-color:#e7f2ff;border-radius:1.35em;box-shadow:0 0 1.5em '+tint);
         rule('.timeline__line,.player-panel__position,.fbr-progress-track i','background:'+accent+';background-image:'+fill);
-        rule('.player-panel__body','background-color:rgba(24,31,43,'+glass.player+');background-image:'+sheen+';border-radius:1.6em 1.6em 0 0;box-shadow:'+edge);
-        rule('.player-panel .button','border-radius:1.2em');
+        // Only the control surfaces are translucent. Do not composite/blur the
+        // native AVPlay video plane; its hardware layer is separate on Tizen.
+        rule('.player-panel','left:3vw;right:3vw;bottom:1.35em');
+        rule('.player-panel__body,.player-info__body','background-color:rgba(10,18,30,'+playerGlass+');background-image:linear-gradient(125deg,rgba(165,206,255,.08),rgba(255,255,255,.01) 55%);border:1px solid rgba(210,229,255,.18);border-radius:1.45em;box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 .65em 2em rgba(0,0,0,.26);color:#f5f8ff');
+        rule('.player-panel__body','padding:1.05em 1.3em 1.1em');
+        rule('.player-panel__apex','transform:none;-webkit-transform:none;margin:0 0 .8em');
+        rule('.player-panel__apex:empty','display:none');
+        rule('.player-panel__filename','font-size:1.2em;line-height:1.4;margin-bottom:.55em');
+        rule('.player-panel__line-one','font-size:.88em;line-height:1.4;margin-bottom:.7em;font-variant-numeric:tabular-nums;color:#d8e3f2');
+        rule('.player-panel__timeline','height:.34em;margin-bottom:.85em;background:rgba(205,222,245,.2)');
+        rule('.player-panel__timeline.focus','box-shadow:0 0 0 .15em rgba(235,245,255,.8)');
+        rule('.player-panel__position','box-shadow:0 0 .75em '+tint);
+        rule('.player-panel__peding','background:rgba(213,228,250,.3)');
+        rule('.player-panel__time','background:#182b43;border:1px solid rgba(210,229,255,.25);border-radius:.65em;color:#fff;font-variant-numeric:tabular-nums');
+        rule('.player-panel__box-buttons','background:none;border-radius:0');
+        rule('.player-panel .button','width:2.8em;height:2.8em;padding:.75em;margin:0 .13em;border:1px solid rgba(218,233,255,.12);border-radius:.95em;background:rgba(202,221,255,.09);color:#f5f8ff;box-sizing:border-box');
+        rule('.player-panel__playpause','font-size:1.22em;border-radius:50%!important');
+        rule('.player-panel__playpause:not(.focus)','background:rgba(225,237,255,.17)');
+        rule('.player-panel__quality','border-radius:.85em!important;font-weight:600;letter-spacing:.025em');
+        rule('.player-panel .button .tooltip','font-size:.88em;padding:.3em .55em;color:#e5edfb;text-shadow:0 1px 3px #000');
+        rule('.player-panel__next-episode-name','font-size:.9em;min-width:0');
+        rule('.player-panel .player-next__title','font-size:.82em;color:#aebfd7;margin-bottom:.25em');
+        rule('.player-panel .player-next__episode-title','font-size:1.2em;line-height:1.3;margin:0');
+        rule('.player-panel .player-next__thumbnail','width:6em;border-radius:.65em;overflow:hidden');
+        rule('.player-info','left:3vw;right:3vw;top:1.35em');
+        rule('.player-info__body','padding:1.05em 1.3em');
+        rule('.player-info__title','font-size:1.65em;line-height:1.25;letter-spacing:-.02em;width:calc(100% - 8em)');
+        rule('.player-info__name','font-size:1.05em;margin-top:.2em');
+        rule('.player-info__name:empty','display:none');
+        rule('.player-info__values','margin-top:.6em;line-height:1.55;color:#c8d7ea');
+        rule('.player-info__values>div span','font-size:1em');
+        rule('.player-info__values .value--size span','padding:.23em .55em;border-radius:.5em;background:rgba(121,176,243,.19);color:#d4eaff');
+        rule('.player-info__values .value--name','min-width:0;max-width:72%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap');
+        rule('.player-info__time','top:1.05em;right:1.3em;font-variant-numeric:tabular-nums');
+        rule('.player-info__time span','font-size:1.25em;font-weight:600');
+        rule('.player-info__time-end','top:2.85em;right:1.3em;color:#bbcde4');
+        rule('.player-info__time-end span','font-size:.85em');
+        rule('.player-footer','left:3vw;right:3vw;bottom:1.35em;border-radius:1.45em;background:rgba(10,18,30,'+Math.max(playerGlass,.8)+');border:1px solid rgba(210,229,255,.18)');
+        css += '@media(max-width:600px){';
+        rule('.player-panel,.player-info,.player-footer','left:1vw;right:1vw');
+        rule('.player-panel__body','padding:.8em');
+        rule('.player-info__title','font-size:1.3em');
+        css += '}';
         rule('.noty','left:12%;right:12%;bottom:1em;border-radius:1.4em');
         rule('.noty:not(.noty--visible)','visibility:hidden');
         rule('.simple-keyboard.hg-theme-default','background:transparent');
@@ -2197,6 +2240,67 @@
         playbackTimer = null;
         watchedPlayback = null;
     }
+    function kinoPlaybackState(data) {
+        var catalog = playbackContext && playbackContext.catalog;
+        var found = catalog && data && locate(catalog,data.faborn_title,data.faborn_release,data.faborn_episode);
+        if (!found || !found.episode.kino) return null;
+        var quality = data.quality_switched || data.faborn_quality;
+        var key = [data.faborn_title,data.faborn_release,data.faborn_episode,quality].join('|');
+        if (!kinoRecovery || kinoRecovery.data !== data || kinoRecovery.key !== key) {
+            kinoRecovery = {data:data,key:key,quality:quality,episode:found.episode,tried:[data.faborn_url]};
+        }
+        return kinoRecovery;
+    }
+    function kinoPlaybackStatus(state,stage) {
+        if (!state) return;
+        // Never put signed paths, tokens or query strings in the diagnostic row.
+        var hosts = state.tried.map(function (url) { var match=/^https:\/\/([^/]+)/.exec(url);return match ? match[1] : '?'; });
+        save('kino_playback',state.quality+' · '+hosts.join(' → ')+' · '+stage);
+    }
+    function recoverKinoConnection(data,message) {
+        if (!data || watchedPlayback !== data || !L.Player.playdata || L.Player.playdata() !== data || voiceSwitch) return false;
+        var state = kinoPlaybackState(data), video = L.PlayerVideo;
+        if (!state || !video || !video.url || !video.destroy) return false;
+        var urls = state.episode.mirrors && state.episode.mirrors[state.quality] || [];
+        var next = urls.filter(function (url) { return mediaURL(url) && state.tried.indexOf(url) < 0; })[0];
+        // Retry only addresses supplied for this exact voice, episode and quality.
+        // Bound even malformed/repeated mirror lists; an exhausted list shows the usual recovery menu.
+        if (!next || state.tried.length >= 3) { kinoPlaybackStatus(state,'адреси не відкрилися');return false; }
+        var nativeVideo = video.video && video.video();
+        var pending = voiceResume && voiceResume.data === data ? voiceResume : {data:data,
+            time:nativeVideo && nativeVideo.currentTime > 0 ? +nativeVideo.currentTime : +(data.timeline && data.timeline.time) || 0,
+            paused:Boolean(nativeVideo && nativeVideo.paused),stopRecording:data.timeline && data.timeline.stop_recording};
+        clearPlaybackWatch();
+        state.tried.push(next);
+        kinoPlaybackStatus(state,'запасна адреса '+state.tried.length);
+        save('last_error',message);
+        if (data.timeline) data.timeline.stop_recording = true;
+        voiceResume = pending;
+        try {
+            video.destroy(true);
+            data.url = data.faborn_url = next;
+            state.episode.qualities[state.quality] = next;
+            // Lampa removes work.quality when a stream has only one resolution.
+            if (!data.quality) data.quality = {};
+            data.quality[state.quality] = next;
+            if (data.timeline) { data.timeline.time=pending.time;data.timeline.continued=true;data.timeline.waiting_for_user=false; }
+            if (L.PlayerPanel && L.PlayerPanel.quality) L.PlayerPanel.quality(data.quality,next);
+            watchPlayback(data);
+            video.url(next,true);
+            watchNativeError(data);
+        } catch (error) {
+            watchPlayback(data);
+            kinoPlaybackStatus(state,'помилка перемикання адреси');
+            // An adapter exception is not proof that another server would fix it.
+            playbackProblem('Не вдалося перемкнути адресу KinoBase: '+text(error.message),data);
+        }
+        return true;
+    }
+    function playbackStarted() {
+        var state = watchedPlayback && kinoPlaybackState(watchedPlayback);
+        if (state) kinoPlaybackStatus(state,'відтворення почалося');
+        clearPlaybackWatch();
+    }
     function playbackProblem(message, data) {
         if (!data || watchedPlayback !== data) return;
         if (L.Player.playdata && L.Player.playdata() !== data) { clearPlaybackWatch(); return; }
@@ -2225,16 +2329,23 @@
         clearPlaybackWatch();
         if (!data || !data.faborn_title || !mediaURL(data.faborn_url)) return;
         watchedPlayback = data;
+        kinoPlaybackStatus(kinoPlaybackState(data),'підключення');
         playbackTimer = root.setTimeout(function () {
-            playbackProblem('Плеєр не почав відтворення за 45 секунд. Посилання могло змінитися або телевізор не зміг відкрити цей потік.', data);
+            var message='Плеєр не почав відтворення за 45 секунд. Посилання могло змінитися або телевізор не зміг відкрити цей потік.';
+            if (!recoverKinoConnection(data,message)) playbackProblem(message,data);
         }, 45000);
     }
     function playbackError(event, data) {
-        if (!data || watchedPlayback !== data || !event) return;
+        if (!data || watchedPlayback !== data || !event || voiceSwitch) return;
         var run = playbackWatchSerial;
         var detail = event.error || event;
         if (typeof detail === 'object') detail = detail.message || detail.code;
-        root.setTimeout(function () { if (run === playbackWatchSerial) playbackProblem('Помилка плеєра: ' + text(detail || 'невідома помилка'), data); }, 0);
+        root.setTimeout(function () {
+            if (run !== playbackWatchSerial) return;
+            var message='Помилка плеєра: '+text(detail || 'невідома помилка');
+            var connection=/PLAYER_ERROR_CONNECTION_FAILED|PLAYER_ERROR_NETWORK|MEDIA_ERR_NETWORK/i.test(text(detail)) || detail === 2 || detail === 15;
+            if (!connection || !recoverKinoConnection(data,message)) playbackProblem(message,data);
+        },0);
     }
     function watchNativeError(data) {
         if (!data || watchedPlayback !== data || !L.PlayerVideo || !L.PlayerVideo.video) return;
@@ -2409,6 +2520,7 @@
             if (L.Storage.field) lines.push('Плеєр Lampa: ' + L.Storage.field('player') + ' · для бети потрібен Tizen / AVPlay');
             lines.push('AVPlay API: ' + (root.webapis && root.webapis.avplay ? 'доступний' : 'недоступний'));
             lines.push('Сесія KinoBase: '+storage('kino_transport','Звичайний запит'));
+            if (storage('kino_playback','')) lines.push('Потік KinoBase: '+storage('kino_playback',''));
             if (interfaceUI && interfaceUI.ratingStatus && interfaceUI.ratingStatus()) lines.push('Рейтинги: '+interfaceUI.ratingStatus());
 
             if (storage('last_error', '')) lines.push('Остання помилка плеєра: ' + storage('last_error', ''));
@@ -2617,6 +2729,7 @@
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_layout', type: 'select', values: {panel:'Панель', cinema:'Кінозал', classic:'Стандартне Lampa'}, default: 'panel'}, field: {name: 'Оформлення модуля', description: 'Стандартне — штатні вікна й нейтральні кольори. Рейтинги, головна, студії та інші функції працюють у всіх трьох режимах і мають власні перемикачі.'}, onChange: applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_theme', type: 'select', values: {on:'Faborn', ios:'iOS · Liquid Glass', off:'Стандартна Lampa'}, default: 'on'}, field: {name: 'Тема всієї Lampa', description: 'iOS — скляні меню, картки та вікна. Застосовується одразу; зі стандартного оформлення переходить у «Панель».'}, onChange: changeTheme});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_glass_transparency',type:'select',values:{solid:'Непрозоре',low:'Низька',standard:'Стандартна',high:'Висока',max:'Максимальна'},default:'standard'},field:{name:'Прозорість скла iOS',description:'Для теми iOS · Liquid Glass. Вища прозорість — краще видно фон крізь меню, кнопки й вікна. Застосовується одразу.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_player_transparency',type:'select',values:{solid:'Непрозоре',low:'Низька',standard:'Стандартна',high:'Висока',max:'Максимальна'},default:'standard'},field:{name:'Прозорість плеєра iOS',description:'Окрема прозорість нижньої панелі й інформації про відео в темі iOS. Меню та вікна зберігають власне налаштування. Застосовується одразу.'},onChange:applyAppearance});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_accent', type: 'select', values: {blue:'Синій', amber:'Бурштиновий', mint:'М’ятний', violet:'Фіолетовий', aurora:'Синій → фіолетовий', lagoon:'Бірюзовий → синій'}, default: 'blue'}, field: {name: 'Колір акценту', description: 'Колір або градієнт для «Панелі» та «Кінозалу». У стандартному оформленні не застосовується.'}, onChange: applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver',type:'select',values:{on:'Faborn',native:'Стандартна Lampa',off:'Вимкнено'},default:'on'},field:{name:'Заставка під час бездіяльності',description:'Вмикається в меню. Під час перегляду, паузи та завантаження відео не запускається.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_style',type:'select',values:{aerial:'Відео · усі сцени', 'aerial-ocean':'Відео · океан','aerial-city':'Відео · міста','aerial-nature':'Відео · природа','aerial-space':'Відео · Земля з космосу', 'clock-flip':'Годинник · перекидний','clock-analog':'Годинник · стрілочний','clock-rings':'Годинник · кільця',clock:'Годинник · мінімальний',aurora:'Аврора',stars:'Нічне небо',warp:'Зоряний політ',nebula:'Туманність',waves:'Океанські хвилі',ribbons:'Світлові стрічки',bokeh:'Боке',fireflies:'Світлячки',rain:'Нічний дощ',matrix:'Цифровий дощ',orbits:'Орбіти',random:'Випадкова анімація'},default:'aurora'},field:{name:'Стиль заставки',description:'114 відеосцен, 4 годинники та 11 анімацій. Відеосцени потребують інтернету.'},onChange:applyAppearance});
@@ -2698,6 +2811,7 @@
             L.Player.listener.follow('start', function (data) {
                 // Lampa applies its global quality preference before this event. Preserve the explicit selection only for our streams.
                 clearPlaybackWatch();
+                kinoRecovery = null;
                 cancelRestart();
                 cancelVoiceSwitch();
                 if (playerVoiceContext && playerVoiceContext.data !== data) playerVoiceContext = null;
@@ -2715,26 +2829,28 @@
             L.Player.listener.follow('ready', function (data) { watchNativeError(data); mountRestartButton(data); });
             L.Player.listener.follow('destroy', function () {
                 if (playbackQueue && !playbackQueue.transition) { playbackQueue.closed=true;playbackQueue.serial++;playbackQueue.loading=false;cancelPending(); }
-                cancelRestart(); cancelVoiceSwitch(); playerVoiceContext = null; clearPlaybackWatch(); finishHistory();
+                cancelRestart(); cancelVoiceSwitch(); playerVoiceContext = null; clearPlaybackWatch(); kinoRecovery = null; finishHistory();
             });
         }
         if (L.PlayerPanel && L.PlayerPanel.listener) L.PlayerPanel.listener.follow('quality',function (event) {
             var context = playerVoiceContext;
             if (!context || !event || L.Player.playdata() !== context.data) return;
             context.data.faborn_quality = event.name; context.data.faborn_url = event.url;
+            kinoRecovery = null;
             context.data.faborn_segments = episodeSegments(context.release,context.episode,event.url);
             if(playbackQueue && playbackQueue.current && playbackQueue.current.data === context.data) {
                 playbackQueue.preference=event.name;queueSelection(playbackQueue,playbackQueue.current);
             }
             updateVoiceSelection(context);
+            watchPlayback(context.data); watchNativeError(context.data);
         });
         if (L.PlayerVideo && L.PlayerVideo.listener) {
-            L.PlayerVideo.listener.follow('loadeddata', function () { clearPlaybackWatch(); resumePlayerVoice(); });
+            L.PlayerVideo.listener.follow('loadeddata', function () { playbackStarted(); resumePlayerVoice(); });
             L.PlayerVideo.listener.follow('pause', function () { savePlaybackProgress(true); });
             L.PlayerVideo.listener.follow('timeupdate', function (event) {
                 confirmRestart(event);
                 resumePlayerVoice();
-                if (watchedPlayback && event && event.current > 0) clearPlaybackWatch();
+                if (watchedPlayback && event && event.current > 0) playbackStarted();
                 if (historyPlayback && event && event.current > 0 && event.duration > 0 && historyPlayback.timeline && !historyPlayback.timeline.waiting_for_user) {
                     lastProgressPlayback=historyPlayback;historyPlayback.faborn_watched = true; savePlaybackProgress(false);
                 }
