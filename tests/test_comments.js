@@ -98,3 +98,7 @@ test('a late-loaded bundle does not build a line in an already destroyed full ca
  const root={document:{documentElement:{contains:()=>false}}},L={Maker:{make(){throw new Error('must not build');}}};
  factory(root,L).full({type:'complite',data:{movie},link:{},object:{activity:{render:()=>[{}]}}});
 });
+test('the main comment-mode policy stops source rows even when the old switch was on',()=>{
+ const root={},L={Storage:{get:()=> 'on'},Maker:{make(){throw Error('must not build');}}};
+ factory(root,L,null,{enabled:()=>false}).full({type:'complite',data:{movie},link:{}});
+});

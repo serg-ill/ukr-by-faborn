@@ -85,3 +85,17 @@ test('early startup cannot treat an uninitialized native timeline as empty histo
  const e=env(),plan=prepare(e);e.L.Timeline.view=()=>{throw new Error('not initialized');};
  assert.equal(e.api.undoPlan(),null);assert.ok(e.api.prepareTransfer('file_view_2').error);assert.equal(apply(e,plan).ok,false);assert.equal(e.writes.length,0);
 });
+
+test('library transfer includes films-only profiles and preserves current film groups and alternate progress',()=>{
+ const e=env(),film={id:100,title:'Фільм',original_title:'Movie',media_type:'movie',source:'tmdb'},second={...film,id:101,original_title:'Other Film'};
+ e.profile('file_view_2');e.api.saveMovie(film,'watched');e.api.saveMovie(second,'watched');e.put('faborn|tmdb-movie-100|0|0',{percent:100,time:1000,updated:1});e.put('Movie',{percent:100,time:1000,updated:1});
+ const saved=JSON.stringify(e.store.faborn_ukr_my_movies_v1_file_view_2);
+ e.profile('file_view_1');e.api.saveMovie(film,'wanted');e.put('Movie',{percent:0,updated:3});
+ assert.equal(e.api.profileSources().find(p=>p.id==='file_view_2').movies,2);
+ const plan=e.api.prepareTransfer('file_view_2');assert.equal(plan.movies.length,1);assert.equal(plan.entries.length,0);
+ assert.equal(apply(e,plan).ok,true);assert.equal(e.api.movieList().find(m=>m.id===100).libraryState,'wanted');assert.equal(e.api.movieList().find(m=>m.id===101).libraryState,'watched');assert.equal(e.api.road(film,0,0).percent,0);assert.equal(JSON.stringify(e.store.faborn_ukr_my_movies_v1_file_view_2),saved);
+ assert.equal(e.api.prepareTransfer('file_view_2').movies.length,0);
+});
+test('a profile containing only film groups can be transferred without timeline writes',()=>{
+ const e=env();e.profile('file_view_2');e.api.saveMovie({id:100,title:'Фільм',media_type:'movie'},'wanted');e.profile('file_view_1');const plan=e.api.prepareTransfer('file_view_2');assert.equal(plan.movies.length,1);assert.equal(plan.count,0);assert.equal(apply(e,plan).ok,true);assert.equal(e.api.movieList()[0].libraryState,'wanted');assert.equal(e.writes.length,0);
+});

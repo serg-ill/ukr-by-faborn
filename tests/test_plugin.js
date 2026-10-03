@@ -100,6 +100,8 @@ function environment(options = {}) {
     if (options.document) root.document = options.document;
     if (options.jQuery) root.jQuery = options.jQuery;
     if (options.panelEvents) root.Lampa.PlayerPanel = {listener:{follow(k,fn){options.panelEvents[k]=fn;}}};
+    if (options.storage) Object.assign(state.storage,options.storage);
+    if (options.lampaSettings) root.lampa_settings=options.lampaSettings;
     const instance = factory(root); instance.boot();
     state.choose = function (predicate) {
         const menu = state.menu;
@@ -127,6 +129,28 @@ function environment(options = {}) {
     };
     return {state, root, instance};
 }
+
+test('comment modes default to sources, migrate an explicit opt-out, and preserve a saved choice',()=>{
+    for(const [storage,expected] of [[{},'sources'],[{faborn_ukr_source_comments:'off'},'native'],[{faborn_ukr_comments:'off'},'off'],[{faborn_ukr_comments:'all'},'all']]){
+        const e=environment({storage}),param=e.state.params.find(p=>p.param.name==='faborn_ukr_comments');
+        assert.equal(e.state.storage.faborn_ukr_comments,expected);assert.equal(param.param.default,expected);
+        assert.deepEqual(Object.keys(param.param.values),['sources','native','all','off']);
+        assert.ok(!e.state.params.some(p=>p.param.name==='faborn_ukr_source_comments'));
+    }
+});
+test('native comments are disabled before requests and restore the original feature flag',()=>{
+    const flags={discuss:false,reactions:false},e=environment({lampaSettings:{disable_features:flags}}),param=e.state.params.find(p=>p.param.name==='faborn_ukr_comments');
+    assert.equal(flags.discuss,true);
+    for(const [value,blocked] of [['native',false],['off',true],['sources',true],['all',false]]){e.state.storage.faborn_ukr_comments=value;param.onChange();assert.equal(flags.discuss,blocked);assert.equal(flags.reactions,false);}
+    const restricted={discuss:true},f=environment({lampaSettings:{disable_features:restricted}});f.state.storage.faborn_ukr_comments='all';f.state.params.find(p=>p.param.name==='faborn_ukr_comments').onChange();assert.equal(restricted.discuss,true);
+});
+test('cached CUB data is omitted while building rows and restored for later mode changes',()=>{
+    const e=environment(),discuss={result:[{comment:'Existing'}]},data={discuss},hooks=[],link={use:h=>hooks.push(h)};
+    e.state.follows.full({type:'start',data,link});assert.ok(!Object.hasOwn(data,'discuss'));
+    e.state.follows.full({type:'complite',data,link});assert.equal(data.discuss,discuss);assert.ok(!link._fabornDiscuss);
+    e.state.storage.faborn_ukr_comments='all';e.state.follows.full({type:'start',data,link});assert.equal(data.discuss,discuss);
+    e.state.storage.faborn_ukr_comments='off';e.state.follows.full({type:'start',data,link});assert.equal(data.discuss,undefined);hooks.at(-1).onDestroy();assert.equal(data.discuss,discuss);
+});
 
 test('full film flow hands 4K, quality map, subtitles and stable timeline to Lampa', () => {
     const {instance, state} = environment();

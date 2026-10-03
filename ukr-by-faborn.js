@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.32 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.33 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,10 +8,11 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.32';
+    var VERSION = '0.1.0-beta.33';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
     var commentsUI = null, commentsScript = null;
+    var commentsFeature = null, commentsFeatureOriginal;
     var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
     var pendingRequest, playbackTimer, watchedPlayback, playbackContext, historyPlayback;
@@ -67,6 +68,49 @@
     }
     function save(key, value) {
         try { L.Storage.set('faborn_ukr_' + key, value); } catch (ignore) { /* A full TV storage must not block playback. */ }
+    }
+    function commentsMode() {
+        var value = storage('comments','');
+        if (['sources','native','all','off'].indexOf(value) >= 0) return value;
+        // Keep an explicit source-comments opt-out when upgrading beta.32.
+        return storage('source_comments','on') === 'off' ? 'native' : 'sources';
+    }
+    function sourceCommentsEnabled() { var mode=commentsMode();return mode === 'sources' || mode === 'all'; }
+    function nativeCommentsEnabled() { var mode=commentsMode();return mode === 'native' || mode === 'all'; }
+    function applyCommentsMode() {
+        var features=root.lampa_settings && root.lampa_settings.disable_features;
+        if (commentsFeature && (nativeCommentsEnabled() || commentsFeature !== features)) {
+            // Restore only our own override, including a pre-existing native restriction.
+            if (commentsFeature.discuss === true) {
+                if (commentsFeatureOriginal === undefined) delete commentsFeature.discuss;
+                else commentsFeature.discuss=commentsFeatureOriginal;
+            }
+            commentsFeature=null;
+        }
+        if (!nativeCommentsEnabled() && features) {
+            if (!commentsFeature) { commentsFeature=features;commentsFeatureOriginal=features.discuss; }
+            features.discuss=true;
+        }
+    }
+    function filterNativeComments(event) {
+        if (!event || !event.link) return;
+        var main=event.link, saved=main._fabornDiscuss;
+        if (event.type === 'complite' && saved) return saved.restore();
+        if (event.type !== 'start' || nativeCommentsEnabled() || !event.data || !event.data.discuss || saved) return;
+        // Cached/custom API results can still contain CUB comments. Omit them while the
+        // native full component builds its rows; never hide live focusable rows with CSS.
+        var data=event.data, value=data.discuss;
+        main._fabornDiscuss={restore:function () {
+            if (!own(data,'discuss')) data.discuss=value;
+            delete main._fabornDiscuss;
+        }};
+        delete data.discuss;
+        if (typeof main.use === 'function') main.use({onDestroy:main._fabornDiscuss.restore});
+    }
+    function commentsChanged() {
+        applyCommentsMode();
+        if (commentsUI) commentsUI.changed();
+        else if (sourceCommentsEnabled()) loadComments();
     }
     function baseURL() {
         var base = capturedBase, plugins;
@@ -1137,7 +1181,7 @@
             var title, playerError;
             try { title = providerPage(body,url); } catch (e) { return done(e); }
             if (!sameTitle(movie,title,true)) return done(new Error('Назва, рік або тип не збігаються з карткою.'));
-            if (commentsUI && storage('source_comments','on') !== 'off') commentsUI.remember(movie,url,body);
+            if (commentsUI && sourceCommentsEnabled()) commentsUI.remember(movie,url,body);
             title.originalLanguage = /^[a-z]{2}$/.test(text(movie.original_language)) ? movie.original_language : '';
             title.releases = title.releases.filter(function (r) {
                 r.audioLanguage = audioLanguage(r.voice,title.audioLanguage,title.originalLanguage);
@@ -2459,10 +2503,10 @@
         root.document.head.appendChild(interfaceScript);
     }
     function loadComments() {
-        if (!root.document || !root.document.querySelector || commentsUI || commentsScript || !baseURL()) return;
+        if (!sourceCommentsEnabled() || !root.document || !root.document.querySelector || commentsUI || commentsScript || !baseURL()) return;
         function ready() {
             if (typeof root.FabornComments !== 'function') return;
-            commentsUI = root.FabornComments(root,L,$,{request:xhr,providers:PROVIDERS,providerSearch:providerSearch,providerPage:providerPage,sameTitle:sameTitle});
+            commentsUI = root.FabornComments(root,L,$,{enabled:sourceCommentsEnabled,request:xhr,providers:PROVIDERS,providerSearch:providerSearch,providerPage:providerPage,sameTitle:sameTitle});
             commentsUI.install();
             if (lastFullEvent) commentsUI.full(lastFullEvent);
         }
@@ -2550,7 +2594,7 @@
         var api = L.SettingsApi;
         if (!api || !api.addComponent || !api.addParam) return;
         api.addComponent({component: 'faborn_ukr', name: NAME, icon: ICON});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_source_comments',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Коментарі з джерел',description:'Компактні відгуки UAFix та UASerials під описом. Завантажуються при переході до ряду; OK — повний текст. Після зміни повторно відкрий картку.'},onChange:function(){if(commentsUI)commentsUI.changed();else loadComments();}});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_comments',type:'select',values:{sources:'Лише з джерел',native:'Лише Lampa',all:'Усі',off:'Приховати всі'},default:commentsMode()},field:{name:'Коментарі в картці',description:'З джерел — UAFix та UASerials; Lampa — штатні відгуки CUB. Можна показати один блок, обидва або приховати всі. Після зміни повторно відкрий картку.'},onChange:commentsChanged});
         ['intro','credits','source'].forEach(function(kind) {
             api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_skip_'+kind,type:'select',values:{on:'Увімкнено',off:'Вимкнено'},default:'off'},field:{name:kind==='intro' ? 'Пропуск вступу за мітками' : kind==='credits' ? 'Пропуск титрів за мітками' : 'Пропуск за мітками джерела',description:kind==='source' ? 'Відрізки, позначені в самому відео. Кнопка «Пропустити фрагмент» з відліком 7 секунд; Назад — скасувати. Доступно, якщо джерело передає мітки.' : 'Кнопка з відліком 7 секунд на мітці відео. OK — одразу, Назад — скасувати. Без міток нічого не пропускається.'},onChange:function(){if(skipUI)skipUI.start(L.Player.playdata());}});
         });
@@ -2559,10 +2603,10 @@
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_style',type:'select',values:{on:'Faborn',off:'Стандартна Lampa'},default:'on'},field:{name:'Оформлення торрентів',description:'Бейджі релізу, пріоритет Toloka та «Рекомендуємо» від 50 сідів за даними парсера.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_home',type:'select',values:{on:'Faborn · компактні постери',off:'Стандартна Lampa'},default:'on'},field:{name:'Головний екран',description:'Шість постерів у ряд, оцінки, прогрес і один опис вибраного фільму. Після зміни повторно відкрий головну.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_discover_tab',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Вкладка «Що подивитися»',description:'Окремий пункт меню: три фільми за настроєм, вільним часом і оцінкою.'},onChange:applyAppearance});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_series_tab',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Вкладка «Мої серіали»',description:'Власний список поточного профілю. Додавання кнопкою «Стежити» в картці серіалу.'},onChange:applyAppearance});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_watched',type:'button'},field:{name:'Переглянуте та перенесення',description:'Позначити серіал / сезон, скасувати останні відмітки або скопіювати збережений прогрес іншого профілю на цьому пристрої.'},onChange:function(){if(hubUI)hubUI.progressTools();else notify('Центр серіалів ще завантажується. Спробуй за мить.');}});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_episode_countdown',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Відлік до нової серії',description:'Сьогодні, завтра або кількість днів у картці та «Моїх серіалах». Дата виходу за TMDB, без гарантії наявності озвучення.'},onChange:applyAppearance});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_episode_notifications',type:'select',values:{on:'Увімкнено',off:'Вимкнено'},default:'on'},field:{name:'Сповіщення про нові серії',description:'У меню Lampa, лише для «Моїх серіалів». Перевірка раз на 6 годин під час роботи застосунку; без повтору й без переривання відео.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_series_tab',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Вкладка «Моя медіатека»',description:'Фільми й серіали поточного профілю. «+» у картці — додати; після 80% перегляду фільм автоматично потрапляє до «Переглянуто».'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_watched',type:'button'},field:{name:'Переглянуте та перенесення',description:'Позначити серіал / сезон, скасувати відмітки або перенести медіатеку й прогрес іншого профілю на цьому пристрої.'},onChange:function(){if(hubUI)hubUI.progressTools();else notify('Медіатека ще завантажується. Спробуй за мить.');}});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_episode_countdown',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Відлік до нової серії',description:'Сьогодні, завтра або кількість днів у картці та медіатеці. Дата виходу за TMDB, без гарантії наявності озвучення.'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_episode_notifications',type:'select',values:{on:'Увімкнено',off:'Вимкнено'},default:'on'},field:{name:'Сповіщення про нові серії',description:'У меню Lampa, для серіалів медіатеки. Перевірка раз на 6 годин під час роботи застосунку; без повтору й без переривання відео.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_poster_style',type:'select',values:{glass:'Скляні капсули',cinema:'Кіноплашки',minimal:'Мінімальні значки',off:'Стандартні Lampa'},default:'glass'},field:{name:'Бейджі на постерах',description:'Тип, оцінки, підтверджені якість і мови, позначки перегляду. На головній та в категоріях.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_initial_focus',type:'select',values:{on:'ukr by Faborn',off:'Вибір Lampa'},default:'on'},field:{name:'Початкова кнопка в картці',description:'Вибір іконки при відкритті. Після руху пультом фокус залишається під твоїм керуванням.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_studios',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Студії під постерами',description:'Netflix, Apple TV, Prime Video та інші добірки фільмів і серіалів. Для головної Faborn.'},onChange:applyAppearance});
@@ -2607,6 +2651,7 @@
         L.Activity.push(request);
     }
     function attach(event) {
+        filterNativeComments(event);
         if (!event || event.type !== 'complite' || !event.object || !event.object.activity || !event.data || !event.data.movie) return;
         lastFullEvent = event;
         var render = event.object.activity.render(), button, torrent, anchor;
@@ -2637,6 +2682,8 @@
         L = root.Lampa; $ = root.jQuery;
         if (!L.Listener || !L.Select || !L.Player) return;
         installed = true;
+        save('comments',commentsMode());
+        applyCommentsMode();
         save('lab4k','off'); save('lab4k_status','');
         if (storage('source','uakino') === 'uakinogo') save('source','kinobase');
         if (!$('#faborn-ukr-style').length) $('body').append('<style id="faborn-ukr-style">.full-start__button.view--faborn-ukr,.full-start__button.view--faborn-torrent{justify-content:center;border:0!important;outline:0!important;box-shadow:none!important}.full-start__button.view--faborn-ukr>svg,.full-start__button.view--faborn-torrent>svg{margin:0!important;flex-shrink:0}.full-start__button.view--faborn-torrent>:not(svg),.full-start__button.view--faborn-torrent:before,.full-start__button.view--faborn-torrent:after,.full-start__button.view--faborn-ukr>:not(svg),.full-start__button.view--faborn-ukr:before,.full-start__button.view--faborn-ukr:after{display:none!important}</style>');

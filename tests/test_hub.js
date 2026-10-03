@@ -212,3 +212,52 @@ test('a new calendar day recomputes release counts even within the metadata TTL'
  assert.equal(result.state.pending,1);t.mock.timers.tick(120000);
  cache.load(task,show,(err,data)=>result=data);assert.equal(result.state.pending,2);
 });
+
+test('film groups persist, keep wanted first, and never change series or playback progress',()=>{
+ const e=env();e.api.follow(show,true);e.put('Movie',{percent:35,time:300,updated:1});
+ assert.equal(e.api.saveMovie(film,'wanted').ok,true);e.api.saveMovie({...film,id:2},'watched');e.api.saveMovie({...film,id:3},'wanted');
+ const again=factory(e.root,e.L,null);assert.deepEqual(again.movieList().map(m=>m.libraryState),['wanted','wanted','watched']);
+ assert.equal(again.has(show),true);assert.equal(again.road(film,0,0).time,300);
+ assert.equal(again.saveMovie(film,'watched').changed,true);assert.equal(again.saveMovie(film,'watched').changed,false);
+ assert.equal(again.saveMovie(film,'remove').ok,true);assert.equal(again.road(film,0,0).time,300);assert.equal(e.history.length,0);
+});
+test('film library is profile-specific, validates media identity, and stores no playback credentials',()=>{
+ const e=env();assert.equal(e.api.saveMovie(show,'wanted').ok,false);assert.equal(e.api.saveMovie({...film,source:'other'},'wanted').ok,false);
+ assert.equal(e.api.saveMovie({...film,media_type:'person'},'wanted').ok,false);assert.equal(e.api.saveMovie(film,'invalid').ok,false);
+ e.api.saveMovie({...film,url:'secret',timeline:{token:'secret'}},'wanted');assert.ok(!JSON.stringify(e.storage).includes('secret'));
+ e.profile('other');assert.equal(e.api.movieList().length,0);e.api.saveMovie(film,'watched');e.profile('file_view');assert.equal(e.api.movieList()[0].libraryState,'wanted');
+ e.L.Storage.set=()=>{throw Error('full');};assert.equal(e.api.saveMovie({...film,id:9},'watched').ok,false);
+});
+test('film history is an explicit choice and excludes series, duplicates and existing entries',()=>{
+ const e=env();e.history.push(show,film,film,{...film,id:2});assert.deepEqual(e.api.importMovies().map(m=>m.id),[100,2]);assert.equal(e.api.movieList().length,0);
+ e.api.saveMovie(film,'wanted');assert.deepEqual(e.api.importMovies().map(m=>m.id),[2]);
+});
+function playback(e,data={card:film,timeline:{hash:'movie'}}){e.L.Player={playdata:()=>data};e.api.startMoviePlayback(data);return data;}
+test('80 percent adds an unlisted film once; 79.9 percent never adds it',()=>{
+ const e=env();let writes=0;const set=e.L.Storage.set;e.L.Storage.set=(k,v)=>{if(k.includes('my_movies_'))writes++;set(k,v);};
+ playback(e);e.api.updateMoviePlayback({current:799,duration:1000});assert.equal(e.api.movieList().length,0);
+ e.api.updateMoviePlayback({current:800,duration:1000});assert.equal(e.api.movieList()[0].libraryState,'watched');
+ for(let i=0;i<100;i++)e.api.updateMoviePlayback({current:850,duration:1000});assert.equal(writes,1);assert.equal(e.calls.length,0);
+});
+test('online and torrent playback share film identity and move a wanted film into watched',()=>{
+ const e=env();e.api.saveMovie(film,'wanted');
+ playback(e,{card:film,isonline:true,timeline:{hash:'online'}});e.api.updateMoviePlayback({current:800,duration:1000});assert.equal(e.api.movieList()[0].libraryState,'watched');
+ e.api.finishMoviePlayback();playback(e,{card:film,torrent_hash:'hash',timeline:{hash:'torrent'}});e.api.movieTimelineUpdated({data:{hash:'unrelated',road:{time:800,duration:1000}}});
+ e.api.movieTimelineUpdated({data:{hash:'torrent',road:{time:800,duration:1000}}});assert.equal(e.api.movieList().length,1);
+});
+test('autowatched ignores series, IPTV, trailers, missing identity and invalid time data',()=>{
+ for(const data of [{card:show,timeline:{}},{card:film,episode:1,timeline:{}},{card:film,iptv:true,timeline:{}},{card:film,trailer:true,timeline:{}},{title:'Unknown',timeline:{}},{card:film}]){
+  const e=env();playback(e,data);e.api.updateMoviePlayback({current:800,duration:1000});assert.equal(e.api.movieList().length,0);
+ }
+ for(const event of [{current:800,duration:0},{current:Infinity,duration:1000},{current:800,duration:NaN},{current:2000,duration:1000}]){const e=env();playback(e);e.api.updateMoviePlayback(event);assert.equal(e.api.movieList().length,0);}
+});
+test('late playback events cannot write into another profile or a new player session',()=>{
+ const e=env();playback(e);e.profile('other');e.api.updateMoviePlayback({current:800,duration:1000});assert.equal(e.api.movieList().length,0);e.profile('file_view');assert.equal(e.api.movieList().length,0);
+ const f=env();playback(f);f.L.Player.playdata=()=>({});f.api.updateMoviePlayback({current:800,duration:1000});assert.equal(f.api.movieList().length,0);
+ const g=env();playback(g);g.api.finishMoviePlayback();g.api.updateMoviePlayback({current:800,duration:1000});assert.equal(g.api.movieList().length,0);
+});
+test('resume confirmation and stopped timecodes do not create autowatched entries',()=>{
+ const e=env(),data=playback(e);data.timeline.waiting_for_user=true;e.api.updateMoviePlayback({current:800,duration:1000});assert.equal(e.api.movieList().length,0);
+ data.timeline.waiting_for_user=false;data.timeline.stop_recording=true;e.api.updateMoviePlayback({current:800,duration:1000});assert.equal(e.api.movieList().length,0);
+ data.timeline.stop_recording=false;e.api.updateMoviePlayback({current:800,duration:1000});assert.equal(e.api.movieList().length,1);
+});
