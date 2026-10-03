@@ -1440,3 +1440,9 @@ test('Back cancels an in-flight recovery and a failure returns to cached UASeria
   assert.equal(state.played,null);assert.equal(state.controller,'select');assert.equal(state.nativeNext,0);
  }
 });
+
+test('a completed empty KinoBase search is distinguished from a transport outage',()=>{
+ const e=kinoEnvironment();e.instance.open({...kinoSeries,first_air_date:'2026-01-01'});
+ const issue=e.state.menu.items.find(i=>i.action==='kinostatus');assert.ok(issue);assert.equal(issue.title,'KinoBase · немає збігу');assert.match(issue.subtitle,/Пошук відповів/);
+ assert.ok(!e.state.requests.some(r=>r.url.includes('/vod/')));
+});

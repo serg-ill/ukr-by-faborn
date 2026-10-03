@@ -261,3 +261,25 @@ test('resume confirmation and stopped timecodes do not create autowatched entrie
  data.timeline.waiting_for_user=false;data.timeline.stop_recording=true;e.api.updateMoviePlayback({current:800,duration:1000});assert.equal(e.api.movieList().length,0);
  data.timeline.stop_recording=false;e.api.updateMoviePlayback({current:800,duration:1000});assert.equal(e.api.movieList().length,1);
 });
+
+test('series catalogue sorts every TMDB page before pagination, with all countries and 100 votes by default',()=>{
+ const {api}=env(),q=api.catalogRequest({},3,'2026-10-03');
+ assert.equal(q.url,'discover/tv');assert.equal(q.source,'tmdb');assert.equal(q.page,3);assert.equal(q.sort_by,'popularity.desc');assert.equal(q.filter['vote_count.gte'],100);
+ assert.equal(q.filter['first_air_date.lte'],'2026-10-03');assert.ok(!q.filter.with_origin_country);assert.ok(!q.filter.with_original_language);assert.equal(q.filter.with_type,'2|4');assert.ok(!api.catalogRequest({format:'all'},1,'2026-10-03').filter.with_type);
+ assert.equal(api.catalogRequest({sort:'rating'},1,'2026-10-03').sort_by,'vote_average.desc');assert.equal(api.catalogRequest({sort:'new'},1,'2026-10-03').sort_by,'first_air_date.desc');
+});
+test('series catalogue preferences persist and reject injected or malformed filters',()=>{
+ const e=env(),prefs={sort:'rating',votes:500,country:'UA',format:'series'};e.storage.faborn_ukr_catalog_tv=prefs;
+ assert.deepEqual(factory(e.root,e.L,null).catalogPreferences(e.storage.faborn_ukr_catalog_tv),prefs);
+ const q=e.api.catalogRequest({sort:'x&api_key=bad',votes:-2,country:'US|bad'},9999,'2026-99-99');
+ assert.equal(q.page,1);assert.equal(q.sort_by,'popularity.desc');assert.equal(q.filter['vote_count.gte'],100);assert.ok(!JSON.stringify(q).includes('bad'));
+ assert.equal(e.api.catalogRequest(prefs,2,'2026-10-03').filter.with_origin_country,'UA');assert.equal(e.api.catalogPreferences({votes:null}).votes,100);assert.equal(e.api.catalogPreferences({votes:0}).votes,0);
+});
+test('series menu routing respects native mode and other catalogues without changing the library',()=>{
+ const e=env(),calls=[];e.L.Activity={push:o=>calls.push(o)};let aborted=0;const event={type:'action',action:'tv',abort(){aborted++;}};
+ e.api.catalogMenu({...event,action:'movie'});e.api.catalogMenu({...event,action:'faborn_series'});assert.equal(calls.length,0);
+ e.storage.source='cub';e.api.catalogMenu(event);assert.equal(calls.length,0);
+ e.storage.source='tmdb';e.storage.faborn_ukr_catalog_series='off';e.api.catalogMenu(event);assert.equal(calls.length,0);
+ e.storage.faborn_ukr_catalog_series='on';e.storage.faborn_ukr_catalog_tv={sort:'new',votes:20,country:'all'};e.api.catalogMenu(event);
+ assert.equal(aborted,1);assert.equal(calls.length,1);assert.equal(calls[0].component,'faborn_catalog');assert.equal(calls[0].sort_by,'first_air_date.desc');assert.equal(calls[0].page,1);assert.equal(e.api.list().length,0);
+});

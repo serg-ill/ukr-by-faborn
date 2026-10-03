@@ -54,3 +54,16 @@ test('nested EN folders keep language through season and episode names',()=>{
  const entries=api.playerEntries('new Playerjs({file:'+JSON.stringify(JSON.stringify(tree))+'})',{type:'tv'});
  assert.equal(entries.length,1);assert.equal(entries[0].audioLanguage,'en');assert.equal(entries[0].season,2);assert.equal(entries[0].episode,7);
 });
+
+test('an unnamed later-season episode never inherits the whole series translation list',()=>{
+ const names='Дублированный Red Head Sound, Профессиональный многоголосый Кубик в Кубе, Профессиональный многоголосый LostFilm';
+ const stream='https://primary.redcdn.org/1080/master-v1-a1.m3u8';
+ const tree=[{title:'1 сезон',folder:[{title:'8 серия',file:'[1080p]{Дублированный Red Head Sound}'+stream+';{Профессиональный многоголосый LostFilm}https://primary.redcdn.org/1080/master-v1-a2.m3u8'}]},{title:'2 сезон',folder:[{title:'8 серия',file:'[1080p]'+stream+' or https://mirror.threnet.xyz/1080/master-v1-a1.m3u8'}]}];
+ const entries=api.kinoEntries(['p',JSON.stringify(tree)],{type:'tv',voice:names});
+ assert.equal(entries.length,3);assert.deepEqual(entries.filter(e=>e.season===1).map(e=>e.voice),['Дублированный Red Head Sound','Профессиональный многоголосый LostFilm']);
+ assert.equal(entries[2].voice,'Озвучення без назви');assert.equal(entries[2].mirrors['1080p'].length,2);assert.equal(entries[2].audioLanguage,'ru');
+ entries.forEach(e=>e.resolvedAt=Date.now());
+ const releases=entries.map((e,i)=>({id:'r'+i,source:'kinobase',voice:e.voice,audioLanguage:e.audioLanguage,episodes:[e]}));
+ assert.deepEqual(api.sourceGroups({title:{releases},season:1,episode:8}).groups.map(g=>g.voice),['Red Head Sound','LostFilm']);
+ assert.deepEqual(api.sourceGroups({title:{releases},season:2,episode:8}).groups.map(g=>g.voice),['Озвучення без назви']);
+});

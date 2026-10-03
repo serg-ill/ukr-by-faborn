@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.35 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.36 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.35';
+    var VERSION = '0.1.0-beta.36';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
     var commentsUI = null, commentsScript = null;
@@ -293,7 +293,7 @@
         rule('.player-panel__time','background:#182b43;border:1px solid rgba(210,229,255,.25);border-radius:.65em;color:#fff;font-variant-numeric:tabular-nums');
         rule('.player-panel__box-buttons','background:none;border-radius:0');
         rule('.player-panel .button','width:2.8em;height:2.8em;padding:.75em;margin:0 .13em;border:1px solid rgba(218,233,255,.12);border-radius:.95em;background:rgba(202,221,255,.09);color:#f5f8ff;box-sizing:border-box');
-        rule('.player-panel__playpause','font-size:1.22em;border-radius:50%!important');
+        rule('.player-panel__playpause','font-size:1.22em;border-radius:.95em!important');
         rule('.player-panel__playpause:not(.focus)','background:rgba(225,237,255,.17)');
         rule('.player-panel__quality','border-radius:.85em!important;font-weight:600;letter-spacing:.025em');
         rule('.player-panel .button .tooltip','font-size:.88em;padding:.3em .55em;color:#e5edfb;text-shadow:0 1px 3px #000');
@@ -323,7 +323,8 @@
         rule('.noty','left:12%;right:12%;bottom:1em;border-radius:1.4em');
         rule('.noty:not(.noty--visible)','visibility:hidden');
         rule('.simple-keyboard.hg-theme-default','background:transparent');
-        rule('.hg-button','border:0;border-radius:.8em;background:rgba(255,255,255,.12);color:#fff;box-shadow:none');
+        rule('.simple-keyboard .hg-button','display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;padding:.18em .25em;min-height:1.6em;line-height:1;border:0;border-radius:.65em;background:rgba(255,255,255,.12);color:#fff;box-shadow:none');
+        rule('.simple-keyboard .hg-standardBtn>span','display:block;line-height:1;text-align:center;position:relative;top:-.04em');
         rule('.settings-input__input,.simple-keyboard-input','background:rgba(0,0,0,.18);border:0;border-radius:.8em;color:#fff');
         rule('.fbr-overlay','background:rgba(4,8,16,'+glass.veil+')');
         rule('.fbr-window','border-radius:1.8em');
@@ -948,7 +949,9 @@
             while ((m = re.exec(text(file)))) {
                 var q = m[1]+'p', voices = /\{([^}]+)\}([^{}]+)/g, v, chunks = [];
                 while ((v = voices.exec(m[2]))) chunks.push({voice:plain(v[1]),file:v[2]});
-                if (!chunks.length) chunks.push({voice:title.voice,file:m[2]});
+                // The page lists translations across all seasons. An unnamed
+                // episode must not inherit that entire list as one audio track.
+                if (!chunks.length) chunks.push({voice:(!/[,;]/.test(title.voice || '') && text(title.voice).length <= 100 ? title.voice : '') || 'Озвучення без назви',file:m[2]});
                 chunks.forEach(function (chunk) {
                     if (foreignVoice(chunk.voice,title.originalLanguage)) return;
                     var urls = unique((chunk.file.match(/https:\/\/[^\s;,{}]+/g) || []).filter(function (u) { return mediaURL(u) && /\.m3u8(?:\?|$)/i.test(u); }));
@@ -1502,7 +1505,9 @@
     function qualityLabel(value) { return value === '2160p' ? '4K · 2160p' : value === 'auto' ? 'Авто' : value; }
     function voiceLabel(release, episode) {
         // The player number distinguishes mirrors, not translations. Keep the original release for playback.
-        return plain(episode.voice || release.voice).replace(/\s*·\s*плеєр\s+\d+$/i,'').trim() || 'Українське озвучення';
+        var label = plain(episode.voice || release.voice).replace(/\s*·\s*плеєр\s+\d+$/i,'').trim();
+        if (release.source === 'kinobase') label = label.replace(/^(?:Профессиональный|Любительский)\s+(?:многоголосый|двухголосый|одноголосый)\s+/i,'').replace(/^Дублированный\s+(?=\S)/i,'');
+        return label || defaultVoice(release.audioLanguage);
     }
     function sourceGroups(session) {
         var entries = [], values = [], preferredSource = storage('source','uakino');
@@ -1620,6 +1625,7 @@
             });
         });
         if (qualities.length) return {title:'KinoBase · інша якість',message:'Доступно: '+unique(qualities).join(', ')+'. Змініть якість вище.'};
+        if (!errors.length && session.status.kinobase === 'Назву не знайдено') return {title:'KinoBase · немає збігу',message:'Пошук відповів, але серіал або фільм із назвою та роком цієї картки не знайдено.'};
         return {title:'KinoBase · недоступне',message:unique(errors).join('; ') || (session.status.kinobase === 'Знайдено' ? 'Для цієї серії немає перевіреного потоку.' : session.status.kinobase)};
     }
     function kinoDetails(session) {
@@ -2051,11 +2057,12 @@
         return rows && rows.length ? {source:rows.map(function (row) { return {start_sec:row.start_sec,end_sec:row.end_sec}; }),sourceName:sourceName(release.source)} : null;
     }
     function playData(movie, title, release, episode, preference) {
+        var voice = release.source === 'kinobase' ? voiceLabel(release,episode) : release.voice;
         var url = pickURL(episode, preference), result = {
             url: url, faborn_url: url, faborn_episode: episode.id, faborn_title: title.id, faborn_release: release.id, faborn_quality: preference,
             quality: episode.qualities, faborn_segments:episodeSegments(release,episode,url),
-            title: title.title + (title.type === 'tv' ? ' · S' + episode.season + 'E' + episode.episode : '') + ' · ' + release.voice,
-            season: episode.season, episode: episode.episode, voice_name: release.voice,
+            title: title.title + (title.type === 'tv' ? ' · S' + episode.season + 'E' + episode.episode : '') + ' · ' + voice,
+            season: episode.season, episode: episode.episode, voice_name: voice,
             isonline: true
         };
         var subtitles = subtitlesFrom(episode.subtitles || []);
@@ -2715,7 +2722,8 @@
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_torrent_style',type:'select',values:{on:'Faborn',off:'Стандартна Lampa'},default:'on'},field:{name:'Оформлення торрентів',description:'Бейджі релізу, пріоритет Toloka та «Рекомендуємо» від 50 сідів за даними парсера.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_home',type:'select',values:{on:'Faborn · компактні постери',off:'Стандартна Lampa'},default:'on'},field:{name:'Головний екран',description:'Шість постерів у ряд, оцінки, прогрес і один опис вибраного фільму. Після зміни повторно відкрий головну.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_discover_tab',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Вкладка «Що подивитися»',description:'Окремий пункт меню: три фільми за настроєм, вільним часом і оцінкою.'},onChange:applyAppearance});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_series_tab',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Вкладка «Моя медіатека»',description:'Фільми й серіали поточного профілю. «+» у картці — додати; після 80% перегляду фільм автоматично потрапляє до «Переглянуто».'},onChange:applyAppearance});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_catalog_series',type:'select',values:{on:'Faborn · сортування',off:'Звичайна Lampa'},default:'on'},field:{name:'Каталог серіалів',description:'Меню «Серіали» для TMDB: популярні, рейтинг або новинки; поріг оцінок і країни. Типово — всі країни, популярні з 100+ оцінками. Вибір зберігається.'}});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_series_tab',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Вкладка «Медіатека»',description:'Фільми й серіали поточного профілю. «+» у картці — додати; після 80% перегляду фільм автоматично потрапляє до «Переглянуто».'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_watched',type:'button'},field:{name:'Переглянуте та перенесення',description:'Позначити серіал / сезон, скасувати відмітки або перенести медіатеку й прогрес іншого профілю на цьому пристрої.'},onChange:function(){if(hubUI)hubUI.progressTools();else notify('Медіатека ще завантажується. Спробуй за мить.');}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_episode_countdown',type:'select',values:{on:'Показувати',off:'Приховати'},default:'on'},field:{name:'Відлік до нової серії',description:'Сьогодні, завтра або кількість днів у картці та медіатеці. Дата виходу за TMDB, без гарантії наявності озвучення.'},onChange:applyAppearance});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_episode_notifications',type:'select',values:{on:'Увімкнено',off:'Вимкнено'},default:'on'},field:{name:'Сповіщення про нові серії',description:'У меню Lampa, для серіалів медіатеки. Перевірка раз на 6 годин під час роботи застосунку; без повтору й без переривання відео.'},onChange:applyAppearance});
