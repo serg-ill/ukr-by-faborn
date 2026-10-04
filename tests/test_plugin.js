@@ -1702,3 +1702,19 @@ test('UAKinogo playback keeps voice choices, restart intent, progress and a retu
  e.state.progress(120,600);e.root.Lampa.Player.close();assert.ok(e.state.menu.items.some(i=>i.release?.source==='uakinogo'));assert.equal(e.state.controller,'select');
  e.state.choose(i=>i.action==='restart');assert.equal(e.state.played.faborn_from_start,undefined);assert.equal(e.state.played.timeline.time,0);
 });
+test('UAKinogo beta uses the selected custom player, refreshes quality and voice, and preserves shared progress',()=>{
+ const e=betaEnvironment({storage:{faborn_ukr_uakinogo_beta:'on',faborn_ukr_uakinogo_server:'http://192.168.88.191:8787'}});let cb;const changes=[];
+ const url='http://127.0.0.1:12345/0123456789abcdef0123456789abcdef/0.m3u8';
+ e.root.document.createElement=()=>({});e.root.document.head={appendChild(script){script.onload();}};
+ e.root.Faborn4KLab=()=>({discover(m,s,n,c){cb=c;},cancel(){},playChoice(){
+  const stream={url,quality:'2160p'},item=cb.playerData(stream);item.faborn_4klab=true;cb.beforePlay();
+  cb.betaPlayer((error,player)=>{assert.equal(error,null);player.play(cb.betaSpec(stream,item));});
+ },switchChoice(selected,done){changes.push(selected);done(null,{url,quality:selected.quality});}});
+ e.instance.open(kinoMovie);assert.equal(cb.controller,'full_start');
+ cb.result({season:0,episode:0,episodes:[{season:0,episode:0}],tracks:[{label:'UA',language:'uk',qualities:['2160p','1080p']},{label:'English',language:'en',qualities:['2160p','1080p']}]});
+ e.state.play('2160p');const spec=e.getSpec();assert.equal(e.state.played,null);assert.equal(spec.loopback,url);assert.deepEqual(spec.urls,[url]);assert.equal(spec.voices.length,2);assert.equal(e.state.playerCallback,undefined);
+ spec.onTime({current:312,duration:6000,force:true});assert.equal(e.state.timelines['faborn|tmdb-movie-'+kinoMovie.id+'|0|0'].time,312);
+ let next;spec.request({type:'quality',quality:'1080p'},(err,value)=>{assert.equal(err,null);next=value;});assert.equal(next.quality,'1080p');assert.equal(next.time,312);
+ const english=next.voices.find(v=>v.title==='English');next.request({type:'voice',id:english.id},(err,value)=>{assert.equal(err,null);next=value;});assert.equal(changes.at(-1).language,'en');assert.equal(changes.at(-1).quality,'1080p');
+ const before=e.state.requests.length;e.close();assert.equal(e.state.requests.length,before);assert.ok(e.state.menu.items.some(i=>i.group && i.group.entries.some(r=>r.release.source==='uakinogo')));
+});

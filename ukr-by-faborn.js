@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.42 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.43 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.42';
+    var VERSION = '0.1.0-beta.43';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
     var commentsUI = null, commentsScript = null;
@@ -2835,6 +2835,7 @@
         session.uiFocus='play';
     }
     function betaNext(context) {
+        if(context.lab)return null;
         var list=context.title.type==='tv' ? availablePlaylist(context.release,context.episode) : [],index=list.indexOf(context.episode);
         return index>=0 ? list[index+1] : null;
     }
@@ -2855,8 +2856,8 @@
     }
     function betaSpec(context,fromStart) {
         var episode=context.episode,release=context.release,title=context.title;
-        var data=playData(context.movie,title,release,episode,context.quality);context.data=data;
-        var urls=unique([data.url].concat(episode.mirrors && episode.mirrors[context.quality] || [])).filter(mediaURL).slice(0,3);
+        var data=context.lab ? context.lab.item : playData(context.movie,title,release,episode,context.quality);context.data=data;
+        var urls=context.lab ? [data.url] : unique([data.url].concat(episode.mirrors && episode.mirrors[context.quality] || [])).filter(mediaURL).slice(0,3);
         var version=/\bTizen[\s\/]+([\d.]+)/i.exec(text(root.navigator && root.navigator.userAgent));
         var legacy=!!(episode.kino && context.quality==='2160p' && storage('legacy4k','off')==='on' && version && parseFloat(version[1])>=2.3 && parseFloat(version[1])<5);
         try { if(root.webapis.productinfo && root.webapis.productinfo.isUdPanelSupported && root.webapis.productinfo.isUdPanelSupported()===false)legacy=false; } catch(ignore){}
@@ -2871,8 +2872,8 @@
             url:data.url,urls:urls,title:title.title+(title.type==='tv' ? ' · S'+episode.season+'E'+episode.episode : ''),
             detail:sourceName(release.source)+' · '+voiceLabel(release,episode)+' · '+context.quality,
             quality:context.quality,qualities:qualityNames(episode),voice:release.id,
-            voices:playerVoiceRows(title,release,episode,context.quality).map(function(row){return {id:row.release.id,title:voiceLabel(row.release,row.episode),detail:sourceName(row.release.source)};}),
-            subtitles:data.subtitles || [],next:!!betaNext(context),legacy4k:legacy,
+            voices:playerVoiceRows(title,release,episode,context.quality).filter(function(row){return !context.lab || row.episode.lab;}).map(function(row){return {id:row.release.id,title:voiceLabel(row.release,row.episode),detail:sourceName(row.release.source)};}),
+            subtitles:data.subtitles || [],next:!!betaNext(context),legacy4k:legacy,loopback:context.lab ? data.url : '',
             time:!fromStart && data.timeline && canResume(data.timeline) ? +data.timeline.time || 0 : 0,
             onTime:function(event){if(context.data===data)betaProgress(context,event);},
             onStarted:function(){if(betaCurrent(context)){save('last_error','');captureNativeState();}},
@@ -2884,7 +2885,7 @@
                 completePlayback(data);
                 if(betaNext(context) && L.Storage.field && L.Storage.field('playlist_next'))betaPlayer.change({type:'next'});
             },
-            request:function(action,done){betaChange(context,action,done);},
+            request:function(action,done){if(context.lab)betaLabChange(context,action,done);else betaChange(context,action,done);},
             onClose:function(restoreView){
                 if(betaContext!==context)return;
                 context.closed=true;betaContext=null;
@@ -2895,6 +2896,29 @@
                 if(session){activeSession=session;session.ready=true;betaSelection(context);renderSources(session);}else restore();
             }
         };
+    }
+    function betaLabChange(context,action,done) {
+        if(!betaCurrent(context))return done(new Error('Перегляд уже закрито.'));
+        var episode=context.episode,release=context.release,quality=context.quality;
+        if(action.type==='next')return done(new Error('Наступну серію обери у списку джерел.'));
+        if(action.type==='quality')quality=action.quality;
+        if(action.type==='voice') {
+            var row=playerVoiceRows(context.title,release,episode,quality).filter(function(item){return item.release.id===action.id && item.episode.lab;})[0];
+            if(!row)return done(new Error('Озвучення Alloha недоступне.'));
+            episode=row.episode;release=row.release;
+        }
+        if(qualityNames(episode).indexOf(quality)<0)return done(new Error('Обрана якість недоступна.'));
+        if(context.busy)return done(new Error('Дочекайся оновлення потоку.'));
+        context.busy=true;
+        context.lab.adapter.switchChoice({season:episode.season,episode:episode.episode,label:release.voice,language:release.audioLanguage,quality:quality},function(error,stream){
+            if(!betaCurrent(context))return;
+            context.busy=false;if(error)return done(error);
+            context.episode=episode;context.release=release;context.quality=quality;
+            var item=playData(context.movie,context.title,release,episode,quality);
+            item.url=item.faborn_url=stream.url;item.faborn_4klab=true;
+            context.lab.item=item;
+            done(null,betaSpec(context,action.type==='restart'));
+        });
     }
     function betaChange(context,action,done) {
         if(!betaCurrent(context))return done(new Error('Перегляд уже закрито.'));
@@ -3039,6 +3063,9 @@
         }
         function failure(message,playbackFailure) {
             if (!current()) return;
+            if (betaContext && betaContext.lab && betaContext.catalog.session === session && (!betaPlayer || !betaPlayer.active())) {
+                betaContext.closed = true; betaContext = null; historyPlayback = null;
+            }
             session.status.uakinogo = message; session.labPending = '';
             if (!playbackFailure) session.title.releases = session.title.releases.filter(function (r) { return r.source !== 'uakinogo'; });
             save('lab4k_status',message); refresh();
@@ -3049,6 +3076,7 @@
             if (!current()) return;
             if (error) { failure(error.message); return; }
             adapter.discover(session.movie,session.season,session.episode,{
+                controller:returnController,
                 stage:function (message) { if (current()) { session.status.uakinogo = message; refresh(); } },
                 error:failure,
                 episodes:function (items) { if (current()) session.labEpisodes = items; },
@@ -3079,9 +3107,19 @@
                     playbackContext = {movie:session.movie,catalog:session.catalog};
                     setPlayerVoices(item,session.movie,session.catalog,session.title,chosen.release,chosen.episode);
                     save('autoplay_status',session.title.type === 'tv' ? 'UAKinogo · бета: наступну серію обери у списку серій' : '');
-                    if (L.Player.callback) L.Player.callback(function () { if (current()) { session.labLaunching = false; renderSources(session); } });
+                    if (storage('player','lampa') !== 'beta' && L.Player.callback) L.Player.callback(function () { if (current()) { session.labLaunching = false; renderSources(session); } });
                     save('last_launch',session.title.title+' · '+chosen.value+' · UAKinogo / Alloha · передано плеєру');
                     return item;
+                },
+                betaPlayer:ensureBetaPlayer,
+                betaSpec:function (stream,item) {
+                    if (!current() || betaContext) throw new Error('Перегляд уже змінено або відкрито.');
+                    var chosen = session.labChosen;
+                    clearPlaybackWatch();cancelRestart();cancelVoiceSwitch();playerVoiceContext=null;
+                    if(playbackQueue){playbackQueue.closed=true;playbackQueue.serial++;playbackQueue=null;}
+                    if(skipUI)skipUI.stop();finishHistory();
+                    betaContext={movie:session.movie,catalog:session.catalog,title:session.title,release:chosen.release,episode:chosen.episode,quality:chosen.value,owner:timelineOwner(),closed:false,busy:false,lab:{adapter:adapter,item:item}};
+                    return betaSpec(betaContext,!!item.faborn_from_start);
                 },
                 beforePlay:function () { closePresentation(); L.Select.hide(); L.Controller.toggle(returnController); },
                 back:function () { if (current()) { session.labLaunching = false; renderSources(session); } else L.Controller.toggle(returnController); }

@@ -1,7 +1,7 @@
 'use strict';
 const http=require('node:http'),crypto=require('node:crypto');
 const {createResolver,card}=require('./resolver');
-const VERSION='0.1.0-beta.42';
+const VERSION='0.1.0-beta.43';
 function createService({resolve=createResolver(),keys=[],maxActive=3}={}){
  const cache=new Map(),rates=new Map();let active=0;
  function authorized(key){return !keys.length||keys.some(k=>{const a=Buffer.from(k),b=Buffer.from(String(key||''));return a.length===b.length&&crypto.timingSafeEqual(a,b);});}

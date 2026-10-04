@@ -97,6 +97,22 @@ test('unsupported format never silently falls back to another quality and report
  assert.equal(e.calls.filter(c=>c[0]==='open').length,1);assert.match(e.errors[0],/NOT_SUPPORTED_FORMAT/);assert.doesNotMatch(e.errors.join(''),/secret|private/);
  e.api.close();
 });
+test('only an explicitly owned tokenized loopback can use HTTP in the beta player',()=>{
+ const url='http://127.0.0.1:12345/0123456789abcdef0123456789abcdef/0.m3u8';
+ const e=environment();e.api.play(e.spec({url,loopback:url}));assert.equal(e.avState.url,url);e.prepare();e.at(1);e.api.close();
+ for(const bad of ['http://192.168.88.191/video.m3u8','http://localhost:12345/video.m3u8','http://127.0.0.1:12345/short/0.m3u8']){
+  const denied=environment();denied.api.play(denied.spec({url:bad,loopback:bad}));assert.equal(denied.calls.some(c=>c[0]==='open'),false);denied.api.close();
+ }
+ const unowned=environment();unowned.api.play(unowned.spec({url}));assert.equal(unowned.calls.some(c=>c[0]==='open'),false);unowned.api.close();
+});
+test('native failure captures bounded codec details and Back closes the failed player in one action',()=>{
+ const e=environment();e.api.play(e.spec());const listener=e.avState.listeners;
+ listener.onerror('PLAYER_ERROR_INVALID_OPERATION');
+ listener.onerrormsg('PLAYER_ERROR_INVALID_OPERATION',JSON.stringify({error_code:42,codec:'AV1',demux:'HLS',resolution:'3840x2160',fps:24,detail_info:'secret',url:'https://secret/token',headers:{Cookie:'private'}}));
+ e.advance(0);assert.match(e.errors[0],/IDLE.*codec=AV1.*3840x2160/);assert.doesNotMatch(e.errors[0],/secret|private|https|Cookie/);
+ e.key('keydown',10009);assert.equal(e.closed,1);assert.equal(e.controller,'full_start');assert.equal(e.avState.state,'NONE');assert.equal(e.jobs.size,0);
+ listener.onerrormsg('error','not JSON');listener.onerror('PLAYER_ERROR_INVALID_OPERATION');e.advance(0);assert.equal(e.errors.length,1);
+});
 test('an accepted resume seek without an advancing playback clock still times out',()=>{
  const e=environment();e.api.play(e.spec({time:210}));e.prepare();e.advance(45000);
  assert.equal(e.progress.length,0);assert.match(e.errors[0],/StartupTimeout/);e.api.close();

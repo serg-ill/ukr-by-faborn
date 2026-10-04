@@ -82,7 +82,7 @@ function harness() {
         setTimeout(fn,ms){const id=++state.nextTimer;state.timers.set(id,{fn,ms});return id;},clearTimeout(id){state.timers.delete(id);}};
     const L={Storage:{get(k,d){return state.prefs[k] ?? d;},set(k,v){state.prefs[k]=v;},field(){return 'tizen';}},
         Controller:{toggle(name){state.controller=name;}},Select:{show(menu){state.menu=menu;state.controller='select';},hide(){state.menu=null;}},
-        Player:{listener:listener(state.playerEvents),playdata(){return state.played;},playlist(){},play(data){state.played=data;state.controller='player';emit(state.playerEvents,'start',data);},close(){state.operations.push('player:close');state.closes++;state.played=null;emit(state.playerEvents,'destroy');}},
+        Player:{listener:listener(state.playerEvents),playdata(){return state.played;},playlist(){},callback(fn){state.playerCallback=fn;},play(data){state.played=data;state.controller='player';emit(state.playerEvents,'start',data);},close(){state.operations.push('player:close');state.closes++;state.played=null;emit(state.playerEvents,'destroy');if(state.playerCallback)state.playerCallback();state.playerCallback=null;}},
         PlayerVideo:{listener:listener(state.videoEvents)}};
     const ui=createUI(root,L,'https://serg-ill.github.io/ukr-by-faborn/lib/4klab/','0.1.0-beta.12');
     state.enable=()=>{state.prefs.faborn_ukr_uakinogo_beta='on';ui.open();};
@@ -204,6 +204,49 @@ test('cancel before a queued native error leaves no callback that can close anot
     const {ui,state}=playingCard();state.emitVideo('error');const late=[...state.timers.values()].find(t=>t.ms===0).fn;
     ui.cancel();state.played={url:'https://normal.example/movie'};late();
     assert.equal(state.closes,1);assert.equal(state.played.url,'https://normal.example/movie');assert.equal(state.menu,null);
+});
+test('native failure does not restore and cancel the card underneath its error dialog; Back restores it once',()=>{
+    const {ui,state,L}=harness();state.prefs.faborn_ukr_uakinogo_beta='on';let restored=0,backs=0;
+    ui.discover({title:'Film'},0,0,{controller:'full_start',playerData(){
+        L.Player.callback(()=>{restored++;ui.cancel();});return {title:'Film'};
+    },back(){backs++;state.controller='faborn_ukr_view';}});
+    state.message('resolved',{tracks:[],episodes:[],season:0,episode:0});
+    ui.playChoice({season:0,episode:0,label:'EN',language:'en',quality:'2160p'});
+    state.message('play',{url:'http://127.0.0.1:12345/'+key+'/0.m3u8',codecs:'av01'});
+    state.emitVideo('error');state.fireTimer(0);
+    assert.equal(restored,0);assert.equal(state.closes,1);assert.equal(state.menu.nohide,true);
+    state.choose('info');assert.ok(state.menu);assert.equal(state.controller,'select');
+    state.menu.onBack();assert.equal(backs,1);assert.equal(state.controller,'faborn_ukr_view');assert.equal(state.menu,null);
+    state.workers[0].onmessage({data:{type:'stopped'}});
+    ui.playChoice({season:0,episode:0,label:'EN',language:'en',quality:'1080p'});
+    assert.equal(state.workers[1].messages[0].choice.quality,'1080p');assert.equal(state.workers[1].messages[0].movie.title,'Film');
+});
+test('card playback uses the card controller rather than an unopened settings controller',()=>{
+    const {ui,state,L}=harness();state.prefs.faborn_ukr_uakinogo_beta='on';const toggles=[];
+    L.Controller.toggle=name=>{toggles.push(name);state.controller=name;};
+    ui.discover({title:'Film'},0,0,{controller:'full_start'});state.message('resolved',{tracks:[],episodes:[]});
+    ui.playChoice({season:0,episode:0,label:'EN',language:'en',quality:'2160p'});
+    state.message('play',{url:'http://127.0.0.1:12345/'+key+'/0.m3u8'});
+    assert.ok(toggles.includes('full_start'));assert.ok(!toggles.includes('settings_component'));
+});
+test('the selected beta player receives only the probed loopback and closes before its worker',()=>{
+    const {ui,state,L}=harness();L.Storage.field=()=> 'inner';state.prefs.faborn_ukr_uakinogo_beta='on';state.prefs.faborn_ukr_player='beta';let spec,live=false,backs=0;
+    const beta={available:()=>true,active:()=>live,play(value){spec=value;live=true;state.controller='faborn_player_beta';},close(restore){state.operations.push('beta:close');live=false;spec.onClose(restore);}};
+    ui.discover({title:'Film'},0,0,{controller:'full_start',betaPlayer:done=>done(null,beta),betaSpec:(stream,item)=>({url:item.url,loopback:stream.url,onClose(restore){if(restore){backs++;state.controller='faborn_ukr_view';}}})});
+    state.message('resolved',{tracks:[],episodes:[]});ui.playChoice({quality:'2160p'});
+    state.message('play',{url:'http://127.0.0.1:12345/'+key+'/0.m3u8',quality:'2160p',codecs:'av01'});
+    assert.equal(state.played,null);assert.equal(spec.url,spec.loopback);assert.equal(state.probes.length,1);
+    spec.onError('PLAYER_ERROR_INVALID_OPERATION · IDLE');assert.equal(live,true);assert.match(state.prefs.faborn_ukr_lab4k_status,/Faborn Player/);
+    state.emitPlayer('destroy');state.emitVideo('error');assert.equal(live,true);assert.equal(state.operations.includes('worker:stop'),false);
+    beta.close(true);assert.equal(backs,1);assert.equal(state.controller,'faborn_ukr_view');
+    assert.ok(state.operations.indexOf('beta:close')<state.operations.indexOf('worker:stop'));assert.equal(state.closes,0);
+});
+test('Back while loading the selected beta player invalidates its late callback',()=>{
+    const {ui,state}=harness();state.prefs.faborn_ukr_uakinogo_beta='on';state.prefs.faborn_ukr_player='beta';let loaded,launches=0;
+    ui.discover({title:'Film'},0,0,{controller:'full_start',betaPlayer:done=>{loaded=done;},betaSpec:()=>({})});
+    state.message('resolved',{tracks:[],episodes:[]});ui.playChoice({quality:'2160p'});
+    state.message('play',{url:'http://127.0.0.1:12345/'+key+'/0.m3u8'});state.menu.onBack();
+    loaded(null,{available:()=>true,play(){launches++;}});assert.equal(launches,0);assert.equal(state.controller,'full_start');assert.equal(state.played,null);
 });
 test('loaded metadata cannot disable the initial playback watchdog before time advances',()=>{
     const {state}=harness();state.enable();state.message('play',{url:'http://127.0.0.1:12345/'+key+'/0.m3u8',label:'UA',codecs:'av01'});
