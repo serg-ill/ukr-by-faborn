@@ -114,3 +114,19 @@ rollback_install`;
     assert.equal(fs.readFileSync(path.join(dir,'resolver.service'),'utf8'),'old unit\n');
     assert.equal(fs.readFileSync(path.join(dir,'systemctl.log'),'utf8'),'stop faborn-resolver.service\ndaemon-reload\nenable faborn-resolver.service\nrestart faborn-resolver.service\n');
 });
+
+test('LAN exception accepts private networks only, before the installer changes the host',()=>{
+ for(const value of ['0.0.0.0/0','192.168.88.1/24','192.168.0.0/15','172.16.0.0/11','10.0.0.0/7','203.0.113.0/24','192.168.088.0/24','192.168.88.0/33','192.168.88.0/24;touch /tmp/no']){
+  const r=spawnSync('bash',[installer,'--allow-lan',value],{encoding:'utf8'});assert.equal(r.status,2);assert.match(r.stderr,/--allow-lan requires/);
+ }
+ for(const value of ['192.168.88.0/24','10.0.0.0/8','172.16.0.0/12','192.168.88.20/32','none'])assert.equal(shell('valid_lan "$CIDR"',{CIDR:value}).status,0);
+});
+test('LAN exception updates only its own environment value and can be removed without deleting accounts or keys',t=>{
+ const dir=fixture(t),file=path.join(dir,'resolver.env');
+ const kept='HOST=0.0.0.0\nPORT=8789\nFABORN_ACCESS_KEYS=fixture\nFABORN_USERS_FILE=/opt/faborn-resolver/auth/users.json\n';
+ fs.writeFileSync(file,kept+'FABORN_ALLOW_LAN=10.0.0.0/8\nFABORN_ALLOW_LAN=192.168.0.0/16\n');
+ assert.equal(shell('write_lan "$ENV_FILE" 192.168.88.0/24',{ENV_FILE:file}).status,0);
+ assert.equal(fs.readFileSync(file,'utf8'),kept+'FABORN_ALLOW_LAN=192.168.88.0/24\n');
+ assert.equal(shell('write_lan "$ENV_FILE" none',{ENV_FILE:file}).status,0);
+ assert.equal(fs.readFileSync(file,'utf8'),kept+'FABORN_ALLOW_LAN=\n');assert.equal(fs.statSync(file).mode&0o777,0o600);
+});

@@ -2,7 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {spawnSync}=require('node:child_process');
 const {createUserStore,record,basic}=require('../server/uakinogo/auth');
-const {createService}=require('../server/uakinogo/server');
+const {createService,lanPolicy}=require('../server/uakinogo/server');
 const Core=require('../lib/4klab/core');
 function fixture(t){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'faborn-accounts-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
@@ -11,12 +11,13 @@ function fixture(t){
  return {dir,file,cli};
 }
 function header(name,password){return 'Basic '+Buffer.from(name+':'+password).toString('base64');}
-async function service(t,file,options={}){
+async function service(t,file,options={},peer){
  let calls=0;const users=createUserStore(file),server=createService({users,resolve:async()=>{calls++;return {ok:true};},...options});
+ if(peer)server.prependListener('connection',socket=>Object.defineProperty(socket,'remoteAddress',{value:peer}));
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
  t.after(()=>new Promise(r=>{server.close(r);server.closeAllConnections();}));
  const base='http://127.0.0.1:'+server.address().port;
- return {users,get calls(){return calls;},health:()=>fetch(base+'/health'),post:(authorization)=>fetch(base+'/v1/resolve',{method:'POST',headers:authorization?{Authorization:authorization}:{},body:JSON.stringify({movie:{title:'Fixture film'}})})};
+ return {users,get calls(){return calls;},health:()=>fetch(base+'/health'),post:(authorization,extra={})=>fetch(base+'/v1/resolve',{method:'POST',headers:{...extra,...(authorization?{Authorization:authorization}:{})},body:JSON.stringify({movie:{title:'Fixture film'}})})};
 }
 test('two test accounts get distinct private passwords and hashes; rerunning never resets them',async t=>{
  const f=fixture(t),r=f.cli('test-users');assert.equal(r.status,0,r.stderr);
@@ -88,4 +89,28 @@ test('credential URL and separate fields produce a clean endpoint and the same B
  assert.deepEqual(a,b);assert.equal(a.base,'http://203.0.113.10:8099');assert.equal(a.authorization,expected);
  assert.equal(Core.resolverBase('https://test1:fixture@resolver.example/base/'),'https://resolver.example/base');
  for(const url of ['http://public.example','http://user@host:8099','http://user:pass@host:8099/?url=x','file:///secret','http://user:%zz@host:8099'])assert.equal(Core.resolverConnection(url),null);
+});
+
+test('LAN exception is opt-in and accepts only aligned RFC1918 networks',()=>{
+ for(const address of ['192.168.88.20','::ffff:192.168.88.20','203.0.113.1'])assert.equal(lanPolicy()(address),false);
+ const allowed=lanPolicy('192.168.88.0/24');
+ for(const address of ['192.168.88.20','::ffff:192.168.88.20'])assert.equal(allowed(address),true);
+ for(const address of ['192.168.89.20','203.0.113.20','::1','::ffff:203.0.113.20','127.0.0.1','192.168.088.20'])assert.equal(allowed(address),false);
+ for(const value of ['0.0.0.0/0','192.168.0.0/15','172.16.0.0/11','10.0.0.0/7','192.168.88.1/24','203.0.113.0/24','localhost','::/0','192.168.88.0/33'])assert.throws(()=>lanPolicy(value));
+ for(const value of ['10.0.0.0/8','172.16.0.0/12','192.168.0.0/16','192.168.88.20/32'])assert.doesNotThrow(()=>lanPolicy(value));
+});
+test('trusted LAN can resolve anonymously; explicit wrong credentials still fail',async t=>{
+ const f=fixture(t);f.cli('test-users');
+ const s=await service(t,f.file,{allowLan:'192.168.88.0/24'},'::ffff:192.168.88.20');
+ assert.equal((await s.post()).status,200);assert.equal(s.calls,1);
+ assert.equal((await s.post(header('test1','wrong'))).status,401);
+ const h=await (await s.health()).json();assert.equal(h.auth,'basic');assert.equal(h.localAccess,'allowed');
+ fs.writeFileSync(f.file,'broken');assert.equal((await s.post()).status,503);
+});
+test('WAN peers cannot claim LAN access via HTTP headers and still need the account password',async t=>{
+ const f=fixture(t),created=f.cli('test-users'),pass=created.stdout.split('\n').find(line=>line.startsWith('test1:')).split(':')[1];
+ const s=await service(t,f.file,{allowLan:'192.168.88.0/24'},'203.0.113.20');
+ assert.equal((await s.post(undefined,{'X-Forwarded-For':'192.168.88.20','X-Real-IP':'192.168.88.20',Forwarded:'for=192.168.88.20'})).status,401);
+ assert.equal(s.calls,0);assert.equal((await s.post(header('test1',pass))).status,200);
+ assert.equal((await s.post()).status,401);assert.equal(s.calls,1);
 });

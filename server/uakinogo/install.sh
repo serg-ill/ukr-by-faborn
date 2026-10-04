@@ -2,18 +2,43 @@
 # Installs only the Faborn metadata service. Does not configure a video proxy,
 # router, firewall or system Node.js.
 set -Eeuo pipefail
-version='0.1.0-beta.45'
+version='0.1.0-beta.45.1'
 node_version='v24.21.0'
 base='/opt/faborn-resolver'
 bundle="faborn-uakinogo-${version}.tar.gz"
 release="https://github.com/serg-ill/ukr-by-faborn/releases/download/v${version}"
 usage() {
-    echo "Faborn UAKinogo ${version}: sudo bash install.sh [--port NUMBER] [--test-users]"
+    echo "Faborn UAKinogo ${version}: sudo bash install.sh [--port NUMBER] [--test-users] [--allow-lan CIDR|none]"
     echo 'Ubuntu 22.04+ x86_64/arm64, systemd. --test-users creates test1/test2 with private random passwords.'
     echo 'Keeps the configured port when available; otherwise tries the next 20 ports.'
     echo 'An explicit --port never silently selects another port.'
+    echo '--allow-lan 192.168.88.0/24 permits that LAN without a password; outside clients still require configured accounts/keys.'
+    echo '--allow-lan none removes that exception. Without this flag, the current policy is preserved.'
 }
 valid_port() { [[ "$1" =~ ^[0-9]{1,5}$ ]] && (( 10#$1 >= 1 && 10#$1 <= 65535 )); }
+valid_lan() {
+    [[ "$1" == none ]] && return 0
+    [[ "$1" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)/([0-9]{1,2})$ ]] || return 1
+    local a=${BASH_REMATCH[1]} b=${BASH_REMATCH[2]} c=${BASH_REMATCH[3]} d=${BASH_REMATCH[4]} bits=${BASH_REMATCH[5]} n min=33
+    for n in "$a" "$b" "$c" "$d"; do
+        [[ "$n" == 0 || "$n" =~ ^[1-9][0-9]{0,2}$ ]] && (( 10#$n <= 255 )) || return 1
+    done
+    bits=$((10#$bits))
+    if (( a == 10 )); then min=8
+    elif (( a == 172 && b >= 16 && b <= 31 )); then min=12
+    elif (( a == 192 && b == 168 )); then min=16; fi
+    (( bits >= min && bits <= 32 )) || return 1
+    (( ((a * 16777216 + b * 65536 + c * 256 + d) % (1 << (32 - bits))) == 0 ))
+}
+write_lan() {
+    local file="$1" value="$2" temp
+    [[ "$value" != none ]] || value=''
+    temp=$(mktemp "${file}.XXXXXX")
+    if ! awk -v value="$value" '/^[[:space:]]*FABORN_ALLOW_LAN=/{if (!written++) print "FABORN_ALLOW_LAN=" value; next} {print} END{if (!written) print "FABORN_ALLOW_LAN=" value}' "$file" > "$temp"; then
+        rm -f -- "$temp"; return 1
+    fi
+    chmod 0600 "$temp"; mv -f -- "$temp" "$file"
+}
 read_port() {
     local value=''
     if [[ -f "$1" ]]; then
@@ -95,7 +120,7 @@ rollback_install() {
     echo 'Restored the previous configuration and service state. Other services were not changed.' >&2
 }
 main() {
-local requested_port='' test_users=false env_file='/etc/faborn-resolver.env' service_file='/etc/systemd/system/faborn-resolver.service'
+local requested_port='' requested_lan='' test_users=false env_file='/etc/faborn-resolver.env' service_file='/etc/systemd/system/faborn-resolver.service'
 local stage='' rollback_armed=false previous='' previous_node='' previous_active=false previous_enabled=false
 local configured_port port own_pid=0 healthy=false status
 while [[ $# -gt 0 ]]; do
@@ -105,6 +130,9 @@ while [[ $# -gt 0 ]]; do
             [[ $# -ge 2 ]] && valid_port "$2" || { echo '--port requires a number between 1 and 65535.' >&2; return 2; }
             requested_port=$((10#$2)); shift 2 ;;
         --test-users) test_users=true; shift ;;
+        --allow-lan)
+            [[ $# -ge 2 ]] && valid_lan "$2" || { echo '--allow-lan requires a private IPv4 network, e.g. 192.168.88.0/24, or none.' >&2; return 2; }
+            requested_lan=$2; shift 2 ;;
         *) echo 'Unknown argument. Use --help.' >&2; return 2 ;;
     esac
 done
@@ -189,6 +217,7 @@ FABORN_ACCESS_KEYS=
 ENV
 fi
 write_port "$env_file" "$port"
+if [[ -n "$requested_lan" ]]; then write_lan "$env_file" "$requested_lan"; fi
 if ! awk '/^[[:space:]]*FABORN_USERS_FILE=/{found=1} END{exit !found}' "$env_file"; then
     printf '%s\n' "FABORN_USERS_FILE=$base/auth/users.json" >> "$env_file"
 fi

@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.45 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.45.1 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.45';
+    var VERSION = '0.1.0-beta.45.1';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
     var commentsUI = null, commentsScript = null;
@@ -3301,6 +3301,20 @@
             if(L.Settings && L.Settings.update)L.Settings.update();
         });
     }
+    function serverLogin() {
+        if(!L.Input || !L.Input.edit)return notify('У цій збірці немає редактора логіна.');
+        L.Input.edit({title:'Логін сервера UAKinogo',value:storage('uakinogo_login',''),free:true,nosave:true},function(value){
+            value=text(value).trim();
+            if(value && !/^[A-Za-z0-9_.-]{1,64}$/.test(value))return notify('Логін: латинські літери, цифри, крапка, дефіс або підкреслення.');
+            save('uakinogo_login',value);cancelCardLab();
+            if(L.Settings && L.Settings.update)L.Settings.update();
+        });
+    }
+    function clearServerCredentials() {
+        save('uakinogo_login','');save('uakinogo_password','');cancelCardLab();
+        if(L.Settings && L.Settings.update)L.Settings.update();
+        notify('Логін і пароль очищені. Адреса сервера збережена.');
+    }
     function settings() {
         var api = L.SettingsApi;
         if (!api || !api.addComponent || !api.addParam) return;
@@ -3379,8 +3393,9 @@
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найвища доступна', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: 'Підсвічує варіант у списку джерел.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_beta',type:'select',values:{off:'Вимкнено',on:'Увімкнено'},default:'off'},field:{name:'UAKinogo · серверна бета',description:'Окремий обробник знаходить посилання. Відео надходить прямо на Samsung через локальний адаптер. Потрібні Tizen Sockets і сумісний кодек.'},onChange:labChanged});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_server',type:'button'},field:{name:'Сервер UAKinogo',description:'Можна вставити user:password@server:port. Логін і пароль будуть збережені окремо; тут залишиться лише адреса. HTTPS шифрує облікові дані.'},onRender:function(item){item.append($('<div class="settings-param__value"></div>').text(storage('uakinogo_server','')||'Задати адресу'));},onChange:serverAddress});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_login',type:'input',values:'',default:'',placeholder:'test1'},field:{name:'Логін сервера',description:'Користувач, створений на Ubuntu. Для підключення без авторизації залиш логін і пароль порожніми.'},onChange:function(value){value=text(value===undefined?storage('uakinogo_login',''):value);if(value && !/^[A-Za-z0-9_.-]{1,64}$/.test(value)){save('uakinogo_login','');notify('Логін: латинські літери, цифри, крапка, дефіс або підкреслення.');if(L.Settings&&L.Settings.update)L.Settings.update();}cancelCardLab();}});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_login',type:'button'},field:{name:'Логін сервера',description:'Потрібен, якщо сервер вимагає авторизацію. Локальний доступ без пароля дозволяється окремо на Ubuntu.'},onRender:function(item){item.append($('<div class="settings-param__value"></div>').text(storage('uakinogo_login','')||'Не задано'));},onChange:serverLogin});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_password',type:'button'},field:{name:'Пароль сервера',description:'Редагування із прихованими символами; пароль не додається до історії клавіатури.'},onRender:function(item){item.append('<div class=\"settings-param__value\">'+(storage('uakinogo_password','')?'Задано · змінити':'Задати пароль')+'</div>');},onChange:serverPassword});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_clear_credentials',type:'button'},field:{name:'Очистити логін і пароль',description:'Зберігає адресу. Для локального підключення без авторизації, дозволеного на сервері.'},onChange:clearServerCredentials});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_kino_session',type:'select',values:{auto:'Автоматично',direct:'Лише звичайний запит'},default:'auto'},field:{name:'Сесія KinoBase',description:'Після помилки сесії повторює запит через мережевий API Samsung, якщо він доступний у застосунку. Окремий сервер не потрібен.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_legacy4k',type:'select',values:{off:'Вимкнено',on:'Увімкнено · тест сумісності'},default:'off'},field:{name:'4K на старому Tizen',description:'Лише KinoBase 2160p та Tizen 2.3–4.x: явно вмикає UHD-декодер перед запуском. Для наступного відкриття відео. Не змінює кодек; результат видно у діагностиці.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_refresh', type: 'button'}, field: {name: 'Оновити індекс із GitHub'}, onChange: function () {

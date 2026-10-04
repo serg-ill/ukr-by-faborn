@@ -2,8 +2,21 @@
 const http=require('node:http'),crypto=require('node:crypto');
 const {createResolver,card}=require('./resolver');
 const {createUserStore}=require('./auth');
-const VERSION='0.1.0-beta.45';
-function createService({resolve=createResolver(),keys=[],users=null,maxActive=3,maxAuth=3}={}){
+const {BlockList,isIPv4}=require('node:net');
+const VERSION='0.1.0-beta.45.1';
+function lanPolicy(value=''){
+ if(!value)return ()=>false;
+ const match=/^(\d+\.\d+\.\d+\.\d+)\/(\d{1,2})$/.exec(value);
+ if(!match||!isIPv4(match[1]))throw new Error('FABORN_ALLOW_LAN requires a private IPv4 network in CIDR notation');
+ const octets=match[1].split('.').map(Number),prefix=Number(match[2]);
+ const min=octets[0]===10?8:octets[0]===172&&octets[1]>=16&&octets[1]<=31?12:octets[0]===192&&octets[1]===168?16:33;
+ const numeric=octets.reduce((sum,n)=>sum*256+n,0);
+ if(prefix<min||prefix>32||numeric%Math.pow(2,32-prefix))throw new Error('FABORN_ALLOW_LAN must be an aligned private IPv4 network');
+ const list=new BlockList();list.addSubnet(match[1],prefix,'ipv4');
+ return address=>{address=String(address||'').replace(/^::ffff:/i,'');return isIPv4(address)&&list.check(address,'ipv4');};
+}
+function createService({resolve=createResolver(),keys=[],users=null,allowLan='',maxActive=3,maxAuth=3}={}){
+ const fromTrustedLan=lanPolicy(allowLan);
  const cache=new Map(),rates=new Map();let active=0,authenticating=0;
  function authorized(key){return keys.some(k=>{const a=Buffer.from(k),b=Buffer.from(String(key||''));return a.length===b.length&&crypto.timingSafeEqual(a,b);});}
  function send(res,status,data){if(res.destroyed)return;res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Access-Control-Allow-Origin':'*','Cache-Control':'no-store',...(status===401?{'WWW-Authenticate':'Basic realm="Faborn", charset="UTF-8"'}:{})});res.end(JSON.stringify(data));}
@@ -11,7 +24,7 @@ function createService({resolve=createResolver(),keys=[],users=null,maxActive=3,
  const server=http.createServer(async(req,res)=>{
   if(req.method==='OPTIONS'){res.writeHead(204,{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'GET, POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type, Authorization'});return res.end();}
   if(req.method==='GET'&&req.url==='/health'){
-   try{return send(res,200,{ok:true,version:VERSION,auth:mode(users?await users.read():null),videoProxy:false});}
+   try{return send(res,200,{ok:true,version:VERSION,auth:mode(users?await users.read():null),localAccess:allowLan?'allowed':'authenticated',videoProxy:false});}
    catch(ignore){return send(res,503,{ok:false,error:'Файл облікових записів недоступний',videoProxy:false});}
   }
   if(req.method!=='POST'||req.url!=='/v1/resolve')return send(res,404,{error:'Маршрут відсутній'});
@@ -26,7 +39,8 @@ function createService({resolve=createResolver(),keys=[],users=null,maxActive=3,
    const data=JSON.parse(Buffer.concat(chunks).toString('utf8')),movie=card(data.movie);
    let accounts=null;try{if(users)accounts=await users.read();}catch(ignore){return send(res,503,{error:'Файл облікових записів недоступний'});}
    const header=req.headers.authorization||'',bearer=/^Bearer (.+)$/i.exec(header);
-   let access=mode(accounts)==='none'||authorized(bearer?bearer[1]:data.key);
+   // Only the TCP peer is trusted. Forwarded headers never grant LAN access.
+   let access=mode(accounts)==='none'||(!header&&!data.key&&fromTrustedLan(ip))||authorized(bearer?bearer[1]:data.key);
    if(!access&&accounts&&accounts.enabled){
     if(authenticating>=maxAuth)return send(res,429,{error:'Зачекайте й повторіть запит'});
     authenticating++;try{access=await users.verify(header,accounts);}finally{authenticating--;}
@@ -56,7 +70,7 @@ function createService({resolve=createResolver(),keys=[],users=null,maxActive=3,
 if(require.main===module){
  const keys=(process.env.FABORN_ACCESS_KEYS||'').split(',').map(k=>k.trim()).filter(Boolean);
  const users=process.env.FABORN_USERS_FILE?createUserStore(process.env.FABORN_USERS_FILE):null;
- const server=createService({keys,users});server.listen(Number(process.env.PORT||8787),process.env.HOST||'127.0.0.1',()=>console.log('Faborn resolver '+VERSION+' ready; accountFile='+(users?'configured':'none')+'; videoProxy=false'));
+ const server=createService({keys,users,allowLan:process.env.FABORN_ALLOW_LAN||''});server.listen(Number(process.env.PORT||8787),process.env.HOST||'127.0.0.1',()=>console.log('Faborn resolver '+VERSION+' ready; accountFile='+(users?'configured':'none')+'; videoProxy=false'));
  process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
 }
-module.exports={createService,VERSION};
+module.exports={createService,lanPolicy,VERSION};

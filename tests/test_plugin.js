@@ -323,6 +323,25 @@ test('credential links are split before settings render and password editing is 
  assert.equal(e.state.storage.faborn_ukr_uakinogo_server,'https://resolver.example');assert.equal(e.state.storage.faborn_ukr_uakinogo_login,'test2');
 });
 
+test('empty server login has no test placeholder and can be edited or cleared without input history',()=>{
+ const e=environment();let input,done;
+ e.root.Lampa.Input={edit(params,callback){input=params;done=callback;}};
+ const login=e.state.params.find(p=>p.param.name==='faborn_ukr_uakinogo_login');
+ assert.equal(login.param.type,'button');assert.equal(login.param.placeholder,undefined);
+ login.onChange();assert.equal(input.value,'');assert.equal(input.nosave,true);
+ done('friend');assert.equal(e.state.storage.faborn_ukr_uakinogo_login,'friend');
+ login.onChange();assert.equal(input.value,'friend');done('');
+ assert.equal(e.state.storage.faborn_ukr_uakinogo_login,'');
+});
+test('clearing server credentials removes both fields and preserves local endpoint and other preferences',()=>{
+ const e=environment({storage:{faborn_ukr_uakinogo_server:'http://192.168.88.191:8789',faborn_ukr_uakinogo_login:'test1',faborn_ukr_uakinogo_password:'fixture',faborn_ukr_accent:'mint'}});
+ e.state.params.find(p=>p.param.name==='faborn_ukr_uakinogo_clear_credentials').onChange();
+ assert.equal(e.state.storage.faborn_ukr_uakinogo_login,'');assert.equal(e.state.storage.faborn_ukr_uakinogo_password,'');
+ assert.equal(e.state.storage.faborn_ukr_uakinogo_server,'http://192.168.88.191:8789');assert.equal(e.state.storage.faborn_ukr_accent,'mint');
+ const connection=require('../lib/4klab/core').resolverConnection(e.state.storage.faborn_ukr_uakinogo_server,e.state.storage.faborn_ukr_uakinogo_login,e.state.storage.faborn_ukr_uakinogo_password);
+ assert.equal(connection.authorization,'');assert.equal(connection.base,'http://192.168.88.191:8789');
+});
+
 function betaEnvironment(options={}) {
     const e=environment({...options,storage:{...options.storage,faborn_ukr_player:'beta'}});
     let spec,active=false;const choices=[];
