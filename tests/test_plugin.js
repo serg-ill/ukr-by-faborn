@@ -311,6 +311,24 @@ test('online player setting explicitly offers an opt-in beta while Lampa remains
     assert.equal(p.param.default,'lampa');assert.deepEqual(p.param.values,{lampa:'Lampa',beta:'Faborn Player · бета'});
     filmQualityMenu(e);e.state.play('1080p');assert.ok(e.state.played);assert.equal(e.state.requests.some(r=>r.url.includes('faborn-player.js')),false);
 });
+test('browser engine is separately opt-in, and default Lampa never loads the HLS bundle',()=>{
+ const e=environment(),p=e.state.params.find(p=>p.param.name==='faborn_ukr_beta_engine');
+ assert.equal(p.param.default,'avplay');assert.equal(p.param.values.mse,'Браузерний HLS · бета');
+ filmQualityMenu(e);e.state.play('1080p');assert.equal(e.state.requests.some(r=>/faborn-hls|hls-1/.test(r.url)),false);
+});
+test('browser dependencies load lazily without starting playback after Back',()=>{
+ const e=betaEnvironment({storage:{faborn_ukr_beta_engine:'mse'}}),scripts=[];
+ e.root.document.createElement=()=>({});e.root.document.head={appendChild(script){scripts.push(script);}};
+ filmQualityMenu(e);e.state.play('1080p');assert.match(scripts[0].src,/lib\/hls\/hls-1\.7\.3\.js/);assert.equal(e.getSpec(),undefined);
+ const loaded=scripts[0].onload;e.state.menu.onBack();const after=e.state.menu;e.root.FabornHls=function(){};loaded();
+ assert.equal(e.getSpec(),undefined);assert.equal(e.state.played,null);assert.equal(e.state.menu,after);assert.equal(scripts.length,1);
+});
+test('browser player errors retain source, exact quality and stage in diagnostics',()=>{
+ const e=betaEnvironment({storage:{faborn_ukr_beta_engine:'mse'}});e.root.FabornHls=function(){};e.root.FabornHlsTransport=function(){};
+ filmQualityMenu(e);e.state.play('1080p');e.getSpec().onError('HLSNetworkError · MSE IDLE · prepareAsync · HTTP 403');
+ assert.match(e.state.storage.faborn_ukr_last_error,/UAKino.*1080p.*MSE.*HTTP 403/);
+ assert.match(e.state.storage.faborn_ukr_last_launch,/Браузерний HLS/);e.close();
+});
 test('selected beta bypasses native Lampa even with another global player and persists shared progress',()=>{
     const e=betaEnvironment({player:'inner'});e.instance.open({id:866398,title:'Бджоляр',original_title:'The Beekeeper',release_date:'2024-01-10'});e.state.play('1080p');
     assert.ok(e.getSpec());assert.equal(e.state.played,null);assert.equal(e.state.storage.player,undefined);
@@ -1701,6 +1719,16 @@ test('UAKinogo playback keeps voice choices, restart intent, progress and a retu
  e.state.play('2160p');assert.equal(e.state.played.voiceovers.length,2);assert.equal(e.state.played.card.id,kinoMovie.id);
  e.state.progress(120,600);e.root.Lampa.Player.close();assert.ok(e.state.menu.items.some(i=>i.release?.source==='uakinogo'));assert.equal(e.state.controller,'select');
  e.state.choose(i=>i.action==='restart');assert.equal(e.state.played.faborn_from_start,undefined);assert.equal(e.state.played.timeline.time,0);
+});
+test('Alloha preflight failure replaces stale playback diagnostics and Back keeps cached voices',()=>{
+ const e=environment({storage:{faborn_ukr_uakinogo_beta:'on',faborn_ukr_uakinogo_server:'http://192.168.88.191:8787',faborn_ukr_last_launch:'KinoBase',faborn_ukr_last_error:'old failure'}});let cb;
+ e.root.document.createElement=()=>({});e.root.document.head={appendChild(script){script.onload();}};
+ e.root.Faborn4KLab=()=>({discover(m,s,n,c){cb=c;},cancel(){},playChoice(){cb.error('LOOPBACK: локальний канал недоступний (HTTP 403). AVPlay не запущено.',true);}});
+ e.instance.open(kinoMovie);cb.result({season:0,episode:0,episodes:[{season:0,episode:0}],tracks:[{label:'UA',language:'uk',qualities:['2160p']}]});
+ e.state.play('2160p');assert.equal(e.state.played,null);
+ assert.match(e.state.storage.faborn_ukr_last_launch,/2160p.*UAKinogo \/ Alloha.*підготовка потоку/);
+ assert.match(e.state.storage.faborn_ukr_last_error,/UAKinogo \/ Alloha.*2160p.*HTTP 403/);
+ cb.back();assert.ok(e.state.menu.items.some(i=>i.group&&i.group.entries.some(r=>r.release.source==='uakinogo')));
 });
 test('UAKinogo beta uses the selected custom player, refreshes quality and voice, and preserves shared progress',()=>{
  const e=betaEnvironment({storage:{faborn_ukr_uakinogo_beta:'on',faborn_ukr_uakinogo_server:'http://192.168.88.191:8787'}});let cb;const changes=[];

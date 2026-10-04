@@ -323,6 +323,14 @@ test('background card discovery never steals navigation and sends the current ca
     ui.episode(2,1);assert.equal(state.workers[0].messages.at(-1).type,'episode');
     ui.cancel();assert.equal(state.menu,null);assert.equal(state.controller,'faborn_ukr_view');
 });
+test('rediscovering sources preserves the last playback evidence until the next actual attempt',()=>{
+    const {ui,state}=harness();state.prefs.faborn_ukr_uakinogo_beta='on';
+    state.prefs.faborn_ukr_lab4k_probe='HTTP 200 · previous probe';state.prefs.faborn_ukr_lab4k_bridge='HTTP 403 · previous media';
+    ui.discover({title:'Film'},0,0,{});state.message('resolved',{tracks:[],episodes:[],season:0,episode:0});
+    assert.equal(state.prefs.faborn_ukr_lab4k_probe,'HTTP 200 · previous probe');assert.equal(state.prefs.faborn_ukr_lab4k_bridge,'HTTP 403 · previous media');
+    ui.playChoice({season:0,episode:0,label:'English',language:'en',quality:'2160p'});
+    assert.equal(state.prefs.faborn_ukr_lab4k_probe,'Підготовка вибраного потоку');assert.equal(state.prefs.faborn_ukr_lab4k_bridge,'Очікування медіазапитів');ui.cancel();
+});
 test('card incompatibility is returned to source status without replacing the source menu',()=>{
     const {ui,state,root}=harness();delete root.webapis;state.prefs.faborn_ukr_uakinogo_beta='on';
     let error;ui.discover({title:'Film'},0,0,{error:e=>error=e});

@@ -113,6 +113,28 @@ test('native failure captures bounded codec details and Back closes the failed p
  e.key('keydown',10009);assert.equal(e.closed,1);assert.equal(e.controller,'full_start');assert.equal(e.avState.state,'NONE');assert.equal(e.jobs.size,0);
  listener.onerrormsg('error','not JSON');listener.onerror('PLAYER_ERROR_INVALID_OPERATION');e.advance(0);assert.equal(e.errors.length,1);
 });
+test('native InvalidAccessError identifies preparation and safe HTTP status',()=>{
+ const e=environment();e.api.play(e.spec());e.avState.listeners.onevent('PLAYER_MSG_HTTP_ERROR_CODE','403');
+ e.avState.prepared[0].fail({name:'InvalidAccessError',message:'https://secret/token'});e.advance(0);
+ assert.match(e.errors[0],/InvalidAccessError.*AVPlay IDLE.*prepareAsync.*HTTP 403/);assert.doesNotMatch(e.errors[0],/secret|https/);e.api.close();
+});
+test('selected browser transport mounts a video and never calls Samsung AVPlay',()=>{
+ const e=environment({storage:{faborn_ukr_beta_engine:'mse'}}),transport={...e.root.webapis.avplay};
+ transport.surface=()=>e.doc.createElement('video');transport.available=()=>true;
+ Object.keys(e.root.webapis.avplay).forEach(key=>{e.root.webapis.avplay[key]=()=>{throw Error('Native AVPlay must not run');};});
+ e.root.FabornHlsTransport=()=>transport;e.root.FabornHls=function(){};const api=factory(e.root,e.L);
+ api.play(e.spec());e.prepare();e.at(1);assert.ok(e.all().some(el=>el.tagName==='video'));assert.match(e.statuses.at(-1),/MSE/);
+ e.key('keydown',10009);assert.equal(api.active(),false);assert.equal(e.controller,'full_start');assert.equal(e.jobs.size,0);
+});
+test('browser network failures try only a supplied mirror of the selected stream',()=>{
+ const e=environment({storage:{faborn_ukr_beta_engine:'mse'}}),transport={...e.root.webapis.avplay};
+ transport.surface=()=>e.doc.createElement('video');transport.available=()=>true;
+ e.root.FabornHlsTransport=()=>transport;e.root.FabornHls=function(){};const api=factory(e.root,e.L);
+ const urls=['https://primary.redcdn.org/2160/main.m3u8','https://mirror.threnet.xyz/2160/main.m3u8'];
+ api.play(e.spec({urls}));e.avState.prepared[0].fail({name:'HLSNetworkError'});e.advance(0);
+ assert.deepEqual(e.calls.filter(c=>c[0]==='open').map(c=>c[1]),urls);assert.equal(e.errors.length,0);
+ e.avState.prepared[1].fail({name:'NotSupportedError'});e.advance(0);assert.match(e.errors[0],/MSE IDLE.*prepareAsync/);api.close();assert.equal(e.jobs.size,0);
+});
 test('an accepted resume seek without an advancing playback clock still times out',()=>{
  const e=environment();e.api.play(e.spec({time:210}));e.prepare();e.advance(45000);
  assert.equal(e.progress.length,0);assert.match(e.errors[0],/StartupTimeout/);e.api.close();

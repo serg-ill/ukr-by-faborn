@@ -45,3 +45,7 @@ The 114-scene metadata catalog in `data/aerial.json` is a reduced copy of the H2
 Video files are streamed directly from the original HTTPS `sylvan.apple.com` URLs and are not redistributed in this repository. The metadata project's MIT license does not grant rights to Apple's video footage. Apple and Aerial are not sponsors of this plugin.
 
 The flip, analog and ring clock implementations and their SVG/CSS geometry are original project code; no external clock runtime, font or image is loaded.
+
+## HLS.js — browser player beta.44
+
+[HLS.js 1.7.3](https://github.com/video-dev/hls.js/releases/tag/v1.7.3), retrieved from the official npm `hls.js` distribution on 2026-10-04. Apache-2.0: [lib/hls/LICENSE](lib/hls/LICENSE). The release package integrity was verified before vendoring. [lib/hls/README.md](lib/hls/README.md) documents the isolated export wrapper; the original minified implementation is preserved. It is loaded only when the browser playback engine is selected.

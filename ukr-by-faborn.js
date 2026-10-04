@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.43 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.44 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.43';
+    var VERSION = '0.1.0-beta.44';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
     var commentsUI = null, commentsScript = null;
@@ -1729,6 +1729,8 @@
         save('source',row.release.source); save('quality',row.value);
         if (row.episode.lab) {
             if (!lab4k || storage('uakinogo_beta','off') !== 'on') return startDiscovery(session.movie);
+            save('last_launch',session.title.title+' · '+row.value+' · UAKinogo / Alloha · '+voiceLabel(row.release,row.episode)+' · підготовка потоку');
+            save('last_error','');save('stream_format','UAKinogo / Alloha · перевірка вибраного потоку');
             cancelPending(); stopKinoSession();
             session.labChosen = row; session.labFromStart = Boolean(fromStart); session.labLaunching = true; session.screen = 'labplayer';
             closePresentation(); L.Select.hide();
@@ -2423,6 +2425,8 @@
     }
     function cancelPending() {
         requestSerial++;
+        root.clearTimeout(betaLoadTimer);betaLoadTimer=null;
+        if(betaScript){betaScript.onload=betaScript.onerror=null;if(betaScript.parentNode)betaScript.parentNode.removeChild(betaScript);betaScript=null;}
         if (discoveryJob) {
             root.clearTimeout(discoveryJob.preview); root.clearTimeout(discoveryJob.deadline); root.clearTimeout(discoveryJob.paint);
             discoveryJob.session.searching = false; discoveryJob.update = null; discoveryJob = null;
@@ -2801,26 +2805,34 @@
         L.Player.play(data);
     }
     function ensureBetaPlayer(done) {
+        if(storage('beta_engine','avplay')==='mse') {
+            if(typeof root.FabornHls!=='function')return loadBetaFile('lib/hls/hls-1.7.3.js','FabornHls',function(error){if(error)done(error);else ensureBetaPlayer(done);});
+            if(typeof root.FabornHlsTransport!=='function')return loadBetaFile('lib/faborn-hls.js','FabornHlsTransport',function(error){if(error)done(error);else ensureBetaPlayer(done);});
+        }
         if (betaPlayer) return done(null,betaPlayer);
         if (typeof root.FabornPlayer === 'function') {
             try { betaPlayer=root.FabornPlayer(root,L);return done(null,betaPlayer); }
             catch(ignore) { return done(new Error('Не вдалося підготувати Faborn Player.')); }
         }
+        loadBetaFile('lib/faborn-player.js','FabornPlayer',function(error){if(error)done(error);else ensureBetaPlayer(done);});
+    }
+    function loadBetaFile(path,symbol,done) {
         if (!baseURL() || !root.document || !root.document.createElement) return done(new Error('Не визначено адресу GitHub Pages для плеєра.'));
         // Each launch owns its callback; Back invalidates requestSerial before a late load.
         if (betaScript) { betaScript.onload=betaScript.onerror=null;if(betaScript.parentNode)betaScript.parentNode.removeChild(betaScript); }
         root.clearTimeout(betaLoadTimer);
-        var script=root.document.createElement('script'),finished=false;
+        var script=root.document.createElement('script'),finished=false,loadSerial=requestSerial;
         betaScript=script;
         function finish(error) {
             if(finished)return;finished=true;root.clearTimeout(betaLoadTimer);betaLoadTimer=null;
             script.onload=script.onerror=null;betaScript=null;
             if(script.parentNode)script.parentNode.removeChild(script);
+            if(loadSerial!==requestSerial)return;
             if(error)return done(error);
-            if(typeof root.FabornPlayer!=='function')return done(new Error('Некоректний файл бета-плеєра.'));
-            ensureBetaPlayer(done);
+            if(typeof root[symbol]!=='function')return done(new Error('Некоректний файл бета-плеєра.'));
+            done();
         }
-        script.src=baseURL()+'lib/faborn-player.js?v='+VERSION;script.async=true;
+        script.src=baseURL()+path+'?v='+VERSION;script.async=true;
         script.onload=function(){finish();};script.onerror=function(){finish(new Error('Не завантажено Faborn Player із GitHub Pages.'));};
         betaLoadTimer=root.setTimeout(function(){finish(new Error('Час завантаження бета-плеєра вичерпано.'));},10000);
         root.document.head.appendChild(script);
@@ -2866,7 +2878,7 @@
         save('legacy4k_status',legacy ? 'Очікування UHD-режиму · Faborn Player' : 'Не застосовується · Faborn Player');
         save('stream_format',episode.streamInfo && episode.streamInfo[context.quality] || '');
         save('kino_playback','');
-        save('last_launch',title.title+' · '+context.quality+' · '+sourceName(release.source)+' · '+voiceLabel(release,episode)+(title.type==='tv' ? ' · S'+episode.season+'E'+episode.episode : '')+' · Faborn Player · бета');
+        save('last_launch',title.title+' · '+context.quality+' · '+sourceName(release.source)+' · '+voiceLabel(release,episode)+(title.type==='tv' ? ' · S'+episode.season+'E'+episode.episode : '')+' · Faborn Player · бета'+(storage('beta_engine','avplay')==='mse' ? ' · Браузерний HLS' : ' · AVPlay'));
         save('autoplay_status',title.type==='tv' ? 'Faborn Player · S'+episode.season+'E'+episode.episode+(betaNext(context) ? ' → S'+betaNext(context).season+'E'+betaNext(context).episode : ' · остання доступна серія') : '');
         return {
             url:data.url,urls:urls,title:title.title+(title.type==='tv' ? ' · S'+episode.season+'E'+episode.episode : ''),
@@ -2879,7 +2891,7 @@
             onStarted:function(){if(betaCurrent(context)){save('last_error','');captureNativeState();}},
             onStatus:function(message){if(betaCurrent(context)){save('beta_player_status',message);captureNativeState();}},
             onLegacy:function(message){if(betaCurrent(context))save('legacy4k_status',message);},
-            onError:function(code){if(betaCurrent(context)){save('last_error','Faborn Player · '+code);captureNativeState();}},
+            onError:function(code){if(betaCurrent(context)){save('last_error',sourceName(release.source)+' · '+context.quality+' · Faborn Player · '+code);captureNativeState();}},
             onEnded:function(){
                 if(!betaCurrent(context) || context.data!==data)return;
                 completePlayback(data);
@@ -2971,8 +2983,10 @@
             var catalog = currentCatalog;
             var lines = [NAME + ' ' + VERSION];
             if (L.Manifest && L.Manifest.app_version) lines.push('Версія Lampa: ' + L.Manifest.app_version);
-            if (L.Storage.field) lines.push('Плеєр Lampa: ' + L.Storage.field('player') + ' · для бети потрібен Tizen / AVPlay');
-            lines.push('Плеєр Faborn: '+(storage('player','lampa')==='beta' ? 'Faborn Player · бета (прямий AVPlay)' : 'Lampa'));
+            if (L.Storage.field) lines.push('Плеєр Lampa: ' + L.Storage.field('player'));
+            lines.push('Плеєр Faborn: '+(storage('player','lampa')==='beta' ? 'Faborn Player · бета ('+(storage('beta_engine','avplay')==='mse' ? 'Браузерний HLS / MSE' : 'прямий AVPlay')+')' : 'Lampa'));
+            var mediaSource=root.MediaSource || root.WebKitMediaSource;
+            try { if(mediaSource && mediaSource.isTypeSupported)lines.push('MediaSource · AV1: '+(mediaSource.isTypeSupported('video/mp4; codecs="av01.0.12M.08"') ? 'заявлено підтримку' : 'не заявлено підтримку')); } catch(ignore) {}
             if(storage('beta_player_status',''))lines.push('Бета-плеєр · останній стан: '+storage('beta_player_status',''));
             lines.push('AVPlay API: ' + (root.webapis && root.webapis.avplay ? 'доступний' : 'недоступний'));
             var platform = /\bTizen[\s\/]+([\d.]+)/i.exec(text(root.navigator && root.navigator.userAgent)), model = '';
@@ -3067,6 +3081,9 @@
                 betaContext.closed = true; betaContext = null; historyPlayback = null;
             }
             session.status.uakinogo = message; session.labPending = '';
+            if (playbackFailure && session.labLaunching && session.labChosen && !storage('last_error','')) {
+                save('last_error','UAKinogo / Alloha · '+session.labChosen.value+' · '+message);
+            }
             if (!playbackFailure) session.title.releases = session.title.releases.filter(function (r) { return r.source !== 'uakinogo'; });
             save('lab4k_status',message); refresh();
         }
@@ -3102,6 +3119,7 @@
                     var chosen = session.labChosen;
                     var item = playData(session.movie,session.title,chosen.release,chosen.episode,chosen.value);
                     item.url = item.faborn_url = data.url; labPlaybackData = item;
+                    save('stream_format','HLS · '+data.width+'x'+data.height+' · '+data.codecs+' · UAKinogo / Alloha');
                     if (session.labFromStart) { item.faborn_from_start = true; session.labFromStart = false; }
                     if (playbackQueue) { playbackQueue.closed = true; playbackQueue.serial++; }
                     playbackContext = {movie:session.movie,catalog:session.catalog};
@@ -3249,7 +3267,8 @@
         var api = L.SettingsApi;
         if (!api || !api.addComponent || !api.addParam) return;
         api.addComponent({component: 'faborn_ukr', name: NAME, icon: ICON});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_player',type:'select',values:{lampa:'Lampa',beta:'Faborn Player · бета'},default:'lampa'},field:{name:'Плеєр онлайн',description:'Faborn Player — окремий прямий запуск AVPlay на Samsung. Застосовується до наступного відео з джерел Faborn; торренти й інші розширення використовують свій плеєр.'}});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_player',type:'select',values:{lampa:'Lampa',beta:'Faborn Player · бета'},default:'lampa'},field:{name:'Плеєр онлайн',description:'Faborn Player — власне оформлення з AVPlay або браузерним HLS. Застосовується до наступного відео з джерел Faborn.'}});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_beta_engine',type:'select',values:{avplay:'Samsung AVPlay',mse:'Браузерний HLS · бета'},default:'avplay'},field:{name:'Механізм бета-плеєра',description:'Для «Faborn Player · бета». Браузерний HLS використовує HTML5 / MediaSource, як другий плеєр Alloha. Застосовується до наступного запуску; 4K залежить від підтримки кодека в застосунку.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_comments',type:'select',values:{sources:'Лише з джерел',native:'Лише Lampa',all:'Усі',off:'Приховати всі'},default:commentsMode()},field:{name:'Коментарі в картці',description:'З джерел — UAFix та UASerials; Lampa — штатні відгуки CUB. Можна показати один блок, обидва або приховати всі. Після зміни повторно відкрий картку.'},onChange:commentsChanged});
         ['intro','credits','source'].forEach(function(kind) {
             api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_skip_'+kind,type:'select',values:{on:'Увімкнено',off:'Вимкнено'},default:'off'},field:{name:kind==='intro' ? 'Пропуск вступу за мітками' : kind==='credits' ? 'Пропуск титрів за мітками' : 'Пропуск за мітками джерела',description:kind==='source' ? 'Відрізки, позначені в самому відео. Кнопка «Пропустити фрагмент» з відліком 7 секунд; Назад — скасувати. Доступно, якщо джерело передає мітки.' : 'Кнопка з відліком 7 секунд на мітці відео. OK — одразу, Назад — скасувати. Без міток нічого не пропускається.'},onChange:function(){if(skipUI)skipUI.start(L.Player.playdata());}});
