@@ -46,7 +46,7 @@ test('nested seasons retain languages, selected tracks and allowed mirrors',()=>
 });
 test('identically named UA, EN and RU releases never merge',()=>{
  const release=lang=>({source:'kinobase',voice:'Studio',audioLanguage:lang,episodes:[{season:0,episode:0,resolvedAt:Date.now(),qualities:{'1080p':'https://a.redcdn.org/master.m3u8'}}]});
- const result=api.sourceGroups({title:{releases:[release('ru'),release('en'),release('uk')]},season:0,episode:0});
+ const result=api.sourceGroups({languagePreference:'all',title:{releases:[release('ru'),release('en'),release('uk')]},season:0,episode:0});
  assert.deepEqual(result.groups.map(g=>g.language),['uk','en','ru']);assert.equal(new Set(result.groups.map(g=>g.key)).size,3);
 });
 test('English labels and original language are distinguished from unknown or other originals',()=>{
@@ -78,6 +78,6 @@ test('an unnamed later-season episode never inherits the whole series translatio
  assert.equal(entries[2].voice,'Озвучення без назви');assert.equal(entries[2].mirrors['1080p'].length,2);assert.equal(entries[2].audioLanguage,'ru');
  entries.forEach(e=>e.resolvedAt=Date.now());
  const releases=entries.map((e,i)=>({id:'r'+i,source:'kinobase',voice:e.voice,audioLanguage:e.audioLanguage,episodes:[e]}));
- assert.deepEqual(api.sourceGroups({title:{releases},season:1,episode:8}).groups.map(g=>g.voice),['Red Head Sound','LostFilm']);
- assert.deepEqual(api.sourceGroups({title:{releases},season:2,episode:8}).groups.map(g=>g.voice),['Озвучення без назви']);
+ assert.deepEqual(api.sourceGroups({languagePreference:'all',title:{releases},season:1,episode:8}).groups.map(g=>g.voice),['Red Head Sound','LostFilm']);
+ assert.deepEqual(api.sourceGroups({languagePreference:'all',title:{releases},season:2,episode:8}).groups.map(g=>g.voice),['Озвучення без назви']);
 });

@@ -112,6 +112,7 @@ function environment(options = {}) {
         assert.ok(item, 'Expected menu item: ' + menu.title);
         menu.onSelect(item);
     };
+    state.language = function (value) { state.choose(i=>i.action==='language'); state.choose(i=>i.value===value); };
     state.play = function (quality, predicate = () => true) {
         if (state.menu.items.some(i=>i.action==='quality')) {
             state.choose(i=>i.action==='quality'); state.choose(i=>i.value===quality);
@@ -240,7 +241,7 @@ test('canceling a pending catalog read does not open a stale modal', () => {
 test('failed catalog fetch reports error and does not launch video', () => {
     const {instance, state} = environment({failure: true});
     instance.open({title: 'Профі'});
-    assert.ok(state.menu.items.some(i=>i.title.includes('немає доступного')));
+    assert.ok(state.menu.items.some(i=>i.title.includes('Немає озвучення')));
     assert.equal(state.played, null);
 });
 test('install is idempotent and does not modify another plugin playback', () => {
@@ -389,7 +390,7 @@ test('beta change refreshes exact quality, rejects unavailable selection and lea
     filmQualityMenu(e);e.state.play('1080p');const before=e.getSpec();before.onTime({current:312,duration:6000,force:true});
     let error,next;before.request({type:'quality',quality:'1440p'},(err,value)=>{error=err;next=value;});
     assert.ok(error);assert.equal(next,undefined);
-    before.request({type:'quality',quality:'720p'},(err,value)=>{error=err;next=value;});assert.equal(error,null);assert.equal(next.quality,'720p');assert.equal(next.time,312);assert.equal(e.state.played,null);e.close();
+    before.request({type:'quality',quality:'720p'},(err,value)=>{error=err;next=value;});assert.equal(error,null);assert.equal(next.quality,'720p');assert.equal(next.time,312);assert.equal(e.state.played,null);e.close();assert.ok(e.state.menu.items.some(i=>i.action==='quality'&&i.title==='Якість: 720p'));assert.equal(e.state.storage.faborn_ukr_quality,'720p');
 });
 test('profile change prevents beta progress being written into the new account',()=>{
     const e=betaEnvironment();let owner='first';e.root.Lampa.Timeline.filename=()=>owner;filmQualityMenu(e);e.state.play('1080p');
@@ -697,7 +698,7 @@ test('Hail Mary: card to actual UASerials source/quality to player, without inte
     const env=multiSourceEnvironment(); env.instance.open(hailCard);
     const rows=env.state.menu.items.filter(i=>i.action==='play');
     assert.equal(rows.length,1); assert.ok(rows.every(i=>i.subtitle.includes('UASerials')));
-    assert.ok(env.state.menu.items.some(i=>i.action==='quality' && i.title.includes('1080p')));
+    assert.ok(env.state.menu.items.some(i=>i.action==='quality' && i.title.includes('Найкраща')));
     assert.ok(!env.state.menu.items.some(i=>/Знайти|індекс|діагностика/i.test(i.title)));
     env.state.play('1080p'); assert.equal(env.state.played.card.id,hailCard.id);
     assert.ok(env.state.played.url.includes('hdvbua.pro')); assert.equal(env.state.playerReturn,'full_start');
@@ -745,11 +746,11 @@ function groupedEnvironment() {
 }
 test('24 stream variants become three translations and an independent quality selector',()=>{
     const {state}=groupedEnvironment();
-    assert.equal(state.menu.items.length,6);
+    assert.equal(state.menu.items.length,7);
     assert.equal(state.menu.items.filter(i=>i.action==='kinostatus').length,1);
     assert.equal(state.menu.items.filter(i=>i.action==='sources').length,3);
     state.choose(i=>i.action==='quality');
-    assert.deepEqual(state.menu.items.map(i=>i.value),['2160p','1080p','720p','480p']);
+    assert.deepEqual(state.menu.items.map(i=>i.value),['best','2160p','1080p','720p','480p']);
     state.choose(i=>i.value==='720p');
     assert.equal(state.menu.items.filter(i=>i.group).length,3);
     state.choose(i=>i.title==='UA · BaibaKoTV');
@@ -904,7 +905,7 @@ function kinoEnvironment(options={}) {
     return env;
 }
 test('session 404 reopens the title in a Samsung session then lists and plays English directly',()=>{
- const env=kinoEnvironment({failEndpoint:'/user_data?',native:true,english:true});env.instance.open(kinoMovie);
+ const env=kinoEnvironment({failEndpoint:'/user_data?',native:true,english:true});env.instance.open(kinoMovie);env.state.language('all');
  assert.match(env.kino.nativeRequests[0].url,/\/film\//);
  assert.equal(env.kino.nativeRequests.filter(r=>r.url.includes('/user_data?')).length,1);
  assert.ok(env.kino.nativeRequests.some(r=>r.url.includes('/vod/')));
@@ -955,14 +956,14 @@ test('native fallback deadline keeps a visible reason instead of a stale waiting
 });
 test('expired native series playlist refresh preserves English, season, episode and quality',t=>{
  let now=Date.now();t.mock.method(Date,'now',()=>now);
- const env=kinoEnvironment({failEndpoint:'/user_data?',native:true,series:true,english:true});env.instance.open(kinoSeries);
+ const env=kinoEnvironment({failEndpoint:'/user_data?',native:true,series:true,english:true});env.instance.open(kinoSeries);env.state.language('all');
  env.state.choose(i=>i.action==='episode');env.state.choose(i=>i.value===2);env.state.choose(i=>i.value===2);
  env.kino.version=2;now+=61000;env.state.play('1080p',i=>i.release.audioLanguage==='en');
  assert.match(env.state.played.url,/\/1080\/s2e2\/v2\/master-v1-a3.m3u8$/);
  assert.equal(env.kino.nativeRequests.filter(r=>r.url.includes('/vod/')).length,2);
 });
 test('KinoBase is searched permanently by original title and launches selected RU 4K with audio',()=>{
-    const env=kinoEnvironment();env.instance.open(kinoMovie);
+    const env=kinoEnvironment();env.instance.open(kinoMovie);env.state.language('all');
     const rows=env.state.menu.items.filter(i=>i.group);
     assert.equal(rows.length,2);assert.ok(rows[0].title.startsWith('UA · '));assert.ok(rows[1].title.startsWith('🐷 RU · '));
     assert.ok(env.state.requests.some(r=>r.url.includes('/search?query=Terminator%202')));
@@ -1033,7 +1034,7 @@ test('English-only source metadata is accepted and not relabeled Ukrainian',()=>
  assert.equal(api.providerPage(html,hailSource).audioLanguage,'en');
 });
 test('KinoBase English original is shown between UA/RU and keeps 4K audio on handoff',()=>{
- const env=kinoEnvironment({english:true});env.instance.open(kinoMovie);
+ const env=kinoEnvironment({english:true});env.instance.open(kinoMovie);env.state.language('all');
  assert.deepEqual(env.state.menu.items.filter(i=>i.group).map(i=>i.group.language),['uk','en','ru']);
  assert.ok(env.state.menu.items.some(i=>i.title==='EN · Оригинал'));
  env.state.play('2160p',i=>i.release.audioLanguage==='en');
@@ -1041,14 +1042,14 @@ test('KinoBase English original is shown between UA/RU and keeps 4K audio on han
 });
 test('English original survives season, episode, quality and signed URL renewal',t=>{
  let now=Date.now();t.mock.method(Date,'now',()=>now);
- const env=kinoEnvironment({series:true,english:true});env.instance.open(kinoSeries);
+ const env=kinoEnvironment({series:true,english:true});env.instance.open(kinoSeries);env.state.language('all');
  env.state.choose(i=>i.action==='episode');env.state.choose(i=>i.value===2);env.state.choose(i=>i.value===2);
  env.kino.version=2;now+=61000;env.state.play('1080p',i=>i.release.audioLanguage==='en');
  assert.match(env.state.played.url,/\/1080\/s2e2\/v2\/master-v1-a3.m3u8$/);assert.equal(env.state.played.season,2);assert.equal(env.state.played.episode,2);
 });
 test('a removed English original is never replaced with another language',t=>{
  let now=Date.now();t.mock.method(Date,'now',()=>now);
- const env=kinoEnvironment({english:true});env.instance.open(kinoMovie);env.kino.missingEN=true;now+=61000;
+ const env=kinoEnvironment({english:true});env.instance.open(kinoMovie);env.state.language('all');env.kino.missingEN=true;now+=61000;
  env.state.play('1080p',i=>i.release.audioLanguage==='en');assert.equal(env.state.played,null);assert.match(env.state.notices.join(' '),/Вибране озвучення/);
 });
 test('Playerjs cannot switch an English choice to the sole remaining Russian track',t=>{
@@ -1060,13 +1061,13 @@ test('Playerjs cannot switch an English choice to the sole remaining Russian tra
   }
   if(req.url===masterURL){req.status=200;req.responseText=masterHTML;req.onload();return true;}
  });
- env.instance.open({...hailCard,original_language:'en'});assert.ok(env.state.menu.items.some(i=>i.group&&i.group.language==='en'));
+ env.instance.open({...hailCard,original_language:'en'});env.state.language('all');assert.ok(env.state.menu.items.some(i=>i.group&&i.group.language==='en'));
  removed=true;now+=61000;env.state.play('1080p',i=>i.release.audioLanguage==='en');
  assert.equal(env.state.played,null);assert.match(env.state.notices.join(' '),/озвучення не знайдено/);
 });
 
 test('real playback saves every episode, standard Lampa marks and history; browsing keeps the last watched episode',()=>{
- const env=kinoEnvironment({series:true});env.instance.open(kinoSeries);
+ const env=kinoEnvironment({series:true});env.instance.open(kinoSeries);env.state.language('all');
  env.state.play('1080p',i=>i.release.audioLanguage==='uk');
  assert.equal(env.state.history.length,0);
  env.state.progress(800,2400);env.root.Lampa.Player.close();
@@ -1176,7 +1177,7 @@ test('KinoBase format diagnostics follow the selected quality and remove old sta
  assert.equal(state.storage.faborn_ukr_last_error,'');assert.match(state.storage.faborn_ukr_last_launch,/1080p/);
  // A native quality switch has not fetched this manifest; do not label it using the old 4K metadata.
  assert.doesNotMatch(state.storage.faborn_ukr_stream_format,/3840x2160/);
- state.videoEvents.loadeddata();assert.match(state.storage.faborn_ukr_kino_playback,/1080p.*відтворення почалося/);
+ state.videoEvents.loadeddata();assert.match(state.storage.faborn_ukr_kino_playback,/1080p.*відтворення почалося/);env.root.Lampa.Player.close();assert.ok(state.menu.items.some(i=>i.action==='quality'&&i.title==='Якість: 1080p'));assert.equal(state.storage.faborn_ukr_quality,'1080p');
 });
 test('failed KinoBase startup does not retain a connecting status or override known mirror exhaustion',()=>{
  const env=kinoEnvironment(),{state}=env;env.root.webapis={avplay:{getState(){return 'IDLE';}}};env.instance.open(kinoMovie);state.play('2160p');state.fireTimer(45000);
@@ -1256,7 +1257,7 @@ test('legacy UHD is applied again for the same 4K mirror while keeping quality a
 test('KinoBase AVPlay failure retries the exact-quality alternate master inside the same player',()=>{
  const env=voicePlayer(kinoEnvironment({series:true,english:true})),{state}=env;
  state.timelines['faborn|tmdb-tv-1668|1|1']={time:510,duration:1440,percent:35};
- env.instance.open(kinoSeries);state.play('1080p',r=>r.release.audioLanguage==='en');
+ env.instance.open(kinoSeries);env.state.language('all');state.play('1080p',r=>r.release.audioLanguage==='en');
  const data=state.played,timeline=data.timeline,playlist=state.playlist;state.nativeVideo.currentTime=0;state.nativeVideo.paused=true;
  kinoConnectionError(state);
  assert.equal(state.played,data);assert.equal(data.timeline,timeline);assert.equal(state.playlist,playlist);
@@ -1741,7 +1742,7 @@ test('server beta results update the current source menu and Back invalidates ev
  const e=environment({storage:{faborn_ukr_uakinogo_beta:'on',faborn_ukr_uakinogo_server:'http://192.168.88.191:8787'}});let callbacks,cancels=0;
  e.root.document.createElement=()=>({});e.root.document.head={appendChild(script){script.onload();}};
  e.root.Faborn4KLab=()=>({discover(movie,s,n,cb){callbacks=cb;},cancel(){cancels++;},playChoice(){}});
- e.instance.open(kinoMovie);assert.ok(callbacks);const result={season:0,episode:0,episodes:[{season:0,episode:0}],tracks:[{label:'English',language:'en',qualities:['2160p']}]};
+ e.instance.open(kinoMovie);e.state.language('all');assert.ok(callbacks);const result={season:0,episode:0,episodes:[{season:0,episode:0}],tracks:[{label:'English',language:'en',qualities:['2160p']}]};
  callbacks.result(result);assert.ok(e.state.menu.items.some(r=>r.release?.source==='uakinogo'&&r.value==='2160p'));
  e.state.menu.onBack();callbacks.result(result);assert.equal(e.state.menu,null);assert.ok(cancels);
 });
@@ -1788,4 +1789,66 @@ test('UAKinogo beta uses the selected custom player, refreshes quality and voice
  let next;spec.request({type:'quality',quality:'1080p'},(err,value)=>{assert.equal(err,null);next=value;});assert.equal(next.quality,'1080p');assert.equal(next.time,312);
  const english=next.voices.find(v=>v.title==='English');next.request({type:'voice',id:english.id},(err,value)=>{assert.equal(err,null);next=value;});assert.equal(changes.at(-1).language,'en');assert.equal(changes.at(-1).quality,'1080p');
  const before=e.state.requests.length;e.close();assert.equal(e.state.requests.length,before);assert.ok(e.state.menu.items.some(i=>i.group && i.group.entries.some(r=>r.release.source==='uakinogo')));
+});
+
+
+test('language defaults to Ukrainian; changing it resets quality without any network search',()=>{
+ const e=kinoEnvironment({english:true});e.instance.open(kinoMovie);
+ assert.deepEqual(e.state.menu.items.filter(i=>i.group).map(i=>i.group.language),['uk']);
+ assert.equal(e.state.params.find(p=>p.param.name==='faborn_ukr_audio_language').param.default,'uk');
+ e.state.choose(i=>i.action==='quality');e.state.choose(i=>i.value==='720p');
+ const count=e.state.requests.length;e.state.language('en');
+ assert.equal(e.state.requests.length,count);assert.equal(e.state.storage.faborn_ukr_quality,'best');
+ assert.equal(e.state.storage.faborn_ukr_audio_language,'en');
+ assert.deepEqual(e.state.menu.items.filter(i=>i.group).map(i=>[i.group.language,i.value]),[['en','2160p']]);
+ e.state.menu.onBack();e.instance.open(kinoMovie);
+ assert.deepEqual(e.state.menu.items.filter(i=>i.group).map(i=>i.group.language),['en']);
+});
+test('missing Ukrainian never silently chooses another language; All is an explicit cached filter',()=>{
+ const e=kinoEnvironment({english:true});e.kino.missingUA=true;e.instance.open(kinoMovie);
+ assert.ok(!e.state.menu.items.some(i=>i.group));assert.equal(e.state.played,null);
+ assert.ok(e.state.menu.items.some(i=>i.title==='Немає озвучення: Українська'));
+ assert.ok(!e.state.menu.items.some(i=>i.action==='kinostatus'),'An excluded language is not a broken KinoBase');
+ const count=e.state.requests.length;e.state.choose(i=>i.action==='all-languages');
+ assert.equal(e.state.requests.length,count);assert.deepEqual(e.state.menu.items.filter(i=>i.group).map(i=>i.group.language),['en','ru']);
+});
+test('Best remains Best after playback, auto-next, Back and opening another card',()=>{
+ const e=kinoEnvironment({series:true,english:true});e.instance.open(kinoSeries);e.state.language('en');
+ const row=e.state.menu.items.find(i=>i.group);e.state.choose(i=>i===row);
+ assert.equal(e.state.played.faborn_quality,'2160p');assert.equal(e.state.storage.faborn_ukr_quality,'best');
+ advanceFixture(e);e.state.fireTimer(0);e.root.Lampa.Player.close();
+ assert.ok(e.state.menu.items.some(i=>i.action==='quality'&&i.title==='Якість: Найкраща'));
+ assert.deepEqual(e.state.menu.items.filter(i=>i.group).map(i=>i.group.language),['en']);
+ assert.ok(e.state.menu.items.some(i=>i.action==='episode'&&i.title==='Сезон 1 · Серія 2'));
+ e.state.menu.onBack();e.instance.open(kinoMovie);
+ assert.ok(e.state.menu.items.some(i=>i.action==='quality'&&i.title==='Якість: Найкраща'));
+});
+test('late server results respect the selected language and update Best without another search',()=>{
+ const e=environment({storage:{faborn_ukr_uakinogo_beta:'on',faborn_ukr_uakinogo_server:'http://192.168.88.191:8789'}});let callbacks;
+ e.root.document.createElement=()=>({});e.root.document.head={appendChild(script){script.onload();}};
+ e.root.Faborn4KLab=()=>({discover(movie,s,n,cb){callbacks=cb;},cancel(){},playChoice(){}});
+ e.instance.open(kinoMovie);const count=e.state.requests.length;
+ callbacks.result({season:0,episode:0,episodes:[{season:0,episode:0}],tracks:[{label:'English',language:'en',qualities:['2160p']},{label:'Дубляж',language:'uk',qualities:['1080p']}]});
+ assert.deepEqual(e.state.menu.items.filter(i=>i.group).map(i=>[i.group.language,i.value]),[['uk','1080p']]);
+ e.state.language('en');assert.equal(e.state.requests.length,count);
+ assert.deepEqual(e.state.menu.items.filter(i=>i.group).map(i=>[i.group.language,i.value]),[['en','2160p']]);
+});
+test('language submenu Back keeps the manual quality and selected translation',()=>{
+ const e=kinoEnvironment({english:true});e.instance.open(kinoMovie);e.state.play('1080p');e.root.Lampa.Player.close();
+ const count=e.state.requests.length;e.state.choose(i=>i.action==='language');e.state.menu.onBack();
+ assert.equal(e.state.requests.length,count);assert.equal(e.state.menu.items.find(i=>i.group).value,'1080p');
+ assert.equal(e.state.menu.items.find(i=>i.selected).group.language,'uk');
+});
+test('beta playback and Back preserve Best while handing a real resolution to the engine',()=>{
+ const e=betaEnvironment();filmQualityMenu(e);e.state.choose(i=>i.group);
+ if(e.state.menu&&e.state.menu.items.some(i=>i.action==='play'))e.state.choose(i=>i.action==='play');
+ assert.equal(e.getSpec().quality,'2160p');e.close();
+ assert.ok(e.state.menu.items.some(i=>i.action==='quality'&&i.title==='Якість: Найкраща'));
+});
+test('changing language inside the native player returns to that voice without overwriting Best',()=>{
+ const e=voicePlayer(kinoEnvironment({english:true,series:true}));e.instance.open(kinoSeries);e.state.choose(i=>i.group);
+ e.state.played.voiceovers.find(v=>v.language==='EN').onSelect();e.state.videoEvents.loadeddata();e.root.Lampa.Player.close();
+ assert.ok(e.state.menu.items.some(i=>i.action==='language'&&i.title==='Мова: English'));
+ assert.ok(e.state.menu.items.some(i=>i.action==='quality'&&i.title==='Якість: Найкраща'));
+ assert.equal(e.state.menu.items.find(i=>i.group).group.language,'en');
 });

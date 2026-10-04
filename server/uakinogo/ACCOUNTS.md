@@ -7,7 +7,7 @@
 З **beta.45.1** можна окремо дозволити домашню мережу. У SSH-сесії Ubuntu:
 
 ```sh
-curl -fL https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.45.1/server/uakinogo/install.sh -o /tmp/faborn-install.sh &&
+curl -fL https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.46/server/uakinogo/install.sh -o /tmp/faborn-install.sh &&
 sudo bash /tmp/faborn-install.sh --port 8789 --allow-lan 192.168.88.0/24
 ```
 

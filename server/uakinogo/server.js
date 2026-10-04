@@ -3,7 +3,7 @@ const http=require('node:http'),crypto=require('node:crypto');
 const {createResolver,card}=require('./resolver');
 const {createUserStore}=require('./auth');
 const {BlockList,isIPv4}=require('node:net');
-const VERSION='0.1.0-beta.45.1';
+const VERSION='0.1.0-beta.46';
 function lanPolicy(value=''){
  if(!value)return ()=>false;
  const match=/^(\d+\.\d+\.\d+\.\d+)\/(\d{1,2})$/.exec(value);

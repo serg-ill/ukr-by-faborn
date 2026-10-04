@@ -1,4 +1,6 @@
-# UAKinogo · серверна бета 0.1.0-beta.45.1
+# UAKinogo · серверна бета 0.1.0-beta.46
+
+**beta.46:** оновлення фільтра мови працює на стороні Lampa. Уже встановлений сервер beta.45 / beta.45.1 сумісний і не потребує оновлення; серверний код та правила доступу не змінені.
 
 Обробник для **ukr by Faborn**. Ubuntu отримує сторінки джерела та JSON плеєра й повертає телевізору озвучення, сезони, серії та посилання. **Плейлисти HLS, ініціалізаційні файли й відеосегменти через Ubuntu не проходять.** Сервер не перекодовує відео і не має маршруту медіапроксі.
 
@@ -18,10 +20,10 @@
 ssh USERNAME@192.168.88.191
 ```
 
-У вже відкритій SSH-сесії завантажте [інсталятор beta.45](https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.45.1/server/uakinogo/install.sh) та запустіть. Він містить виправлення конфлікту портів і встановлює серверний пакет beta.45:
+У вже відкритій SSH-сесії завантажте [інсталятор beta.46](https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.46/server/uakinogo/install.sh) та запустіть. Він містить виправлення конфлікту портів і встановлює серверний пакет beta.46:
 
 ```sh
-curl -fL https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.45.1/server/uakinogo/install.sh -o /tmp/faborn-install.sh
+curl -fL https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.46/server/uakinogo/install.sh -o /tmp/faborn-install.sh
 sudo bash /tmp/faborn-install.sh --test-users
 ```
 
@@ -43,7 +45,7 @@ sudo bash /tmp/faborn-install.sh --port 8788
 curl http://192.168.88.191:8787/health
 ```
 
-Очікувана відповідь містить `"ok":true`, `"version":"0.1.0-beta.45.1"`, `"auth":"basic"` (із тестовими користувачами), `"videoProxy":false`.
+Очікувана відповідь містить `"ok":true`, `"version":"0.1.0-beta.46"`, `"auth":"basic"` (із тестовими користувачами), `"videoProxy":false`.
 
 ## Налаштування телевізора
 
