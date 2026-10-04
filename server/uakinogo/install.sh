@@ -1,18 +1,112 @@
 #!/usr/bin/env bash
 # Installs only the Faborn metadata service. Does not configure a video proxy,
 # router, firewall, system Node.js, or access keys.
-set -euo pipefail
+set -Eeuo pipefail
 version='0.1.0-beta.40'
 node_version='v24.21.0'
 base='/opt/faborn-resolver'
 bundle="faborn-uakinogo-${version}.tar.gz"
 release="https://github.com/serg-ill/ukr-by-faborn/releases/download/v${version}"
-if [[ "${1:-}" == '--help' ]]; then
-    echo "Faborn UAKinogo ${version}: sudo bash install.sh"
-    echo 'Ubuntu 22.04+ x86_64/arm64, systemd. Port 8787. No access key in this beta.'
-    exit 0
-fi
-[[ $# == 0 ]] || { echo 'Unknown argument. Use --help.' >&2; exit 2; }
+usage() {
+    echo "Faborn UAKinogo ${version}: sudo bash install.sh [--port NUMBER]"
+    echo 'Ubuntu 22.04+ x86_64/arm64, systemd. No access key in this beta.'
+    echo 'Keeps the configured port when available; otherwise tries the next 20 ports.'
+    echo 'An explicit --port never silently selects another port.'
+}
+valid_port() { [[ "$1" =~ ^[0-9]{1,5}$ ]] && (( 10#$1 >= 1 && 10#$1 <= 65535 )); }
+read_port() {
+    local value=''
+    if [[ -f "$1" ]]; then
+        value=$(sed -nE "s/^[[:space:]]*PORT=[\"']?([0-9]+)[\"']?[[:space:]]*$/\1/p" "$1" | tail -n 1)
+        if [[ -z "$value" ]] && awk '/^[[:space:]]*PORT=/{found=1} END{exit !found}' "$1"; then
+            echo 'Invalid PORT in the existing environment file.' >&2; return 2
+        fi
+    fi
+    value=${value:-8787}
+    valid_port "$value" || { echo 'PORT must be between 1 and 65535.' >&2; return 2; }
+    printf '%s\n' "$((10#$value))"
+}
+# ss is run as root so an existing Faborn listener can be identified by MainPID.
+# A foreign listener, including one answering /health with 401, is never stopped.
+listeners_are_ours() {
+    local listeners="$1" pid="$2" line found
+    [[ -n "$listeners" && "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+    while IFS= read -r line; do
+        found=false
+        while [[ "$line" =~ pid=([0-9]+), ]]; do
+            [[ "${BASH_REMATCH[1]}" == "$pid" ]] || return 1
+            line=${line#*"pid=${BASH_REMATCH[1]},"}; found=true
+        done
+        [[ "$found" == true ]] || return 1
+    done <<< "$listeners"
+}
+port_available() {
+    local listeners
+    listeners=$(ss -H -ltnp "sport = :$1") || { echo 'Cannot inspect listening ports with ss.' >&2; return 2; }
+    [[ -z "$listeners" ]] || listeners_are_ours "$listeners" "$2"
+}
+choose_port() {
+    local requested="$1" start="$2" pid="$3" candidate status limit
+    candidate=${requested:-$start}
+    limit=$((candidate + 20)); [[ -z "$requested" ]] || limit=$candidate
+    for (( ; candidate <= limit && candidate <= 65535; candidate++ )); do
+        if port_available "$candidate" "$pid"; then printf '%s\n' "$candidate"; return 0; else status=$?; fi
+        [[ "$status" != 2 ]] || return 2
+        echo "Port $candidate is occupied by another service." >&2
+    done
+    echo 'No available port. Run the installer with --port and an available port number.' >&2
+    return 1
+}
+write_port() {
+    local file="$1" value="$2" temp
+    temp=$(mktemp "${file}.XXXXXX")
+    if ! awk -v value="$value" '/^[[:space:]]*PORT=/{if (!written++) print "PORT=" value; next} {print} END{if (!written) print "PORT=" value}' "$file" > "$temp"; then
+        rm -f -- "$temp"; return 1
+    fi
+    chmod 0600 "$temp"; mv -f -- "$temp" "$file"
+}
+health_check() {
+    local pid listeners
+    systemctl is-active --quiet faborn-resolver.service || return 1
+    pid=$(systemctl show --property MainPID --value faborn-resolver.service) || return 1
+    listeners=$(ss -H -ltnp "sport = :$port") || return 1
+    listeners_are_ours "$listeners" "$pid" || return 1
+    curl -fsS --max-time 3 "http://127.0.0.1:$port/health" -o "$stage/health.json" || return 1
+    "$base/node/bin/node" -e 'const h=JSON.parse(require("fs").readFileSync(process.argv[1]));if(h.ok!==true||h.videoProxy!==false||h.version!==process.argv[2])process.exit(1)' "$stage/health.json" "$version"
+}
+rollback_install() {
+    [[ "$rollback_armed" == true ]] || return 0
+    rollback_armed=false
+    systemctl stop faborn-resolver.service || true
+    if [[ -n "$previous" && -n "$previous_node" && -f "$stage/previous.service" ]]; then
+        ln -s "$previous" "$base/current.rollback.$$"; mv -Tf "$base/current.rollback.$$" "$base/current"
+        ln -s "$previous_node" "$base/node.rollback.$$"; mv -Tf "$base/node.rollback.$$" "$base/node"
+        install -m 0644 "$stage/previous.service" "$service_file"
+    else
+        # Keep a failed first install available for a subsequent retry, but disabled.
+        previous_active=false; previous_enabled=false
+    fi
+    if [[ -f "$stage/previous.env" ]]; then
+        install -m 0600 "$stage/previous.env" "$env_file"
+    fi
+    systemctl daemon-reload || true
+    if [[ "$previous_enabled" == true ]]; then systemctl enable faborn-resolver.service >/dev/null || true; else systemctl disable faborn-resolver.service >/dev/null || true; fi
+    if [[ "$previous_active" == true ]]; then systemctl restart faborn-resolver.service || true; fi
+    echo 'Restored the previous configuration and service state. Other services were not changed.' >&2
+}
+main() {
+local requested_port='' env_file='/etc/faborn-resolver.env' service_file='/etc/systemd/system/faborn-resolver.service'
+local stage='' rollback_armed=false previous='' previous_node='' previous_active=false previous_enabled=false
+local configured_port port own_pid=0 healthy=false status
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --help) usage; return 0 ;;
+        --port)
+            [[ $# -ge 2 ]] && valid_port "$2" || { echo '--port requires a number between 1 and 65535.' >&2; return 2; }
+            requested_port=$((10#$2)); shift 2 ;;
+        *) echo 'Unknown argument. Use --help.' >&2; return 2 ;;
+    esac
+done
 [[ $(uname -s) == Linux && -f /etc/os-release ]] || { echo 'Run this script on Ubuntu through SSH, not on the Mac.' >&2; exit 1; }
 . /etc/os-release
 [[ "$ID" == ubuntu ]] || { echo 'This installer supports Ubuntu.' >&2; exit 1; }
@@ -24,15 +118,24 @@ case "$(uname -m)" in
     aarch64|arm64) arch=arm64; node_sha='6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289ad2' ;;
     *) echo 'Only x86_64 and arm64 are supported.' >&2; exit 1 ;;
 esac
-for cmd in curl xz tar sha256sum; do
+for cmd in curl xz tar sha256sum ss; do
     if ! command -v "$cmd" >/dev/null; then
         apt-get update -qq
-        apt-get install -y --no-install-recommends ca-certificates curl xz-utils
+        apt-get install -y --no-install-recommends ca-certificates curl xz-utils iproute2
         break
     fi
 done
+configured_port=$(read_port "$env_file")
+if systemctl is-active --quiet faborn-resolver.service; then
+    previous_active=true
+    own_pid=$(systemctl show --property MainPID --value faborn-resolver.service)
+fi
+if systemctl is-enabled --quiet faborn-resolver.service; then previous_enabled=true; fi
+port=$(choose_port "$requested_port" "$configured_port" "$own_pid")
+echo "Installing Faborn on port $port."
 stage=$(mktemp -d)
-trap 'rm -rf -- "$stage"' EXIT
+trap "$(printf 'rm -rf -- %q' "$stage")" EXIT
+trap 'status=$?; trap - ERR; rollback_install; exit "$status"' ERR
 fetch() { curl --fail --location --show-error --silent --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 240 --retry 2 "$1" -o "$2"; }
 fetch "$release/$bundle" "$stage/$bundle"
 fetch "$release/$bundle.sha256" "$stage/checksum"
@@ -49,6 +152,10 @@ tar -xJf "$stage/$node_archive" --no-same-owner --no-same-permissions --strip-co
 "$stage/node/bin/node" --check "$stage/app/server/uakinogo/server.js"
 "$stage/node/bin/node" --check "$stage/app/server/uakinogo/resolver.js"
 "$stage/node/bin/node" -e 'const s=require(process.argv[1]);if(s.VERSION!==process.argv[2])process.exit(1)' "$stage/app/server/uakinogo/server.js" "$version"
+# Downloads take time: check again before changing the installed service.
+own_pid=0
+if systemctl is-active --quiet faborn-resolver.service; then own_pid=$(systemctl show --property MainPID --value faborn-resolver.service); fi
+if ! port_available "$port" "$own_pid"; then echo "Port $port became unavailable. No installed configuration was changed; run the installer again." >&2; exit 1; fi
 if ! id faborn-resolver >/dev/null 2>&1; then
     useradd --system --user-group --home-dir "$base" --no-create-home --shell /usr/sbin/nologin faborn-resolver
 fi
@@ -60,31 +167,30 @@ cp -R "$stage/app/." "$release_dir/"
 cp -R "$stage/node/." "$runtime_dir/"
 chown -R root:root "$release_dir" "$runtime_dir"
 chmod -R go-w "$release_dir" "$runtime_dir"
-if [[ ! -e /etc/faborn-resolver.env ]]; then
-    install -m 0600 /dev/null /etc/faborn-resolver.env
-    cat > /etc/faborn-resolver.env <<'ENV'
+[[ ! -e "$env_file" ]] || cp "$env_file" "$stage/previous.env"
+previous=$(readlink "$base/current" || true)
+previous_node=$(readlink "$base/node" || true)
+[[ ! -e "$service_file" ]] || cp "$service_file" "$stage/previous.service"
+rollback_armed=true
+if [[ ! -e "$env_file" ]]; then
+    install -m 0600 /dev/null "$env_file"
+    cat > "$env_file" <<'ENV'
 HOST=0.0.0.0
 PORT=8787
 FABORN_ACCESS_KEYS=
 ENV
 fi
-previous=$(readlink "$base/current" || true)
-previous_node=$(readlink "$base/node" || true)
-[[ ! -e /etc/systemd/system/faborn-resolver.service ]] || cp /etc/systemd/system/faborn-resolver.service "$stage/previous.service"
-ln -s "$release_dir" "$base/current.next"
-mv -Tf "$base/current.next" "$base/current"
-ln -s "$runtime_dir" "$base/node.next"
-mv -Tf "$base/node.next" "$base/node"
-install -m 0644 "$stage/app/server/uakinogo/faborn-resolver.service" /etc/systemd/system/faborn-resolver.service
+write_port "$env_file" "$port"
+ln -s "$release_dir" "$base/current.next.$$"
+mv -Tf "$base/current.next.$$" "$base/current"
+ln -s "$runtime_dir" "$base/node.next.$$"
+mv -Tf "$base/node.next.$$" "$base/node"
+install -m 0644 "$stage/app/server/uakinogo/faborn-resolver.service" "$service_file"
 systemctl daemon-reload
 systemctl enable faborn-resolver.service >/dev/null
-healthy=false
 if systemctl restart faborn-resolver.service; then
-    # Check the configured port without sourcing arbitrary environment-file contents.
-    port=$(sed -n 's/^PORT=\([0-9][0-9]*\)$/\1/p' /etc/faborn-resolver.env | tail -n 1)
-    port=${port:-8787}
     for attempt in 1 2 3 4 5; do
-        if curl -fsS --max-time 3 "http://127.0.0.1:$port/health" -o "$stage/health.json" && "$base/node/bin/node" -e 'const h=JSON.parse(require("fs").readFileSync(process.argv[1]));if(!h.ok||h.videoProxy!==false||h.version!==process.argv[2])process.exit(1)' "$stage/health.json" "$version"; then
+        if health_check; then
             healthy=true; break
         fi
         sleep 1
@@ -93,19 +199,14 @@ fi
 if [[ "$healthy" != true ]]; then
     echo 'The new service did not pass its health check.' >&2
     journalctl -u faborn-resolver.service -n 15 --no-pager >&2 || true
-    systemctl stop faborn-resolver.service || true
-    if [[ -n "$previous" && -n "$previous_node" && -f "$stage/previous.service" ]]; then
-        ln -s "$previous" "$base/current.rollback"; mv -Tf "$base/current.rollback" "$base/current"
-        ln -s "$previous_node" "$base/node.rollback"; mv -Tf "$base/node.rollback" "$base/node"
-        install -m 0644 "$stage/previous.service" /etc/systemd/system/faborn-resolver.service
-        systemctl daemon-reload; systemctl restart faborn-resolver.service || true
-        echo 'Restored the previous service and Node runtime.' >&2
-    else
-        systemctl disable faborn-resolver.service >/dev/null || true
-    fi
+    rollback_install
     exit 1
 fi
+rollback_armed=false
+trap - ERR
 cat "$stage/health.json"
 printf '\nInstalled %s with automatic startup. Port: %s. Video proxy: disabled.\n' "$version" "$port"
 echo 'Enter http://UBUNTU-LAN-IP:'"$port"' in Lampa > ukr by Faborn > Сервер UAKinogo.'
 echo 'Existing firewall, router and access-key settings were not changed.'
+}
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi
