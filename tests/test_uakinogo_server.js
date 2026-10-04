@@ -48,6 +48,35 @@ test('bad and oversized requests cannot reach the provider',async t=>{
     const r=await fetch(s.base+'/v1/resolve',{method:'POST',body:'x'.repeat(17000)});
     assert.equal(r.status,413);assert.equal(calls,0);
 });
+test('large TMDB film and series cards resolve after client compaction with the same 16 KiB server limit',async t=>{
+    const calls=[];const s=await service(t,{resolve:async(m,season,episode)=>{calls.push(m);return {...result(),season,episode,episodes:[{season,episode}]};}});
+    for(const m of [movie,{name:'Fixture series',original_name:'Fixture series',first_air_date:'2024-02-29',media_type:'tv'}]){
+        const full={...m,overview:'Опис '.repeat(2000),credits:{cast:Array.from({length:2},()=>({name:'Actor',biography:'Biography'.repeat(100)}))},user_key:'never-send-fixture'};
+        const data={movie:full,season:m.media_type==='tv'?2:0,episode:m.media_type==='tv'?7:0,fresh:true};
+        assert.ok(Buffer.byteLength(JSON.stringify(data))>16384);
+        const before=calls.length;
+        assert.equal((await s.post(data)).status,413);assert.equal(calls.length,before);
+        const packed=Core.resolverCard(full);assert.deepEqual(packed,card(full));
+        const small={...data,movie:packed};assert.ok(Buffer.byteLength(JSON.stringify(small))<1024);
+        const response=await s.post(small);assert.equal(response.status,200);
+        assert.equal(Core.resolverResult(await response.json(),data.season,data.episode).tracks.length,1);
+        assert.equal(calls.length,before+1);assert.deepEqual(calls.at(-1),packed);
+    }
+});
+test('client metadata bounds also keep escaped Unicode safely below the existing body limit',()=>{
+    const fields=['title','original_title','name','original_name','release_date','first_air_date','original_language'];
+    const m=Object.fromEntries(fields.map(k=>[k,'\u0001'.repeat(179)+'名']));m.media_type='movie';m.extra=m;
+    const packed=Core.resolverCard(m);assert.deepEqual(packed,card(m));assert.ok(Buffer.byteLength(JSON.stringify({movie:packed,season:0,episode:0,fresh:true}))<16384);
+    for(const bad of [null,[],{}, {title:123},{title:'x'.repeat(181)},{title:'X',media_type:'person'}])assert.throws(()=>Core.resolverCard(bad),/SERVER/);
+});
+test('HTTP failures name the actual request problem without misreporting a failed title search',()=>{
+    assert.match(Core.resolverError(413,'{}'),/413.*запит завеликий/);
+    assert.ok(!Core.resolverError(413,'{}').includes('не знайшов назву'));
+    assert.match(Core.resolverError(401,''),/ключ/);assert.match(Core.resolverError(429,''),/зайнятий/);
+    assert.match(Core.resolverError(502,JSON.stringify({error:'Назву, рік і тип не знайдено'})),/Назву, рік/);
+    assert.ok(!Core.resolverError(502,JSON.stringify({error:'<img>bad https://edge.test/signed-secret'})).includes('signed-secret'));
+    assert.match(Core.resolverError(502,'<html>upstream failed</html>'),/обробник повернув помилку/);
+});
 test('concurrency is bounded and source failures cannot expose signed URLs',async t=>{
     let release,started;const begun=new Promise(r=>started=r);
     const s=await service(t,{maxActive:1,resolve:()=>new Promise((r,reject)=>{release=()=>reject(Error('bad https://edge.vkvideo.cloud/token/secret'));started();})});

@@ -1,6 +1,8 @@
-# UAKinogo · серверна бета 0.1.0-beta.40
+# UAKinogo · серверна бета 0.1.0-beta.41
 
 Обробник для **ukr by Faborn**. Ubuntu отримує сторінки джерела та JSON плеєра й повертає телевізору озвучення, сезони, серії та посилання. **Плейлисти HLS, ініціалізаційні файли й відеосегменти через Ubuntu не проходять.** Сервер не перекодовує відео і не має маршруту медіапроксі.
+
+**Модуль beta.41 виправляє HTTP 413 на телевізорі, надсилаючи лише потрібні поля TMDB. Установлений обробник beta.40 сумісний; оновлювати Ubuntu для цієї правки не потрібно.** Збережіть свою адресу сервера й фактичний порт, повністю перезапустіть Lampa. Новий пакет beta.41 має той самий API та ліміт 16 KiB.
 
 У першій бета доступ без ключа. Модуль на телевізорі вимкнений за замовчуванням. Старе налаштування Alloha його не активує.
 
@@ -12,7 +14,7 @@
 ssh USERNAME@192.168.88.191
 ```
 
-У вже відкритій SSH-сесії завантажте [актуальний інсталятор beta.40](https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/main/server/uakinogo/install.sh) та запустіть. Інсталятор у `main` містить виправлення конфлікту портів після випуску beta.40; архів сервера та його версія залишаються тими самими:
+У вже відкритій SSH-сесії завантажте [актуальний інсталятор beta.41](https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/main/server/uakinogo/install.sh) та запустіть. Він містить виправлення конфлікту портів і встановлює серверний пакет beta.41:
 
 ```sh
 curl -fL https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/main/server/uakinogo/install.sh -o /tmp/faborn-install.sh
@@ -35,11 +37,11 @@ sudo bash /tmp/faborn-install.sh --port 8788
 curl http://192.168.88.191:8787/health
 ```
 
-Очікувана відповідь містить `"ok":true`, `"version":"0.1.0-beta.40"`, `"auth":"none"`, `"videoProxy":false`.
+Очікувана відповідь містить `"ok":true`, `"version":"0.1.0-beta.41"`, `"auth":"none"`, `"videoProxy":false`.
 
 ## Налаштування телевізора
 
-1. Перезавантажте Lampa; у діагностиці Faborn має бути **0.1.0-beta.40** або новіше.
+1. Перезавантажте Lampa; у діагностиці Faborn має бути **0.1.0-beta.41** або новіше.
 2. **Налаштування → ukr by Faborn → Сервер UAKinogo**: введіть адресу свого Ubuntu, наприклад `http://192.168.88.191:8787`.
 3. **UAKinogo · серверна бета → Увімкнено**.
 4. У налаштуваннях плеєра Lampa оберіть **Tizen / AVPlay**. Для нового джерела ця бета використовує штатний плеєр Lampa, навіть якщо для звичайних джерел вибраний Faborn Player.
@@ -79,16 +81,21 @@ if [ -n "$listeners" ]; then
     exit 1
 fi
 test -f /etc/faborn-resolver.env
-test -f /etc/systemd/system/faborn-resolver.service
+unit_source=/opt/faborn-resolver/current/server/uakinogo/faborn-resolver.service
+test -f "$unit_source"
 sed -i 's/^PORT=.*/PORT=8788/' /etc/faborn-resolver.env
-systemctl reset-failed faborn-resolver.service
-systemctl enable --now faborn-resolver.service
+install -m 0644 "$unit_source" /etc/systemd/system/faborn-resolver.service
+systemctl daemon-reload
+systemctl enable faborn-resolver.service
+systemctl restart faborn-resolver.service
 curl -fsS --retry 5 --retry-connrefused --retry-delay 1 --max-time 3 http://127.0.0.1:8788/health
 printf '\nАдреса для телевізора: http://192.168.88.191:8788\n'
 SH
 ```
 
 Очікується `"ok":true`, `"auth":"none"`, `"videoProxy":false`. Адреса з Mac: `http://192.168.88.191:8788/health`. Якщо порт `8788` теж зайнятий, актуальний інсталятор без `--port` автоматично знайде інший у зазначеному діапазоні.
+
+Якщо попередній блок зупинився на `reset-failed` з повідомленням `Unit faborn-resolver.service not loaded`, PORT уже міг змінитися, а запуск ще не відбувся. `reset-failed` не потрібний для відновлення. Відновіть unit-файл з установленого пакета командою `install`, виконайте `daemon-reload`, `enable` та `restart`, як у виправленому блоці вище. Для перевірки використайте поточний PORT з `/etc/faborn-resolver.env`; повторно завантажувати Node не потрібно, якщо файли встановлення на місці.
 
 Сервер уже вміє перевіряти непорожній `FABORN_ACCESS_KEYS` (кілька значень через кому) через Bearer-заголовок. **У цій першій бета залиште поле порожнім**: керування доступом та введення ключа в інтерфейсі Faborn будуть окремим наступним етапом після перевірки потоку. Ключі не повинні потрапляти у публічний JS або URL.
 

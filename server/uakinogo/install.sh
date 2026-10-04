@@ -2,7 +2,7 @@
 # Installs only the Faborn metadata service. Does not configure a video proxy,
 # router, firewall, system Node.js, or access keys.
 set -Eeuo pipefail
-version='0.1.0-beta.40'
+version='0.1.0-beta.41'
 node_version='v24.21.0'
 base='/opt/faborn-resolver'
 bundle="faborn-uakinogo-${version}.tar.gz"

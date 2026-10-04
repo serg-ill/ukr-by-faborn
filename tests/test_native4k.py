@@ -38,7 +38,12 @@ class NativeLoopbackTests(unittest.TestCase):
         port = self.lib.lab_listen()
         self.assertGreater(port, 0)
         sock = socket.create_connection(('127.0.0.1', port), timeout=2)
-        self.assertEqual(self.lib.lab_accept(), 1)
+        deadline = time.monotonic() + 2
+        accepted = self.lib.lab_accept()
+        while accepted == 0 and time.monotonic() < deadline:
+            time.sleep(.001)
+            accepted = self.lib.lab_accept()
+        self.assertEqual(accepted, 1)
         return sock
 
     def test_loopback_reads_http_and_returns_binary_without_corruption(self):

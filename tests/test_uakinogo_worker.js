@@ -9,7 +9,7 @@ test('worker asks Ubuntu only for metadata, renews on play and supplies Origin t
     function XHR() {this.headers={};}
     XHR.prototype.open=function(method,url){this.method=method;this.url=url;};
     XHR.prototype.setRequestHeader=function(k,v){this.headers[k]=v;};
-    XHR.prototype.send=function(body){http.push({url:this.url,method:this.method,body,headers:this.headers});this.status=200;this.responseText=this.url.includes('cacert.pem')?'BEGIN CERTIFICATE':JSON.stringify(answer);};
+    XHR.prototype.send=function(body){http.push({url:this.url,method:this.method,body,headers:this.headers});this.status=body&&Buffer.byteLength(body)>16384?413:200;this.responseText=this.status===413?'{}':this.url.includes('cacert.pem')?'BEGIN CERTIFICATE':JSON.stringify(answer);};
     const native={FS:{writeFile(){}},_lab_init:()=>1,_lab_listen:()=>12345,_lab_accept:()=>0,_lab_stop(){},_lab_close_client(){},_free(){},
         UTF8ToString:p=>memory[p]||'',lengthBytesUTF8:s=>Buffer.byteLength(s),_malloc:()=>nextPtr++,stringToUTF8:(s,p)=>memory[p]=s,
         _lab_range:()=>alloc(''),_lab_body:()=>bodyPtr,_lab_size:()=>Buffer.byteLength(memory[bodyPtr]||''),
@@ -20,12 +20,20 @@ test('worker asks Ubuntu only for metadata, renews on play and supplies Origin t
     const ctx={self:{Faborn4KCore:Core,close(){}},postMessage:m=>events.push(m),importScripts(){},XMLHttpRequest:XHR,
         tizentvwasm:{SocketsManager:{}},FabornNative:()=>({then:fn=>fn(native)}),URL,setInterval(fn,ms){intervals.set(1,{fn,ms});return 1;},clearInterval:id=>intervals.delete(id)};
     vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../lib/4klab/worker'),'utf8'),ctx);
-    ctx.onmessage({data:{type:'init',base:'https://serg-ill.github.io/ukr-by-faborn/lib/4klab/',version:'test',token:'0123456789abcdef0123456789abcdef',server:'http://192.168.88.191:8787',movie:{title:'Fixture'},season:0,episode:0}});
+    const fullMovie={id:872585,title:'Оппенгеймер',original_title:'Oppenheimer',release_date:'2023-07-19',original_language:'en',media_type:'movie',overview:'Опис фільму '.repeat(5000),credits:{cast:[{name:'Fixture actor',biography:'Bio'.repeat(5000)}]},progress:{time:100},url:'https://unused.test/private',user_key:'never-send-fixture'};
+    assert.ok(Buffer.byteLength(JSON.stringify({movie:fullMovie}))>16384);
+    ctx.onmessage({data:{type:'init',base:'https://serg-ill.github.io/ukr-by-faborn/lib/4klab/',version:'test',token:'0123456789abcdef0123456789abcdef',server:'http://192.168.88.191:8787',movie:fullMovie,season:0,episode:0}});
     assert.equal(events.at(-1).type,'resolved');assert.equal(media.length,0);assert.equal(intervals.size,0);
     assert.equal(JSON.parse(http.at(-1).body).fresh,false);
     ctx.onmessage({data:{type:'play',season:0,episode:0,label:'English',language:'en',quality:'2160p'}});
     assert.equal(JSON.parse(http.at(-1).body).fresh,true);assert.equal(http.filter(r=>r.method==='POST').length,2);
     assert.ok(http.filter(r=>r.method==='POST').every(r=>r.url==='http://192.168.88.191:8787/v1/resolve'));
+    http.filter(r=>r.method==='POST').forEach(r=>{
+        assert.ok(Buffer.byteLength(r.body)<1024);
+        assert.deepEqual(JSON.parse(r.body).movie,Core.resolverCard(fullMovie));
+        assert.ok(!r.body.includes('never-send-fixture'));
+        assert.equal(JSON.parse(r.body).season,0);assert.equal(JSON.parse(r.body).episode,0);
+    });
     assert.equal(events.at(-1).type,'play');assert.equal(events.at(-1).data.width,3840);assert.equal(intervals.size,1);
     assert.ok(media.every(r=>r.url.startsWith('https://edge.vkvideo.cloud/')&&r.origin===Core.origin&&r.referer===answer.referer));
     assert.equal(media.at(-1).range,'0-1023');

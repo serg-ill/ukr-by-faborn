@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {spawnSync} = require('node:child_process');
 const installer = path.resolve(__dirname, '../server/uakinogo/install.sh');
+const version = fs.readFileSync(installer, 'utf8').match(/^version='([^']+)'$/m)[1];
 function fixture(t) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'faborn-install-test-'));
     t.after(() => fs.rmSync(dir, {recursive:true, force:true}));
@@ -76,10 +77,10 @@ test('health requires an active own listener and matching service JSON, even whe
     fs.symlinkSync(process.execPath,path.join(dir,'node','bin','node'));
     const code='port=8788\nstage="$FIXTURE"\nbase="$FIXTURE"\nsystemctl() { case "$1" in is-active) return 0;; show) echo 42;; esac; }\nss() { printf "%s\\n" "$LISTENER"; }\ncurl() { printf "%s" "$HEALTH" > "$stage/health.json"; }\nhealth_check';
     for (const auth of ['none','key']) {
-        const r=shell(code,{FIXTURE:dir,LISTENER:listener,HEALTH:JSON.stringify({ok:true,version:'0.1.0-beta.40',auth,videoProxy:false})});
+        const r=shell(code,{FIXTURE:dir,LISTENER:listener,HEALTH:JSON.stringify({ok:true,version,auth,videoProxy:false})});
         assert.equal(r.status,0,r.stderr);
     }
-    for (const h of [{ok:true,version:'other',videoProxy:false},{ok:true,version:'0.1.0-beta.40',videoProxy:true},{ok:false,version:'0.1.0-beta.40',videoProxy:false}]) {
+    for (const h of [{ok:true,version:'other',videoProxy:false},{ok:true,version,videoProxy:true},{ok:false,version,videoProxy:false}]) {
         assert.equal(shell(code,{FIXTURE:dir,LISTENER:listener,HEALTH:JSON.stringify(h)}).status,1);
     }
 });
