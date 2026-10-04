@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.41 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.42 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.41';
+    var VERSION = '0.1.0-beta.42';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
     var commentsUI = null, commentsScript = null;
@@ -268,7 +268,7 @@
     function putStyle(id, css) {
         var doc = root.document, node = doc.getElementById(id);
         if (!node) { node = doc.createElement('style'); node.id = id; doc.body.appendChild(node); }
-        node.textContent = css;
+        if (node.textContent !== css) node.textContent = css;
     }
     function applyAppearance() {
         if (!root.document || !root.document.createElement) return;
@@ -474,6 +474,11 @@
         rule(buttons,'transition:background-color .16s,color .16s,box-shadow .16s');
         rule('.fbr-btn,.selectbox-item','transition:none');
         css += '}';
+        // TV compositors corrupt blurred keyboard backgrounds when key focus moves.
+        // Keep the glass tint, but use a single static surface and instant keys.
+        rule('.settings-input__content','background-color:rgba(36,43,56,'+glass.legacy+')!important');
+        rule('.settings-input__content,.settings-input__input,.simple-keyboard,.simple-keyboard .hg-button,.search__keypad,.search-box__keypad','-webkit-backdrop-filter:none!important;backdrop-filter:none!important;filter:none!important;transition:none!important;animation:none!important;transform:none!important');
+        rule('.simple-keyboard .hg-button','box-shadow:none!important');
         return css;
     }
     function presentationCSS(accent,tint,fill,ink) {
@@ -2955,6 +2960,9 @@
             lines.push('Сесія KinoBase: '+storage('kino_transport','Звичайний запит'));
             if (storage('kino_playback','')) lines.push('Потік KinoBase: '+storage('kino_playback',''));
             if (storage('stream_format','')) lines.push('Формат потоку: '+storage('stream_format',''));
+            if (storage('lab4k_status','')) lines.push('UAKinogo · стан: '+storage('lab4k_status',''));
+            if (storage('lab4k_probe','')) lines.push('UAKinogo · локальна перевірка: '+storage('lab4k_probe',''));
+            if (storage('lab4k_bridge','')) lines.push('UAKinogo · локальний канал: '+storage('lab4k_bridge',''));
             if (interfaceUI && interfaceUI.ratingStatus && interfaceUI.ratingStatus()) lines.push('Рейтинги: '+interfaceUI.ratingStatus());
 
             if (storage('last_error', '')) lines.push('Остання помилка плеєра: ' + storage('last_error', ''));

@@ -45,3 +45,10 @@ test('destroy releases the pending focus handler and unsubscribes a poster from 
  const e=setup(),card=e.card(film),overlay=card.overlay();card.hooks.onFocus();assert.equal(e.timers.size,1);
  const writes=overlay.writes;card.hooks.onDestroy();assert.equal(e.timers.size,0);e.ui.learn(film,{qualities:['2160p']});assert.equal(overlay.writes,writes);
 });
+test('navigation refresh retains cached native episode scans until that series really changes',()=>{
+ const e=setup(),show={id:1668,name:'Друзі',original_name:'Friends',first_air_date:'1994-09-22',seasons:Array.from({length:10},(_,i)=>({season_number:i+1,episode_count:24}))};
+ const card=e.card(show),other=e.card({...film,id:1}),reads=e.reads();assert.ok(reads>=480);
+ for(let i=0;i<30;i++)e.ui.refreshPosters();assert.equal(e.reads(),reads);assert.equal(card.overlay().writes,1);
+ e.ui.rememberEpisode('tmdb-tv-1668',{season:10,episode:7});const before=e.reads();other.hooks.onFocus();assert.equal(e.reads(),before);
+ card.hooks.onFocus();assert.ok(e.reads()>before);const after=e.reads();e.ui.refreshPosters();assert.equal(e.reads(),after);
+});

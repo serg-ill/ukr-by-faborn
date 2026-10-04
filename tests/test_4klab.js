@@ -67,18 +67,22 @@ test('HTTP routes only accept GET/HEAD, exact private paths and a single byte ra
 });
 
 function harness() {
-    const state={prefs:{faborn_ukr_uakinogo_beta:'off',faborn_ukr_uakinogo_server:'http://192.168.88.191:8787'},workers:[],timers:new Map(),menu:null,controller:'settings_component',played:null,closes:0,playerEvents:{},videoEvents:{},nextTimer:0};
+    const state={prefs:{faborn_ukr_uakinogo_beta:'off',faborn_ukr_uakinogo_server:'http://192.168.88.191:8787'},workers:[],probes:[],autoProbe:true,timers:new Map(),menu:null,controller:'settings_component',played:null,closes:0,playerEvents:{},videoEvents:{},nextTimer:0,operations:[]};
     function listener(events) { return {follow(name,fn) { (events[name] ||= []).push(fn); }}; }
     function emit(events,name,data) { for(const fn of events[name] || []) fn(data); }
     function Worker(url) { this.url=url;this.messages=[];state.workers.push(this); }
-    Worker.prototype.postMessage=function(data){this.messages.push(data);};
+    Worker.prototype.postMessage=function(data){this.messages.push(data);state.operations.push('worker:'+data.type);};
     Worker.prototype.terminate=function(){this.terminated=true;};
-    const root={Worker,WebAssembly,Blob,Uint8Array,crypto:require('node:crypto').webcrypto,
+    function XHR(){state.probes.push(this);}
+    XHR.prototype.open=function(method,url,async){this.method=method;this.url=url;assert.equal(async,true);};
+    XHR.prototype.send=function(){state.operations.push('probe:send');if(state.autoProbe){this.status=200;this.responseText='#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nvideo.m3u8';this.onload();}};
+    XHR.prototype.abort=function(){this.aborted=true;};
+    const root={Worker,XMLHttpRequest:XHR,WebAssembly,Blob,Uint8Array,crypto:require('node:crypto').webcrypto,
         URL:{createObjectURL(){return 'blob:owned';},revokeObjectURL(){}},webapis:{avplay:{}},
         setTimeout(fn,ms){const id=++state.nextTimer;state.timers.set(id,{fn,ms});return id;},clearTimeout(id){state.timers.delete(id);}};
     const L={Storage:{get(k,d){return state.prefs[k] ?? d;},set(k,v){state.prefs[k]=v;},field(){return 'tizen';}},
         Controller:{toggle(name){state.controller=name;}},Select:{show(menu){state.menu=menu;state.controller='select';},hide(){state.menu=null;}},
-        Player:{listener:listener(state.playerEvents),playdata(){return state.played;},playlist(){},play(data){state.played=data;state.controller='player';emit(state.playerEvents,'start',data);},close(){state.closes++;state.played=null;emit(state.playerEvents,'destroy');}},
+        Player:{listener:listener(state.playerEvents),playdata(){return state.played;},playlist(){},play(data){state.played=data;state.controller='player';emit(state.playerEvents,'start',data);},close(){state.operations.push('player:close');state.closes++;state.played=null;emit(state.playerEvents,'destroy');}},
         PlayerVideo:{listener:listener(state.videoEvents)}};
     const ui=createUI(root,L,'https://serg-ill.github.io/ukr-by-faborn/lib/4klab/','0.1.0-beta.12');
     state.enable=()=>{state.prefs.faborn_ukr_uakinogo_beta='on';ui.open();};
@@ -86,6 +90,7 @@ function harness() {
     state.choose=action=>state.menu.onSelect(state.menu.items.find(r=>r.action===action));
     state.emitVideo=(name,data)=>emit(state.videoEvents,name,data);
     state.emitPlayer=(name,data)=>emit(state.playerEvents,name,data);
+    state.fireTimer=ms=>{for(const [id,t] of state.timers){if(t.ms===ms){state.timers.delete(id);t.fn();return true;}}return false;};
     return {ui,state,root,L};
 }
 test('off means no worker, timers, menu, network or player listener changes', () => {
@@ -130,6 +135,39 @@ test('language selection launches only tokenized loopback and confirms playback 
     state.emitVideo('timeupdate',{current:2});assert.match(state.prefs.faborn_ukr_lab4k_status,/Відтворення почалося/);
     assert.equal(state.timers.size,0);
 });
+test('AVPlay waits for a real manifest reply from the private local channel',()=>{
+    const {state}=harness();state.autoProbe=false;state.enable();
+    const stream={url:'http://127.0.0.1:12345/'+key+'/0.m3u8',label:'English',language:'en',codecs:'av01',width:3840,height:2160};
+    state.message('play',stream);assert.equal(state.played,null);assert.equal(state.probes[0].url,stream.url);
+    const probe=state.probes[0];probe.status=200;probe.responseText='#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nvideo.m3u8';probe.onload();
+    assert.equal(state.played.url,stream.url);assert.match(state.prefs.faborn_ukr_lab4k_probe,/HTTP 200/);
+    assert.equal(state.timers.size,1);assert.equal([...state.timers.values()][0].ms,40000);
+});
+test('a refused or stalled loopback never opens AVPlay and Back releases every probe handler',()=>{
+    for(const failure of ['error','timeout','invalid-manifest']){
+        const {state}=harness();state.autoProbe=false;state.enable();
+        state.message('play',{url:'http://127.0.0.1:12345/'+key+'/0.m3u8'});
+        const probe=state.probes[0];
+        if(failure==='timeout')assert.equal(state.fireTimer(4500),true);
+        else if(failure==='error')probe.onerror();
+        else {probe.status=200;probe.responseText='<html>Not a playlist</html>';probe.onload();}
+        assert.equal(state.played,null);assert.equal(state.closes,0);assert.match(state.menu.items[0].title,/LOOPBACK/);
+        assert.equal(probe.onload,null);assert.equal(probe.onerror,null);assert.equal(probe.ontimeout,null);assert.equal(probe.aborted,true);
+        state.menu.onBack();state.workers[0].onmessage({data:{type:'stopped'}});assert.equal(state.timers.size,0);
+    }
+});
+test('Back during a local probe ignores its late success and leaves an ordinary player alone',()=>{
+    const {ui,state}=harness();state.autoProbe=false;state.enable();
+    state.message('play',{url:'http://127.0.0.1:12345/'+key+'/0.m3u8'});const probe=state.probes[0],late=probe.onload;
+    state.menu.onBack();assert.equal(probe.aborted,true);assert.equal(probe.onload,null);
+    state.played={url:'https://ordinary.example/video'};probe.status=200;probe.responseText='#EXTM3U\n';late();
+    assert.equal(state.played.url,'https://ordinary.example/video');assert.equal(state.closes,0);assert.equal(state.menu,null);
+    state.workers[0].onmessage({data:{type:'stopped'}});assert.equal(state.timers.size,0);
+});
+test('bridge diagnostics retain bounded counts and never retain session URLs',()=>{
+    const {state}=harness();state.enable();state.message('traffic',{requests:3,accepted:4,rejected:1,sentBytes:32768,status:200,kind:'media',url:media});
+    const saved=state.prefs.faborn_ukr_lab4k_bridge;assert.match(saved,/З’єднань: 4/);assert.match(saved,/відповідей: 3/);assert.match(saved,/відхилено: 1/);assert.match(saved,/32 KiB/);assert.match(saved,/HTTP 200 · відео/);assert.ok(!saved.includes('https://'));
+});
 test('disabling closes only the owned test player, preserving ordinary streams and preferences', () => {
     const {ui,state}=harness();state.enable();
     state.played={url:'https://normal.example/movie.m3u8'};
@@ -146,8 +184,36 @@ test('starting an ordinary player while a source test is pending cancels the exp
 });
 test('test player errors close its channel and restore a retry/close menu without infinite loading', () => {
     const {state}=harness();state.enable();state.message('play',{url:'http://127.0.0.1:12345/'+key+'/0.m3u8',label:'UA',language:'uk',codecs:'av01',width:3840,height:2160});
-    state.emitVideo('error');assert.equal(state.closes,1);assert.match(state.menu.items[0].title,/PLAY:/);
+    state.emitVideo('error');assert.equal(state.closes,0);assert.equal(state.fireTimer(0),true);assert.equal(state.closes,1);assert.match(state.menu.items[0].title,/PLAY:/);
     state.choose('close');assert.equal(state.controller,'settings_component');
+});
+test('AVPlay error returns before closure, which releases the player before its local channel',()=>{
+    const {ui,state,L}=playingCard();
+    state.operations=[];let callback=false;
+    L.PlayerVideo.video=()=>({addEventListener(name,fn){state.nativeError=fn;},removeEventListener(){state.operations.push('video:unwatch');}});
+    state.emitPlayer('ready',state.played);
+    callback=true;state.nativeError({error:{message:'PLAYER_ERROR_NOT_SUPPORTED_FORMAT'}});state.emitVideo('error');callback=false;
+    const close=L.Player.close;L.Player.close=()=>{assert.equal(callback,false);close();};
+    assert.equal(state.closes,0);state.fireTimer(0);
+    assert.equal(state.closes,1);assert.ok(state.operations.indexOf('player:close')<state.operations.indexOf('worker:stop'));
+    assert.match(state.prefs.faborn_ukr_lab4k_status,/PLAYER_ERROR_NOT_SUPPORTED_FORMAT/);
+    state.menu.onBack();assert.equal(state.closes,1);assert.equal(state.menu,null);assert.equal(state.controller,'settings_component');
+    state.workers[0].onmessage({data:{type:'stopped'}});assert.equal(state.timers.size,0);
+});
+test('cancel before a queued native error leaves no callback that can close another player',()=>{
+    const {ui,state}=playingCard();state.emitVideo('error');const late=[...state.timers.values()].find(t=>t.ms===0).fn;
+    ui.cancel();state.played={url:'https://normal.example/movie'};late();
+    assert.equal(state.closes,1);assert.equal(state.played.url,'https://normal.example/movie');assert.equal(state.menu,null);
+});
+test('loaded metadata cannot disable the initial playback watchdog before time advances',()=>{
+    const {state}=harness();state.enable();state.message('play',{url:'http://127.0.0.1:12345/'+key+'/0.m3u8',label:'UA',codecs:'av01'});
+    state.emitVideo('loadeddata');assert.equal([...state.timers.values()].some(t=>t.ms===40000),true);
+    state.emitVideo('timeupdate',{current:1});assert.equal(state.timers.size,0);
+});
+test('a throwing player close still retires its worker and returns to the card selector',()=>{
+    const {ui,state,L}=playingCard();L.Player.close=()=>{throw new Error('Native close failed');};ui.cancel();
+    assert.equal(state.workers[0].messages.at(-1).type,'stop');state.workers[0].onmessage({data:{type:'stopped'}});
+    assert.equal(state.timers.size,0);assert.match(state.prefs.faborn_ukr_lab4k_status,/CLOSE:/);
 });
 test('malicious or external playback URL is rejected before invoking Lampa', () => {
     const {state}=harness();state.enable();state.message('play',{url:'https://other.test/video.m3u8'});
