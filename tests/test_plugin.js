@@ -101,6 +101,7 @@ function environment(options = {}) {
     if (options.jQuery) root.jQuery = options.jQuery;
     if (options.panelEvents) root.Lampa.PlayerPanel = {listener:{follow(k,fn){options.panelEvents[k]=fn;}}};
     if (options.settings) root.Lampa.Settings = options.settings;
+    if (options.template) root.Lampa.Template = options.template;
     if (options.head) root.Lampa.Head = options.head;
     if (options.storage) Object.assign(state.storage,options.storage);
     if (options.lampaSettings) root.lampa_settings=options.lampaSettings;
@@ -298,6 +299,29 @@ test('Tizen browser mode requires AVPlay without altering global player settings
 function filmQualityMenu(env) {
     env.instance.open({title: 'Бджоляр', original_title: 'The Beekeeper', release_date: '2024-01-10'});
 }
+test('settings use short subpages, preserve preferences and release a page before navigation',()=>{
+ const calls=[],templates=[],e=environment({template:{add(name){templates.push(name);}},settings:{create(name,options){calls.push({name,options});}},storage:{faborn_ukr_accent:'mint',faborn_ukr_quality:'1080p'}});
+ const top=e.state.params.filter(p=>p.component==='faborn_ukr');assert.equal(top.length,8);
+ assert.equal(top.at(-1).param.name,'faborn_ukr_diagnostic');assert.equal(templates.length,7);
+ assert.equal(e.state.params.find(p=>p.param.name==='faborn_ukr_quality').component,'faborn_ukr_playback');
+ assert.equal(e.state.params.find(p=>p.param.name==='faborn_ukr_uakinogo_password').component,'faborn_ukr_server');
+ assert.equal(e.state.storage.faborn_ukr_accent,'mint');assert.equal(e.state.storage.faborn_ukr_quality,'1080p');
+ e.root.Lampa.Controller.back=()=>calls.push({name:'release'});
+ top.find(p=>p.param.name==='faborn_ukr_group_appearance').onChange();
+ assert.deepEqual(calls.map(c=>c.name),['release','faborn_ukr_appearance']);
+ calls[1].options.onBack();assert.equal(calls[2].name,'faborn_ukr');assert.equal(calls[2].options.last_index,2);
+});
+test('credential links are split before settings render and password editing is masked with no keyboard history',()=>{
+ const e=environment({storage:{faborn_ukr_uakinogo_server:'test1:fixture%3Apass@192.168.88.191:8099'}});
+ assert.equal(e.state.storage.faborn_ukr_uakinogo_server,'http://192.168.88.191:8099');
+ assert.equal(e.state.storage.faborn_ukr_uakinogo_login,'test1');assert.equal(e.state.storage.faborn_ukr_uakinogo_password,'fixture:pass');
+ let input,save;e.root.Lampa.Input={edit(params,done){input=params;save=done;}};
+ const p=e.state.params.find(p=>p.param.name==='faborn_ukr_uakinogo_password');assert.equal(p.param.type,'button');p.onChange();
+ assert.equal(input.password,true);assert.equal(input.nosave,true);save('new-fixture');assert.equal(e.state.storage.faborn_ukr_uakinogo_password,'new-fixture');
+ const address=e.state.params.find(p=>p.param.name==='faborn_ukr_uakinogo_server');assert.equal(address.param.type,'button');address.onChange();
+ assert.equal(input.nosave,true);assert.equal(input.value,'http://192.168.88.191:8099');save('https://test2:other@resolver.example');
+ assert.equal(e.state.storage.faborn_ukr_uakinogo_server,'https://resolver.example');assert.equal(e.state.storage.faborn_ukr_uakinogo_login,'test2');
+});
 
 function betaEnvironment(options={}) {
     const e=environment({...options,storage:{...options.storage,faborn_ukr_player:'beta'}});

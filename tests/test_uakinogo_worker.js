@@ -55,6 +55,18 @@ function prepare(e){
     e.ctx.onmessage({data:{type:'init',base:'https://serg-ill.github.io/ukr-by-faborn/lib/4klab/',version:'test',token:'0123456789abcdef0123456789abcdef',server:'http://192.168.88.191:8787',movie:{title:'Film'}}});
     e.ctx.onmessage({data:{type:'play',season:0,episode:0,label:'English',language:'en',quality:'2160p'}});
 }
+test('Basic is sent only to the clean metadata endpoint, never to CDN or local media URLs',()=>{
+ const e=harness(),password='пароль:fixture';
+ e.ctx.onmessage({data:{type:'init',base:'https://serg-ill.github.io/ukr-by-faborn/lib/4klab/',version:'test',token:'0123456789abcdef0123456789abcdef',server:'test1:'+encodeURIComponent(password)+'@203.0.113.10:8099',movie:{title:'Film'}}});
+ assert.equal(e.events.at(-1).type,'resolved');
+ e.ctx.onmessage({data:{type:'play',season:0,episode:0,label:'English',language:'en',quality:'2160p'}});
+ const posts=e.http.filter(r=>r.method==='POST');
+ assert.equal(posts.length,2);
+ for(const r of posts){assert.equal(r.url,'http://203.0.113.10:8099/v1/resolve');assert.equal(r.headers.Authorization,'Basic '+Buffer.from('test1:'+password).toString('base64'));assert.ok(!r.body.includes(password));}
+ assert.equal(e.events.at(-1).type,'play');
+ assert.ok(e.media.every(r=>!JSON.stringify(r).includes('Basic')&&!JSON.stringify(r).includes('test1')));
+ assert.ok(!JSON.stringify(e.events).includes(password));
+});
 test('blocked initialization file is reported before AVPlay or its loopback polling starts',()=>{
     const e=harness();e.failures.push('/init.mp4');prepare(e);
     assert.equal(e.events.some(m=>m.type==='play'),false);assert.equal(e.intervals.size,0);

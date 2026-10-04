@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.44 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.45 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.44';
+    var VERSION = '0.1.0-beta.45';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
     var commentsUI = null, commentsScript = null;
@@ -280,6 +280,7 @@
             '.faborn-head-action{position:relative}.faborn-head-action>svg{display:block;width:100%;height:100%;flex-shrink:0}'+
             '.faborn-head-action:after{content:attr(aria-label);display:none;position:absolute;top:calc(100% + .7em);right:0;left:auto;transform:none;-webkit-transform:none;width:auto;height:auto;padding:.45em .8em;border:0;border-radius:.65em;background:rgba(14,23,38,.95);color:#f1f5ff;white-space:nowrap;font-size:.75em;line-height:1.3;pointer-events:none;z-index:20}'+
             '.faborn-head-action.focus:after,.faborn-head-action.hover:after{display:block}');
+        putStyle('faborn-ukr-settings','.faborn-settings-category .settings-param__name{display:flex;align-items:center}.faborn-settings-category .settings-param__name>svg{width:1.3em;height:1.3em;flex-shrink:0;margin-right:.65em}.faborn-settings-category .settings-param__name:after{content:"›";margin-left:auto;font-size:1.3em;line-height:1}.faborn-settings-category .settings-param__descr{margin-left:2.5em;font-size:.78em}');
         var standard = storage('layout','panel') === 'classic';
         var colors = palette(storage('accent','blue')), accent = colors[0], tint = colors[1];
         var fill = colors[2] ? 'linear-gradient(120deg,'+colors[3]+' 0%,'+colors[2]+' 100%)' : 'none', ink = colors[4] || '#101827';
@@ -479,6 +480,11 @@
         rule('.settings-input__content','background-color:rgba(36,43,56,'+glass.legacy+')!important');
         rule('.settings-input__content,.settings-input__input,.simple-keyboard,.simple-keyboard .hg-button,.search__keypad,.search-box__keypad','-webkit-backdrop-filter:none!important;backdrop-filter:none!important;filter:none!important;transition:none!important;animation:none!important;transform:none!important');
         rule('.simple-keyboard .hg-button','box-shadow:none!important');
+        // A static settings surface avoids repainting the background on every
+        // remote focus change. Keep transparency, without live backdrop blur.
+        rule('.settings__content','background-color:rgba(29,38,54,'+Math.max(.78,glass.surface)+')!important');
+        rule('.settings__content,.settings__body,.settings-param,.settings-folder','-webkit-backdrop-filter:none!important;backdrop-filter:none!important;filter:none!important;transition:none!important;animation:none!important');
+        rule('.settings-param.focus,.settings-folder.focus','box-shadow:none!important');
         return css;
     }
     function presentationCSS(accent,tint,fill,ink) {
@@ -3263,11 +3269,79 @@
         if (!qualities.length) return;
         try { interfaceUI.learn(session.movie,{qualities:unique(qualities),languages:unique(languages),season:session.title.type === 'tv' ? session.season : 0,episode:session.title.type === 'tv' ? session.episode : 0}); } catch (ignore) { /* Optional card badges must not block source playback. */ }
     }
+    function serverSetting(value) {
+        value=text(value).trim();if(!value){save('uakinogo_server','');return true;}
+        try{
+            var URLParser=typeof root.URL==='function'?root.URL:typeof URL==='function'?URL:null;
+            var url=new URLParser(/^[a-z][a-z0-9+.-]*:\/\//i.test(value)?value:'http://'+value);
+            if(value.length>2048 || ['http:','https:'].indexOf(url.protocol)<0 || url.search || url.hash)throw new Error();
+            if(url.username || url.password){
+                var login=decodeURIComponent(url.username),password=decodeURIComponent(url.password);
+                if(!/^[A-Za-z0-9_.-]{1,64}$/.test(login) || !password || /[\x00-\x1f\x7f]/.test(password) || unescape(encodeURIComponent(password)).length>256)throw new Error();
+                save('uakinogo_login',login);save('uakinogo_password',password);
+            }
+            url.username='';url.password='';save('uakinogo_server',url.href.replace(/\/$/,''));return true;
+        }catch(ignore){save('uakinogo_server','');return false;}
+    }
+    function serverChanged(value) {
+        if(!serverSetting(value===undefined?storage('uakinogo_server',''):value))notify('Некоректна адреса або облікові дані сервера.');
+        cancelCardLab();
+        if(L.Settings && L.Settings.update)L.Settings.update();
+    }
+    function serverAddress() {
+        if(!L.Input || !L.Input.edit)return notify('У цій збірці немає редактора адреси.');
+        L.Input.edit({title:'Сервер UAKinogo',value:storage('uakinogo_server',''),free:true,nosave:true},serverChanged);
+    }
+    function serverPassword() {
+        if(!L.Input || !L.Input.edit)return notify('У цій збірці немає редактора пароля.');
+        L.Input.edit({title:'Пароль сервера UAKinogo',value:storage('uakinogo_password',''),password:true,free:true,nosave:true},function(value){
+            value=text(value);
+            if(/[\x00-\x1f\x7f]/.test(value) || unescape(encodeURIComponent(value)).length>256)return notify('Пароль має містити не більше 256 байтів.');
+            save('uakinogo_password',value);cancelCardLab();
+            if(L.Settings && L.Settings.update)L.Settings.update();
+        });
+    }
     function settings() {
         var api = L.SettingsApi;
         if (!api || !api.addComponent || !api.addParam) return;
         api.addComponent({component: 'faborn_ukr', name: NAME, icon: ICON});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_player',type:'select',values:{lampa:'Lampa',beta:'Faborn Player · бета'},default:'lampa'},field:{name:'Плеєр онлайн',description:'Faborn Player — власне оформлення з AVPlay або браузерним HLS. Застосовується до наступного відео з джерел Faborn.'}});
+        var grouped=!!(L.Template && L.Template.add && L.Settings && L.Settings.create),register=api.addParam;
+        var groups=[
+            {id:'playback',title:'Перегляд і джерела',description:'Плеєр, якість, озвучення та пропуски',icon:HEADER_ICONS.continue},
+            {id:'server',title:'UAKinogo · сервер',description:'Адреса, логін і пароль',icon:HEADER_ICONS.reload},
+            {id:'appearance',title:'Оформлення',description:'Тема, прозорість, кнопки та бейджі',icon:'<path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-3.7 2 2 0 0 1 1-3.3h3a3 3 0 0 0 3-3 9 9 0 0 0-9-8Z"/><circle cx="7" cy="9" r="1"/><circle cx="11" cy="6" r="1"/><circle cx="16" cy="8" r="1"/>'},
+            {id:'catalog',title:'Головна й каталоги',description:'Постери, студії, добірки та сортування',icon:HEADER_ICONS.library},
+            {id:'library',title:'Медіатека',description:'Переглянуте, прогрес і нові серії',icon:'<path d="M4 3h16v18l-8-5-8 5Z"/>'},
+            {id:'saver',title:'Заставки',description:'Відеосцени, годинники та час запуску',icon:HEADER_ICONS.saver},
+            {id:'service',title:'Службове',description:'Індекс і адреса GitHub Pages',icon:'<path d="m9 3-6 9 6 9m6-18 6 9-6 9"/>'}
+        ];
+        var routes={
+            appearance:['comments','buttons','torrent_button','torrent_style','poster_style','initial_focus','ratings','badges','torrent_quality','layout','theme','glass_transparency','player_transparency','accent'],
+            catalog:['home','discover_tab','catalog_series','catalog_movies','studios','feed'],
+            library:['series_tab','watched','episode_countdown','episode_notifications'],
+            service:['refresh','pages']
+        };
+        function addSetting(data) {
+            var name=data.param.name.replace(/^faborn_ukr_/,''),group='playback';
+            Object.keys(routes).forEach(function(id){if(routes[id].indexOf(name)>=0)group=id;});
+            if(name.indexOf('screensaver')===0)group='saver';
+            if(name.indexOf('uakinogo_')===0)group='server';
+            if(grouped && name!=='diagnostic')data.component='faborn_ukr_'+group;
+            register(data);
+        }
+        if(grouped)groups.forEach(function(group,index){
+            var component='faborn_ukr_'+group.id;
+            // Templates create subpages without adding seven folders to Lampa's
+            // main settings. Release the old page before mounting the next one.
+            L.Template.add('settings_'+component,'<div></div>');
+            api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_group_'+group.id,type:'button'},field:{name:group.title,description:group.description},onRender:function(item){item.addClass('faborn-settings-category');item.find('.settings-param__name').prepend('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+group.icon+'</svg>');},onChange:function(){
+                L.Controller.back();
+                L.Settings.create(component,{onBack:function(){L.Settings.create('faborn_ukr',{last_index:index});}});
+            }});
+        });
+        // Only this registration is routed; other plugins keep their own API.
+        api={addParam:addSetting};
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_player',type:'select',values:{lampa:'Lampa',beta:'Faborn Player · бета'},default:'lampa'},field:{name:'Плеєр онлайн',description:'Faborn Player — керування у стилі Lampa, з AVPlay або браузерним HLS. Застосовується до наступного відео з джерел Faborn.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_beta_engine',type:'select',values:{avplay:'Samsung AVPlay',mse:'Браузерний HLS · бета'},default:'avplay'},field:{name:'Механізм бета-плеєра',description:'Для «Faborn Player · бета». Браузерний HLS використовує HTML5 / MediaSource, як другий плеєр Alloha. Застосовується до наступного запуску; 4K залежить від підтримки кодека в застосунку.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_comments',type:'select',values:{sources:'Лише з джерел',native:'Лише Lampa',all:'Усі',off:'Приховати всі'},default:commentsMode()},field:{name:'Коментарі в картці',description:'З джерел — UAFix та UASerials; Lampa — штатні відгуки CUB. Можна показати один блок, обидва або приховати всі. Після зміни повторно відкрий картку.'},onChange:commentsChanged});
         ['intro','credits','source'].forEach(function(kind) {
@@ -3304,7 +3378,9 @@
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinobase:'KinoBase', kinoukr:'KinoUkr'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найвища доступна', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: 'Підсвічує варіант у списку джерел.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_beta',type:'select',values:{off:'Вимкнено',on:'Увімкнено'},default:'off'},field:{name:'UAKinogo · серверна бета',description:'Окремий обробник знаходить посилання. Відео надходить прямо на Samsung через локальний адаптер. Потрібні Tizen Sockets і сумісний кодек.'},onChange:labChanged});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_server',type:'input',values:'',default:'',placeholder:'http://IP-UBUNTU:8787'},field:{name:'Сервер UAKinogo',description:'Адреса встановленого бета-обробника. Перша бета працює без ключа доступу.'},onChange:function(){cancelCardLab();}});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_server',type:'button'},field:{name:'Сервер UAKinogo',description:'Можна вставити user:password@server:port. Логін і пароль будуть збережені окремо; тут залишиться лише адреса. HTTPS шифрує облікові дані.'},onRender:function(item){item.append($('<div class="settings-param__value"></div>').text(storage('uakinogo_server','')||'Задати адресу'));},onChange:serverAddress});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_login',type:'input',values:'',default:'',placeholder:'test1'},field:{name:'Логін сервера',description:'Користувач, створений на Ubuntu. Для підключення без авторизації залиш логін і пароль порожніми.'},onChange:function(value){value=text(value===undefined?storage('uakinogo_login',''):value);if(value && !/^[A-Za-z0-9_.-]{1,64}$/.test(value)){save('uakinogo_login','');notify('Логін: латинські літери, цифри, крапка, дефіс або підкреслення.');if(L.Settings&&L.Settings.update)L.Settings.update();}cancelCardLab();}});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_password',type:'button'},field:{name:'Пароль сервера',description:'Редагування із прихованими символами; пароль не додається до історії клавіатури.'},onRender:function(item){item.append('<div class=\"settings-param__value\">'+(storage('uakinogo_password','')?'Задано · змінити':'Задати пароль')+'</div>');},onChange:serverPassword});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_kino_session',type:'select',values:{auto:'Автоматично',direct:'Лише звичайний запит'},default:'auto'},field:{name:'Сесія KinoBase',description:'Після помилки сесії повторює запит через мережевий API Samsung, якщо він доступний у застосунку. Окремий сервер не потрібен.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_legacy4k',type:'select',values:{off:'Вимкнено',on:'Увімкнено · тест сумісності'},default:'off'},field:{name:'4K на старому Tizen',description:'Лише KinoBase 2160p та Tizen 2.3–4.x: явно вмикає UHD-декодер перед запуском. Для наступного відкриття відео. Не змінює кодек; результат видно у діагностиці.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_refresh', type: 'button'}, field: {name: 'Оновити індекс із GitHub'}, onChange: function () {
@@ -3363,6 +3439,7 @@
         L = root.Lampa; $ = root.jQuery;
         if (!L.Listener || !L.Select || !L.Player) return;
         installed = true;
+        if(text(storage('uakinogo_server','')).indexOf('@')>=0)serverSetting(storage('uakinogo_server',''));
         save('comments',commentsMode());
         applyCommentsMode();
         save('lab4k','off'); save('lab4k_status','');

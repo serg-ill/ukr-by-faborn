@@ -185,6 +185,26 @@ test('external SRT/WebVTT cues are bounded, timed and cancelled when closing',()
 });
 test('all themes use separate player transparency and no native focus scaling or blur',()=>{
  const e=environment({storage:{faborn_ukr_theme:'ios',faborn_ukr_player_transparency:'max'}});e.api.play(e.spec());assert.equal(e.all().find(n=>n.className==='fbp-panel').style.background,'rgba(18,26,40,0.56)');
- e.store.faborn_ukr_theme='off';e.api.apply();assert.equal(e.all().find(n=>n.className==='fbp-panel').style.background,'rgba(18,26,40,0.94)');e.api.close();
+ e.store.faborn_ukr_theme='off';e.api.apply();assert.equal(e.all().find(n=>n.className==='fbp-panel').style.background,'transparent');e.api.close();
  assert.doesNotMatch(e.doc.head.children[0].textContent,/backdrop-filter|transform:|transition:/);
+});
+test('TV arrows follow the visible control row and return from the timeline to pause',()=>{
+ const e=environment();e.api.play(e.spec());e.prepare();e.at(12);
+ const focused=()=>e.all().find(n=>n.classList.contains('fbp-focused'));
+ assert.equal(focused().attrs['aria-label'],'Пауза');
+ e.controllers.faborn_player_beta.right();assert.equal(focused().attrs['aria-label'],'Якість');
+ e.controllers.faborn_player_beta.left();e.controllers.faborn_player_beta.left();assert.equal(focused().attrs['aria-label'],'+30 с');
+ e.controllers.faborn_player_beta.up();assert.equal(focused().attrs.role,'slider');
+ e.controllers.faborn_player_beta.down();assert.equal(focused().attrs['aria-label'],'Пауза');
+ e.controllers.faborn_player_beta.enter();assert.equal(e.avState.state,'PAUSED');
+ e.api.close();assert.equal(e.jobs.size,0);
+});
+test('focus stays on quality when the next-episode shortcut disappears, and a removed shortcut returns to pause',()=>{
+ for(const action of ['quality','next']){
+  const e=environment();e.api.play(e.spec({next:true,request(a,done){done(null,e.spec({next:false,quality:a.quality||'2160p'}));}}));e.prepare();e.at(12);
+  if(action==='quality'){e.click('Якість');e.click('1080p');}else e.click('Наступна');
+  e.prepare();
+  assert.equal(e.all().find(n=>n.classList.contains('fbp-focused')).attrs['aria-label'],action==='quality'?'Якість':'Пауза');
+  e.api.close();assert.equal(e.jobs.size,0);
+ }
 });

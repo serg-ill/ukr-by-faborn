@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Installs only the Faborn metadata service. Does not configure a video proxy,
-# router, firewall, system Node.js, or access keys.
+# router, firewall or system Node.js.
 set -Eeuo pipefail
-version='0.1.0-beta.44'
+version='0.1.0-beta.45'
 node_version='v24.21.0'
 base='/opt/faborn-resolver'
 bundle="faborn-uakinogo-${version}.tar.gz"
 release="https://github.com/serg-ill/ukr-by-faborn/releases/download/v${version}"
 usage() {
-    echo "Faborn UAKinogo ${version}: sudo bash install.sh [--port NUMBER]"
-    echo 'Ubuntu 22.04+ x86_64/arm64, systemd. No access key in this beta.'
+    echo "Faborn UAKinogo ${version}: sudo bash install.sh [--port NUMBER] [--test-users]"
+    echo 'Ubuntu 22.04+ x86_64/arm64, systemd. --test-users creates test1/test2 with private random passwords.'
     echo 'Keeps the configured port when available; otherwise tries the next 20 ports.'
     echo 'An explicit --port never silently selects another port.'
 }
@@ -95,7 +95,7 @@ rollback_install() {
     echo 'Restored the previous configuration and service state. Other services were not changed.' >&2
 }
 main() {
-local requested_port='' env_file='/etc/faborn-resolver.env' service_file='/etc/systemd/system/faborn-resolver.service'
+local requested_port='' test_users=false env_file='/etc/faborn-resolver.env' service_file='/etc/systemd/system/faborn-resolver.service'
 local stage='' rollback_armed=false previous='' previous_node='' previous_active=false previous_enabled=false
 local configured_port port own_pid=0 healthy=false status
 while [[ $# -gt 0 ]]; do
@@ -104,6 +104,7 @@ while [[ $# -gt 0 ]]; do
         --port)
             [[ $# -ge 2 ]] && valid_port "$2" || { echo '--port requires a number between 1 and 65535.' >&2; return 2; }
             requested_port=$((10#$2)); shift 2 ;;
+        --test-users) test_users=true; shift ;;
         *) echo 'Unknown argument. Use --help.' >&2; return 2 ;;
     esac
 done
@@ -151,6 +152,8 @@ tar -xzf "$stage/$bundle" --no-same-owner --no-same-permissions -C "$stage/app"
 tar -xJf "$stage/$node_archive" --no-same-owner --no-same-permissions --strip-components=1 -C "$stage/node"
 "$stage/node/bin/node" --check "$stage/app/server/uakinogo/server.js"
 "$stage/node/bin/node" --check "$stage/app/server/uakinogo/resolver.js"
+"$stage/node/bin/node" --check "$stage/app/server/uakinogo/auth.js"
+"$stage/node/bin/node" --check "$stage/app/server/uakinogo/users.js"
 "$stage/node/bin/node" -e 'const s=require(process.argv[1]);if(s.VERSION!==process.argv[2])process.exit(1)' "$stage/app/server/uakinogo/server.js" "$version"
 # Downloads take time: check again before changing the installed service.
 own_pid=0
@@ -160,6 +163,11 @@ if ! id faborn-resolver >/dev/null 2>&1; then
     useradd --system --user-group --home-dir "$base" --no-create-home --shell /usr/sbin/nologin faborn-resolver
 fi
 install -d -m 0755 "$base/releases" "$base/runtimes"
+install -d -m 0700 -o faborn-resolver -g faborn-resolver "$base/auth"
+if [[ ! -e "$base/auth/users.json" ]]; then
+    install -m 0600 -o faborn-resolver -g faborn-resolver /dev/null "$base/auth/users.json"
+    printf '%s\n' '{"version":1,"enabled":false,"users":[]}' > "$base/auth/users.json"
+fi
 release_dir="$base/releases/${version}-$(date +%s)-$$"
 runtime_dir="$base/runtimes/${node_version}-$(date +%s)-$$"
 install -d -m 0755 "$release_dir" "$runtime_dir"
@@ -181,6 +189,17 @@ FABORN_ACCESS_KEYS=
 ENV
 fi
 write_port "$env_file" "$port"
+if ! awk '/^[[:space:]]*FABORN_USERS_FILE=/{found=1} END{exit !found}' "$env_file"; then
+    printf '%s\n' "FABORN_USERS_FILE=$base/auth/users.json" >> "$env_file"
+fi
+if [[ "$test_users" == true ]]; then
+    # Custom account locations must be managed explicitly.
+    if ! awk -v expected="FABORN_USERS_FILE=$base/auth/users.json" '$0==expected{found=1} END{exit !found}' "$env_file"; then
+        echo 'For a custom FABORN_USERS_FILE, use users.js --file PATH test-users.' >&2
+        rollback_install; exit 1
+    fi
+    "$runtime_dir/bin/node" "$release_dir/server/uakinogo/users.js" --file "$base/auth/users.json" test-users
+fi
 ln -s "$release_dir" "$base/current.next.$$"
 mv -Tf "$base/current.next.$$" "$base/current"
 ln -s "$runtime_dir" "$base/node.next.$$"
@@ -206,7 +225,8 @@ rollback_armed=false
 trap - ERR
 cat "$stage/health.json"
 printf '\nInstalled %s with automatic startup. Port: %s. Video proxy: disabled.\n' "$version" "$port"
-echo 'Enter http://UBUNTU-LAN-IP:'"$port"' in Lampa > ukr by Faborn > Сервер UAKinogo.'
+echo 'Enter http://UBUNTU-LAN-IP:'"$port"' in Lampa > ukr by Faborn > UAKinogo · сервер > Сервер UAKinogo.'
+echo 'Users: sudo /opt/faborn-resolver/node/bin/node /opt/faborn-resolver/current/server/uakinogo/users.js --help'
 echo 'Existing firewall, router and access-key settings were not changed.'
 }
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi

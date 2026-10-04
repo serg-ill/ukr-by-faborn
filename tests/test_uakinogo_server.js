@@ -130,7 +130,8 @@ test('card input carries title metadata only and TV requests require a real epis
 test('TV accepts only a LAN HTTP or HTTPS resolver and validates the returned episode and media hosts',()=>{
     assert.equal(Core.resolverBase(' http://192.168.88.191:8787/ '),'http://192.168.88.191:8787');
     assert.equal(Core.resolverBase('https://resolver.example/base/'),'https://resolver.example/base');
-    for(const u of ['http://public.example','https://user:pass@resolver.example/','file:///etc/passwd','http://192.168.1.1/?url=x','https://example/#x']) assert.equal(Core.resolverBase(u),'');
+    assert.equal(Core.resolverBase('https://user:pass@resolver.example/'),'https://resolver.example');
+    for(const u of ['http://public.example','file:///etc/passwd','http://192.168.1.1/?url=x','https://example/#x']) assert.equal(Core.resolverBase(u),'');
     assert.equal(Core.resolverResult(result(),0,0).tracks[0].qualities['2160p'][0],media);
     for(const change of [{schema:2},{episode:2},{referer:'https://evil.test/'},{origin:'https://evil.test'},{sourcePage:'https://uakinogo.is.evil.test/42-x.html'},{episodes:[]},{tracks:[{label:'EN',language:'en',qualities:{'2160p':['http://127.0.0.1/a']}}]}]) assert.throws(()=>Core.resolverResult({...result(),...change},0,0),/SERVER/);
 });

@@ -1,24 +1,39 @@
 'use strict';
 const http=require('node:http'),crypto=require('node:crypto');
 const {createResolver,card}=require('./resolver');
-const VERSION='0.1.0-beta.44';
-function createService({resolve=createResolver(),keys=[],maxActive=3}={}){
- const cache=new Map(),rates=new Map();let active=0;
- function authorized(key){return !keys.length||keys.some(k=>{const a=Buffer.from(k),b=Buffer.from(String(key||''));return a.length===b.length&&crypto.timingSafeEqual(a,b);});}
- function send(res,status,data){if(res.destroyed)return;res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Access-Control-Allow-Origin':'*','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
+const {createUserStore}=require('./auth');
+const VERSION='0.1.0-beta.45';
+function createService({resolve=createResolver(),keys=[],users=null,maxActive=3,maxAuth=3}={}){
+ const cache=new Map(),rates=new Map();let active=0,authenticating=0;
+ function authorized(key){return keys.some(k=>{const a=Buffer.from(k),b=Buffer.from(String(key||''));return a.length===b.length&&crypto.timingSafeEqual(a,b);});}
+ function send(res,status,data){if(res.destroyed)return;res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Access-Control-Allow-Origin':'*','Cache-Control':'no-store',...(status===401?{'WWW-Authenticate':'Basic realm="Faborn", charset="UTF-8"'}:{})});res.end(JSON.stringify(data));}
+ function mode(data){return data&&data.enabled?(keys.length?'basic+key':'basic'):keys.length?'key':'none';}
  const server=http.createServer(async(req,res)=>{
   if(req.method==='OPTIONS'){res.writeHead(204,{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'GET, POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type, Authorization'});return res.end();}
-  if(req.method==='GET'&&req.url==='/health')return send(res,200,{ok:true,version:VERSION,auth:keys.length?'key':'none',videoProxy:false});
+  if(req.method==='GET'&&req.url==='/health'){
+   try{return send(res,200,{ok:true,version:VERSION,auth:mode(users?await users.read():null),videoProxy:false});}
+   catch(ignore){return send(res,503,{ok:false,error:'Файл облікових записів недоступний',videoProxy:false});}
+  }
   if(req.method!=='POST'||req.url!=='/v1/resolve')return send(res,404,{error:'Маршрут відсутній'});
   const chunks=[];let size=0;
   try{
-   for await(const chunk of req){size+=chunk.length;if(size>16384){send(res,413,{error:'Завеликий запит'});return;}chunks.push(chunk);}
-   const data=JSON.parse(Buffer.concat(chunks).toString('utf8')),movie=card(data.movie);
-   if(!authorized((req.headers.authorization||'').replace(/^Bearer /,'')||data.key))return send(res,401,{error:'Потрібен ключ доступу'});
    const ip=req.socket.remoteAddress,now=Date.now();
    for(const [id,r] of rates)if(now-r.start>=60000)rates.delete(id);
    if(!rates.has(ip)){if(rates.size>=512)return send(res,429,{error:'Спробуйте пізніше'});rates.set(ip,{start:now,count:0});}
-   if(++rates.get(ip).count>30||active>=maxActive)return send(res,429,{error:'Зачекайте й повторіть запит'});
+   // Failed logins count too; limit expensive password derivations separately.
+   if(++rates.get(ip).count>30||active>=maxActive||authenticating>=maxAuth)return send(res,429,{error:'Зачекайте й повторіть запит'});
+   for await(const chunk of req){size+=chunk.length;if(size>16384){send(res,413,{error:'Завеликий запит'});return;}chunks.push(chunk);}
+   const data=JSON.parse(Buffer.concat(chunks).toString('utf8')),movie=card(data.movie);
+   let accounts=null;try{if(users)accounts=await users.read();}catch(ignore){return send(res,503,{error:'Файл облікових записів недоступний'});}
+   const header=req.headers.authorization||'',bearer=/^Bearer (.+)$/i.exec(header);
+   let access=mode(accounts)==='none'||authorized(bearer?bearer[1]:data.key);
+   if(!access&&accounts&&accounts.enabled){
+    if(authenticating>=maxAuth)return send(res,429,{error:'Зачекайте й повторіть запит'});
+    authenticating++;try{access=await users.verify(header,accounts);}finally{authenticating--;}
+   }
+   if(!access)return send(res,401,{error:'Потрібен правильний логін і пароль або ключ доступу'});
+   if(res.destroyed)return;
+   if(active>=maxActive)return send(res,429,{error:'Зачекайте й повторіть запит'});
    const season=data.season===undefined?0:data.season,episode=data.episode===undefined?0:data.episode;
    if(!Number.isInteger(season)||!Number.isInteger(episode)||season<0||season>1000||episode<0||episode>10000)return send(res,400,{error:'Некоректна серія'});
    const id=JSON.stringify([movie,season,episode]);
@@ -40,7 +55,8 @@ function createService({resolve=createResolver(),keys=[],maxActive=3}={}){
 }
 if(require.main===module){
  const keys=(process.env.FABORN_ACCESS_KEYS||'').split(',').map(k=>k.trim()).filter(Boolean);
- const server=createService({keys});server.listen(Number(process.env.PORT||8787),process.env.HOST||'127.0.0.1',()=>console.log('Faborn resolver '+VERSION+' ready; auth='+(keys.length?'key':'none')+'; videoProxy=false'));
+ const users=process.env.FABORN_USERS_FILE?createUserStore(process.env.FABORN_USERS_FILE):null;
+ const server=createService({keys,users});server.listen(Number(process.env.PORT||8787),process.env.HOST||'127.0.0.1',()=>console.log('Faborn resolver '+VERSION+' ready; accountFile='+(users?'configured':'none')+'; videoProxy=false'));
  process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
 }
 module.exports={createService,VERSION};
