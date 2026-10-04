@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.39 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.40 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.39';
+    var VERSION = '0.1.0-beta.40';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
     var commentsUI = null, commentsScript = null;
@@ -539,6 +539,7 @@
         content += '<div class="fbr-mini-title">'+heading+track+'</div>';
         if (busy) content += '<div class="fbr-loading"><strong>'+escapeHTML(busy.charAt(0).toUpperCase()+busy.slice(1))+'…</strong><i></i><i></i><i></i><div class="fbr-small">UAKino · UASerials · UAFix · KinoBase</div></div>';
         else {
+            if (session.searching) content += '<div class="fbr-small">Ще перевіряємо джерела — нові якості з’являться автоматично.</div>';
             if (title.type === 'tv') {
                 content += '<div class="fbr-controls">'+btn('season','Сезон '+session.season,'fbr-control',false,function () { session.uiFocus = 'season'; chooseSeason(session); })+btn('episode','Серія '+session.episode,'fbr-control',false,function () { session.uiFocus = 'episode'; chooseEpisode(session,true); })+'</div>';
                 var last = lastPosition(session);
@@ -569,7 +570,8 @@
                 }
                 content += '</div>';
             });
-            if (!selected) content += '<div class="fbr-empty"><strong>Потоку поки немає</strong>Спробуй іншу серію або повтори пошук. Стан джерел доступний у діагностиці модуля.</div>';
+            if (!selected) content += '<div class="fbr-empty"><strong>Потоку поки немає</strong>'+(session.searching || session.labPending ? 'Джерела ще відповідають…' : 'Спробуй іншу серію або повтори пошук. Стан джерел доступний у діагностиці модуля.')+'</div>';
+            if (session.status.uakinogo && !view.groups.some(function (g) { return g.entries.some(function (e) { return e.release.source === 'uakinogo'; }); })) content += btn('labstatus','UAKinogo · бета<span class="fbr-small">'+escapeHTML(session.status.uakinogo)+'</span>','fbr-last',false,function () { cardLabDetails(session); });
             var issue = kinoIssue(session,view);
             if (issue) content += btn('kinostatus',escapeHTML(issue.title)+'<span class="fbr-small">'+escapeHTML(issue.message)+'</span>','fbr-last',false,function () { kinoDetails(session); });
             content += btn('refresh','Оновити джерела','fbr-refresh',false,function () { startDiscovery(session.movie); });
@@ -1310,7 +1312,7 @@
         if (!out.length) throw new Error('Немає підтримуваного HLS-потоку.');
         return out;
     }
-    var requests = [], activeSession, discoveryTimer;
+    var requests = [], activeSession, discoveryTimer, discoveryJob;
     function parallel(items, limit, work, done) {
         var next = 0, running = 0, finished = 0, ended = false;
         if (!items.length) return done();
@@ -1480,19 +1482,31 @@
         activeSession = session; directTrace = []; save('direct_trace',[]); lastDiagnostic = '';
         save('kino_transport','Звичайний запит');
         loading(session,'пошук');
-        var remaining = PROVIDERS.length + 1;
-        function finished() {
-            remaining--;
-            if (serial !== requestSerial || remaining) return;
-            prepareSelection(session);
+        var job = {session:session,pending:PROVIDERS.length+1,started:false,update:null,serial:serial};
+        discoveryJob = job; session.searching = true;
+        function beginSelection() {
+            if (serial !== requestSerial || job.started) return;
+            job.started = true; root.clearTimeout(job.preview);
+            prepareSelection(session,true);
         }
-        // A deadline covers the whole discovery, not just each XHR. Late replies are invalidated.
-        discoveryTimer = root.setTimeout(function () {
+        function finished() {
             if (serial !== requestSerial) return;
-            if (session.kinoNative && session.status.kinobase === 'Повторне отримання сесії через Samsung…') session.status.kinobase = 'Час очікування сесії Samsung вичерпано. Спробуйте «Оновити джерела».';
-            trace('Пошук','Досягнуто ліміт очікування; показуємо отримані результати');
-            prepareSelection(session);
-        },24000);
+            job.pending--;
+            if (job.update) job.update();
+            else if (!job.pending) beginSelection();
+        }
+        // Show verified results without discarding the slower provider's response.
+        job.preview = root.setTimeout(beginSelection,24000);
+        job.deadline = root.setTimeout(function () {
+            if (serial !== requestSerial) return;
+            Object.keys(session.status).forEach(function (id) {
+                if (/Очікування|Повторне отримання/.test(session.status[id])) session.status[id] = 'Час очікування вичерпано. Спробуйте «Оновити джерела».';
+            });
+            trace('Пошук','Фонову перевірку завершено за лімітом 60 с');
+            cancelPending(); session.ready = true;
+            if (session.screen === 'sources' || session.screen === 'loading') renderSources(session);
+            else learnSourceQuality(session);
+        },60000);
         var completed = false, req = loadCatalog(false,function (error,catalog) {
             completed = true;
             if (serial !== requestSerial) return;
@@ -1507,7 +1521,8 @@
             session.status[provider.id] = 'Очікування відповіді';
             discoverProvider(serial,session,provider,function (status) { session.status[provider.id] = status; finished(); });
         });
-        // Alloha is retired. A previously saved 'on' must never start its worker.
+        // Only the new explicit beta opt-in can start the server-backed adapter.
+        if (storage('uakinogo_beta','off') === 'on') startCardLab(session);
     }
     function resolveEpisode(serial,title,release,episode,done,force) {
         if (episode.lab) return done();
@@ -1586,8 +1601,9 @@
         }
         attempt();
     }
-    function prepareSelection(session) {
-        cancelPending();
+    function prepareSelection(session,continuing) {
+        var live = continuing && discoveryJob && discoveryJob.session === session ? discoveryJob : null;
+        if (!live) cancelPending();
         var serial = requestSerial;
         activeSession = session; session.ready = false;
         if (session.labStarted && lab4k && session.labSelection !== session.season+':'+session.episode && session.labPending !== session.season+':'+session.episode) {
@@ -1596,27 +1612,56 @@
         }
         loading(session,'перевірка джерел');
         var pages = session.seasonPages.filter(function (p) { return p.season === session.season && !session.visited[p.url]; });
-        function resolveRows() {
-            var tasks = [];
-            session.title.releases.forEach(function (r) {
-                r.episodes.filter(function (e) { return e.season === session.season && e.episode === session.episode; }).forEach(function (e) { tasks.push({release:r,episode:e}); });
-            });
-            parallel(tasks,4,function (task,next) {
-                resolveEpisode(serial,session.title,task.release,task.episode,function (err) {
-                    if (err) { task.episode.error = err.message; task.episode.resolvedAt = 0; trace(sourceName(task.release.source)+' · потік',err.message); }
-                    next();
-                });
-            },complete);
+        var checked = [], queue = [], running = 0, pumping = false, pagesReady = false;
+        function present() {
+            if (serial !== requestSerial) return;
+            session.ready = true;
+            if (session.afterPrepare) { session.afterPrepare = false; chooseEpisode(session); }
+            else if (session.screen === 'sources' || session.screen === 'loading') renderSources(session);
+            else learnSourceQuality(session);
         }
         function complete() {
             if (serial !== requestSerial) return;
-            cancelPending(); session.ready = true;
-            if (session.afterPrepare) { session.afterPrepare = false; chooseEpisode(session); }
-            else renderSources(session);
+            if (!live || !live.pending) cancelPending();
+            presentAfterCancel();
         }
+        function presentAfterCancel() {
+            session.ready = true;
+            if (session.afterPrepare) { session.afterPrepare = false; chooseEpisode(session); }
+            else if (session.screen === 'sources' || session.screen === 'loading') renderSources(session);
+            else learnSourceQuality(session);
+        }
+        function pump() {
+            if (pumping || serial !== requestSerial) return;
+            pumping = true;
+            while (running < 4 && queue.length && serial === requestSerial) {
+                (function(task) {
+                    running++;
+                    resolveEpisode(serial,session.title,task.release,task.episode,function (err) {
+                        if (serial !== requestSerial) return;
+                        if (err) { task.episode.error = err.message; task.episode.resolvedAt = 0; trace(sourceName(task.release.source)+' · потік',err.message); }
+                        running--;
+                        if (live && session.ready && !live.paint) live.paint = root.setTimeout(function () { live.paint=null;present(); },180);
+                        pump();
+                    });
+                }(queue.shift()));
+            }
+            pumping = false;
+            if (!running && !queue.length) complete();
+        }
+        function resolveRows() {
+            if (!pagesReady || serial !== requestSerial) return;
+            session.title.releases.forEach(function (r) {
+                r.episodes.filter(function (e) { return e.season === session.season && e.episode === session.episode && checked.indexOf(e)<0; }).forEach(function (e) { checked.push(e);queue.push({release:r,episode:e}); });
+            });
+            queue.sort(function(a,b){return (parseInt(qualityNames(b.episode)[0],10)||0)-(parseInt(qualityNames(a.episode)[0],10)||0);});
+            pump();
+        }
+        if (live) live.update = resolveRows;
         discoveryTimer = root.setTimeout(function () {
             if (serial !== requestSerial) return;
-            trace('Джерела','Час перевірки вичерпано'); complete();
+            trace('Джерела',live ? 'Перевірка триває у фоні' : 'Час перевірки вичерпано');
+            if (live) present(); else complete();
         },20000);
         parallel(pages,3,function (p,next) {
             session.visited[p.url] = true;
@@ -1630,7 +1675,7 @@
                     next();
                 });
             } else getTitle(serial,provider,session.movie,p.url,function (error,t) { if (!error) mergeTitle(session,t); next(); });
-        },resolveRows);
+        },function(){pagesReady=true;resolveRows();});
     }
     function sourceName(id) {
         if (id === 'uakinogo') return 'UAKinogo / Alloha';
@@ -1678,9 +1723,9 @@
         if (activeSession !== session) return;
         save('source',row.release.source); save('quality',row.value);
         if (row.episode.lab) {
-            if (!lab4k || storage('lab4k','off') !== 'on') return startDiscovery(session.movie);
-            stopKinoSession();
-            session.labChosen = row; session.labLaunching = true; session.screen = 'labplayer';
+            if (!lab4k || storage('uakinogo_beta','off') !== 'on') return startDiscovery(session.movie);
+            cancelPending(); stopKinoSession();
+            session.labChosen = row; session.labFromStart = Boolean(fromStart); session.labLaunching = true; session.screen = 'labplayer';
             closePresentation(); L.Select.hide();
             lab4k.playChoice({season:row.episode.season,episode:row.episode.episode,label:row.release.voice,language:row.release.audioLanguage,quality:row.value});
             return;
@@ -1689,6 +1734,7 @@
         launch(session.movie,session.catalog,session.title,row.release,row.episode,row.value,fromStart);
     }
     function chooseSource(session, group) {
+        session.screen = 'voice-sources';
         var totals = {}, seen = {}, preferredSource = storage('source','uakino');
         group.entries.forEach(function (entry) { var id = entry.release.source; totals[id] = (totals[id] || 0)+1; });
         var preferred = group.entries.filter(function (entry) { return entry.release.source === preferredSource; })[0] || group.entries[0];
@@ -1698,6 +1744,7 @@
         }),function (row) { selectStream(session,row); },function () { renderSources(session); });
     }
     function chooseQuality(session, view) {
+        session.screen = 'quality';
         select('Якість',view.qualities.map(function (q) { return {title:qualityLabel(q),value:q,selected:q === view.quality}; }),function (row) {
             session.qualityPreference = row.value; save('quality',row.value); renderSources(session);
         },function () { renderSources(session); });
@@ -1732,11 +1779,14 @@
             var names = unique(group.entries.map(function (item) { return sourceName(item.release.source); }));
             rows.push({title:languageLabel(group.language)+group.voice,subtitle:qualityLabel(view.quality)+' · '+(many ? 'Джерела: ' : '')+names.join(', ')+subtitleHint(entry.episode),action:many ? 'sources' : 'play',group:group,release:entry.release,episode:entry.episode,value:entry.value,selected:session.uiFocus !== 'episode' && group === focused});
         });
-        if (!view.groups.length) rows.push({title:'Для цієї назви немає доступного потоку',subtitle:'Можна повторити пошук. Причини: Налаштування → ukr by Faborn → Версія та діагностика.',action:'retry'});
+        if (session.searching) rows.push({title:'Ще перевіряємо джерела…',subtitle:'Нові якості з’являться автоматично.',action:'wait'});
+        if (!view.groups.length && !session.searching) rows.push({title:'Для цієї назви немає доступного потоку',subtitle:'Можна повторити пошук. Причини: Налаштування → ukr by Faborn → Версія та діагностика.',action:'retry'});
+        if (session.status.uakinogo && !view.groups.some(function(g){return g.entries.some(function(e){return e.release.source==='uakinogo';});})) rows.push({title:'UAKinogo · бета',subtitle:session.status.uakinogo,action:'labstatus'});
         var issue = kinoIssue(session,view);
         if (issue) rows.push({title:issue.title,subtitle:issue.message,action:'kinostatus'});
         rows.push({title:'Оновити джерела',action:'retry'});
         select(NAME+(session.title.type === 'tv' ? ' · S'+session.season+'E'+session.episode : ' · '+session.title.title),rows,function (row) {
+            if (row.action === 'wait') return renderSources(session);
             if (row.action === 'labstatus') return cardLabDetails(session);
             if (row.action === 'kinostatus') return kinoDetails(session);
             if (row.action === 'quality') return chooseQuality(session,view);
@@ -2368,6 +2418,10 @@
     }
     function cancelPending() {
         requestSerial++;
+        if (discoveryJob) {
+            root.clearTimeout(discoveryJob.preview); root.clearTimeout(discoveryJob.deadline); root.clearTimeout(discoveryJob.paint);
+            discoveryJob.session.searching = false; discoveryJob.update = null; discoveryJob = null;
+        }
         kinoRefreshJobs = {};
         if (discoveryTimer) root.clearTimeout(discoveryTimer);
         discoveryTimer = null;
@@ -2942,7 +2996,7 @@
         labScript.src = base+'lib/4klab/ui.js?v='+VERSION;
         labScript.onerror = error;
         labScript.onload = function () {
-            if (run !== labLoadSerial || storage('lab4k','off') !== 'on') return;
+            if (run !== labLoadSerial || storage('uakinogo_beta','off') !== 'on') return;
             if (typeof root.Faborn4KLab !== 'function') { error(); return; }
             cancelLabLoad();
             lab4k = root.Faborn4KLab(root,L,base+'lib/4klab/',VERSION);
@@ -2962,15 +3016,78 @@
             else if (row.action === 'back') renderSources(session);
         },function () { renderSources(session); });
     }
-    function startCardLab() { /* Alloha is retired; no requests or workers. */ }
+    function startCardLab(session) {
+        if (activeSession !== session || storage('uakinogo_beta','off') !== 'on') return;
+        session.labStarted = true; session.labLaunching = false;
+        session.labPending = session.season+':'+session.episode;
+        session.status.uakinogo = 'Завантаження адаптера…';
+        var run = (session.labRun || 0)+1; session.labRun = run;
+        function current() { return activeSession === session && session.labRun === run && storage('uakinogo_beta','off') === 'on'; }
+        function refresh() {
+            if (current()) {
+                save('source_status',Object.keys(session.status).map(function (id) { return sourceName(id)+': '+session.status[id]; }));
+                if (session.ready && session.screen === 'sources' && !session.labLaunching) renderSources(session);
+            }
+        }
+        function failure(message,playbackFailure) {
+            if (!current()) return;
+            session.status.uakinogo = message; session.labPending = '';
+            if (!playbackFailure) session.title.releases = session.title.releases.filter(function (r) { return r.source !== 'uakinogo'; });
+            save('lab4k_status',message); refresh();
+        }
+        if (!text(storage('uakinogo_server','')).trim()) { failure('Вкажи адресу бета-обробника в налаштуваннях Faborn'); return; }
+        refresh();
+        ensureLab(function (error,adapter) {
+            if (!current()) return;
+            if (error) { failure(error.message); return; }
+            adapter.discover(session.movie,session.season,session.episode,{
+                stage:function (message) { if (current()) { session.status.uakinogo = message; refresh(); } },
+                error:failure,
+                episodes:function (items) { if (current()) session.labEpisodes = items; },
+                result:function (data) {
+                    if (!current()) return;
+                    session.labEpisodes = data.episodes; session.labSelection = data.season+':'+data.episode; session.labPending = '';
+                    session.title.releases.forEach(function (r) {
+                        if (r.source === 'uakinogo') r.episodes = r.episodes.filter(function (e) { return e.season !== data.season || e.episode !== data.episode; });
+                    });
+                    data.tracks.forEach(function (track) {
+                        if (['uk','en','ru'].indexOf(track.language) < 0 || !Array.isArray(track.qualities)) return;
+                        var r = session.title.releases.filter(function (v) { return v.source === 'uakinogo' && v.voice === track.label && v.audioLanguage === track.language; })[0];
+                        if (!r) { r = {id:session.title.id+'-alloha-'+encodeURIComponent(track.language+'|'+track.label),source:'uakinogo',voice:track.label,audioLanguage:track.language,episodes:[]}; session.title.releases.push(r); }
+                        r.episodes.push({id:r.id+'-s'+data.season+'e'+data.episode,season:data.season,episode:data.episode,lab:true,labQualities:track.qualities,resolvedAt:Date.now(),qualities:{}});
+                    });
+                    session.title.releases = session.title.releases.filter(function (r) { return r.episodes.length; });
+                    var qualities = unique(data.tracks.reduce(function (all,t) { return all.concat(t.qualities); },[])).sort(function (a,b) { return parseInt(b,10)-parseInt(a,10); });
+                    session.status.uakinogo = 'Знайдено · '+qualities.map(qualityLabel).join(', ')+' · озвучень: '+data.tracks.length;
+                    if (session.labSelection !== session.season+':'+session.episode) { session.labPending = session.season+':'+session.episode; adapter.episode(session.season,session.episode); }
+                    else refresh();
+                },
+                playerData:function (data) {
+                    var chosen = session.labChosen;
+                    var item = playData(session.movie,session.title,chosen.release,chosen.episode,chosen.value);
+                    item.url = item.faborn_url = data.url; labPlaybackData = item;
+                    if (session.labFromStart) { item.faborn_from_start = true; session.labFromStart = false; }
+                    if (playbackQueue) { playbackQueue.closed = true; playbackQueue.serial++; }
+                    playbackContext = {movie:session.movie,catalog:session.catalog};
+                    setPlayerVoices(item,session.movie,session.catalog,session.title,chosen.release,chosen.episode);
+                    save('autoplay_status',session.title.type === 'tv' ? 'UAKinogo · бета: наступну серію обери у списку серій' : '');
+                    if (L.Player.callback) L.Player.callback(function () { if (current()) { session.labLaunching = false; renderSources(session); } });
+                    save('last_launch',session.title.title+' · '+chosen.value+' · UAKinogo / Alloha · передано плеєру');
+                    return item;
+                },
+                beforePlay:function () { closePresentation(); L.Select.hide(); L.Controller.toggle(returnController); },
+                back:function () { if (current()) { session.labLaunching = false; renderSources(session); } else L.Controller.toggle(returnController); }
+            });
+        });
+    }
     function labChanged() {
-        if (storage('lab4k','off') !== 'on') {
+        if (storage('uakinogo_beta','off') !== 'on') {
             cancelLabLoad();
             if (lab4k) lab4k.disable();
         }
     }
     function openLab() {
-        if (storage('lab4k','off') !== 'on') { notify('Спочатку увімкни «Експериментальне 4K»'); return; }
+        if (storage('uakinogo_beta','off') !== 'on') { notify('Спочатку увімкни «Експериментальне 4K»'); return; }
         rememberController();
         select('4K · Завантаження тесту',[{title:'Скасувати',subtitle:'Завантажується тест із GitHub Pages…',cancel:true}],function (row) {
             if (row.cancel) { cancelLabLoad(); restore(); }
@@ -3121,6 +3238,8 @@
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_screensaver_preview',type:'button'},field:{name:'Переглянути заставку',description:'Попередній перегляд вибраного стилю Faborn.'},onChange:function () { if (!saverUI) { loadScreensaver();notify('Заставка ще завантажується або не підтримується цією збіркою Lampa. Спробуй після перезапуску.'); } else if (!saverUI.preview()) notify('Заверши перегляд відео, щоб відкрити заставку.'); }});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinobase:'KinoBase', kinoukr:'KinoUkr'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найвища доступна', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: 'Підсвічує варіант у списку джерел.'}});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_beta',type:'select',values:{off:'Вимкнено',on:'Увімкнено'},default:'off'},field:{name:'UAKinogo · серверна бета',description:'Окремий обробник знаходить посилання. Відео надходить прямо на Samsung через локальний адаптер. Потрібні Tizen Sockets і сумісний кодек.'},onChange:labChanged});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_server',type:'input',values:'',default:'',placeholder:'http://IP-UBUNTU:8787'},field:{name:'Сервер UAKinogo',description:'Адреса встановленого бета-обробника. Перша бета працює без ключа доступу.'},onChange:function(){cancelCardLab();}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_kino_session',type:'select',values:{auto:'Автоматично',direct:'Лише звичайний запит'},default:'auto'},field:{name:'Сесія KinoBase',description:'Після помилки сесії повторює запит через мережевий API Samsung, якщо він доступний у застосунку. Окремий сервер не потрібен.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_legacy4k',type:'select',values:{off:'Вимкнено',on:'Увімкнено · тест сумісності'},default:'off'},field:{name:'4K на старому Tizen',description:'Лише KinoBase 2160p та Tizen 2.3–4.x: явно вмикає UHD-декодер перед запуском. Для наступного відкриття відео. Не змінює кодек; результат видно у діагностиці.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_refresh', type: 'button'}, field: {name: 'Оновити індекс із GitHub'}, onChange: function () {
@@ -3182,7 +3301,7 @@
         save('comments',commentsMode());
         applyCommentsMode();
         save('lab4k','off'); save('lab4k_status','');
-        if (storage('source','uakino') === 'uakinogo') save('source','kinobase');
+        if (storage('uakinogo_beta','off') !== 'on' && storage('source','uakino') === 'uakinogo') save('source','kinobase');
         if (!$('#faborn-ukr-style').length) $('body').append('<style id="faborn-ukr-style">.full-start__button.view--faborn-ukr,.full-start__button.view--faborn-torrent{justify-content:center;border:0!important;outline:0!important;box-shadow:none!important}.full-start__button.view--faborn-ukr>svg,.full-start__button.view--faborn-torrent>svg{margin:0!important;flex-shrink:0}.full-start__button.view--faborn-torrent>:not(svg),.full-start__button.view--faborn-torrent:before,.full-start__button.view--faborn-torrent:after,.full-start__button.view--faborn-ukr>:not(svg),.full-start__button.view--faborn-ukr:before,.full-start__button.view--faborn-ukr:after{display:none!important}</style>');
         L.Listener.follow('full', attach);
         L.Listener.follow('torrent', watchTorrent);

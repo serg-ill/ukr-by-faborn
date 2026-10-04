@@ -34,6 +34,7 @@ jobs:
           git diff --exit-code -- lib/
           node --test tests/test_*.js
           node --check ukr-by-faborn.js
+          bash -n server/uakinogo/install.sh
       - name: Refresh reviewed sources and HLS manifests
         run: python scripts/build_catalog.py
       - name: Validate refreshed catalog

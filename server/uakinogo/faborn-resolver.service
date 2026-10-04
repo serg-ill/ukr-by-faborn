@@ -1,0 +1,28 @@
+[Unit]
+Description=Faborn UAKinogo metadata resolver
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=faborn-resolver
+Group=faborn-resolver
+WorkingDirectory=/opt/faborn-resolver/current
+EnvironmentFile=/etc/faborn-resolver.env
+ExecStart=/opt/faborn-resolver/node/bin/node /opt/faborn-resolver/current/server/uakinogo/server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+UMask=0077
+MemoryMax=256M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

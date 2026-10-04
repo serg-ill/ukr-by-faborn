@@ -525,13 +525,13 @@ test('closing after season and episode navigation restores the card controller',
     env.state.choose(i=>i.action==='episode'); env.state.choose(i=>i.value===3); env.state.menu.onBack(); env.state.menu.onBack(); env.state.menu.onBack();
     assert.equal(env.state.controller,'full_start'); assert.equal(env.state.menu,null);
 });
-test('discovery deadline displays partial results and ignores late providers', () => {
+test('discovery preview keeps pending providers and finishes without reopening the card', () => {
     let waiting;
     const env=directEnvironment({intercept(req) {if(req.url==='https://uaserials.my/') {waiting=req;return true;}}});
     chooseDirect(env); assert.ok(env.state.menu.title.includes('пошук'));
     env.state.fireTimer(24000); const menu=env.state.menu;
-    assert.ok(menu.items.some(i=>i.action==='play')); assert.equal(waiting.aborted,true);
-    waiting.status=200;waiting.responseText='';waiting.onload();assert.equal(env.state.menu,menu);
+    assert.ok(menu.items.some(i=>i.action==='play')); assert.notEqual(waiting.aborted,true);
+    assert.ok(menu.items.some(i=>i.action==='wait'));waiting.status=403;waiting.responseText='';waiting.onload();assert.ok(env.state.menu.items.some(i=>i.action==='play'));assert.ok(!env.state.menu.items.some(i=>i.action==='wait'));
 });
 test('network errors and timeouts finish without a stuck loading menu', () => {
     for(const event of ['onerror','ontimeout']) {
@@ -822,6 +822,7 @@ function kinoEnvironment(options={}) {
             const q=+new URL(req.url).pathname.split('/')[1],width=({'2160':3840,'1080':1920,'720':1280})[q];
             req.responseText='#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="track",URI="audio.m3u8"\n#EXT-X-STREAM-INF:RESOLUTION='+width+'x'+q+',AUDIO="track"\nvideo.m3u8';
             if(options.failPrimary&&req.url.includes('primary.redcdn.org'))req.status=404;
+            if(options.delayManifest) { (stateData.manifests ||= []).push(req); return; }
         } else {req.status=403;req.responseText='';}
         req.onload();
     }
@@ -887,7 +888,7 @@ test('Back during fallback cancels the request and a late native reply cannot re
 });
 test('native fallback deadline keeps a visible reason instead of a stale waiting label',()=>{
  const env=kinoEnvironment({failEndpoint:'/user_data?',native:true,delayNative:true});env.instance.open(kinoMovie);
- Object.values(env.state.timers).find(t=>t.ms===24000).fn();
+ env.state.fireTimer(24000);env.state.fireTimer(60000);
  assert.match(env.state.menu.items.find(i=>i.action==='kinostatus').subtitle,/Час очікування/);
  assert.ok(env.kino.nativeRequests[0].aborted);
 });
@@ -1644,4 +1645,60 @@ test('a completed empty KinoBase search is distinguished from a transport outage
  const e=kinoEnvironment();e.instance.open({...kinoSeries,first_air_date:'2026-01-01'});
  const issue=e.state.menu.items.find(i=>i.action==='kinostatus');assert.ok(issue);assert.equal(issue.title,'KinoBase · немає збігу');assert.match(issue.subtitle,/Пошук відповів/);
  assert.ok(!e.state.requests.some(r=>r.url.includes('/vod/')));
+});
+
+// The same slow playlist used to be aborted at 24s and only appeared after reopening.
+test('late KinoBase playlist adds 4K to the existing discovery session',()=>{
+ const env=kinoEnvironment({delayVod:true});env.instance.open(kinoMovie);const req=env.kino.pending;
+ env.state.fireTimer(24000);assert.notEqual(req.aborted,true);assert.ok(env.state.menu.items.some(i=>i.action==='wait'));
+ req.onload();assert.ok(env.state.menu.items.some(i=>i.value==='2160p'&&i.release.source==='kinobase'));assert.ok(!env.state.menu.items.some(i=>i.action==='wait'));
+ assert.equal(Object.keys(env.state.timers).length,0);assert.equal(env.state.requests.filter(r=>r.url.includes('/search?')).length,1);
+});
+test('Back after the discovery preview cancels late KinoBase and every timer',()=>{
+ const env=kinoEnvironment({delayVod:true});env.instance.open(kinoMovie);env.state.fireTimer(24000);const req=env.kino.pending;
+ env.state.menu.onBack();req.onload();assert.equal(env.state.menu,null);assert.equal(env.state.controller,'full_start');assert.ok(req.aborted);assert.equal(Object.keys(env.state.timers).length,0);
+});
+test('late KinoBase cannot steal an open source-details menu',()=>{
+ const env=kinoEnvironment({delayVod:true});env.instance.open(kinoMovie);env.state.fireTimer(24000);env.state.choose(i=>i.action==='kinostatus');const menu=env.state.menu;
+ env.kino.pending.onload();assert.equal(env.state.menu,menu);env.state.menu.onBack();assert.ok(env.state.menu.items.some(i=>i.value==='2160p'));
+});
+
+
+test('slow verified KinoBase media survives the 20s preview and appears without reopening',()=>{
+ const e=kinoEnvironment({delayManifest:true});e.instance.open(kinoMovie);
+ e.state.fireTimer(20000);assert.ok(e.kino.manifests.length);assert.ok(e.kino.manifests.every(r=>!r.aborted));
+ const initial=e.kino.manifests.slice();for(const r of initial)r.onload();
+ assert.ok(e.state.menu.items.some(i=>i.value==='2160p'));assert.equal(Object.keys(e.state.timers).length,0);
+});
+test('UAKinogo server beta is explicitly off, needs an address and does not load the old experiment flag',()=>{
+ const e=environment();let loaded=0;e.root.Faborn4KLab=()=>{loaded++;return {};};
+ assert.equal(e.state.params.find(p=>p.param.name==='faborn_ukr_uakinogo_beta').param.default,'off');
+ e.state.storage.faborn_ukr_uakinogo_beta='on';e.instance.open(kinoMovie);
+ assert.equal(loaded,0);assert.match(e.state.menu.items.find(r=>r.action==='labstatus').subtitle,/адресу/);
+});
+test('server beta results update the current source menu and Back invalidates every late reply',()=>{
+ const e=environment({storage:{faborn_ukr_uakinogo_beta:'on',faborn_ukr_uakinogo_server:'http://192.168.88.191:8787'}});let callbacks,cancels=0;
+ e.root.document.createElement=()=>({});e.root.document.head={appendChild(script){script.onload();}};
+ e.root.Faborn4KLab=()=>({discover(movie,s,n,cb){callbacks=cb;},cancel(){cancels++;},playChoice(){}});
+ e.instance.open(kinoMovie);assert.ok(callbacks);const result={season:0,episode:0,episodes:[{season:0,episode:0}],tracks:[{label:'English',language:'en',qualities:['2160p']}]};
+ callbacks.result(result);assert.ok(e.state.menu.items.some(r=>r.release?.source==='uakinogo'&&r.value==='2160p'));
+ e.state.menu.onBack();callbacks.result(result);assert.equal(e.state.menu,null);assert.ok(cancels);
+});
+test('late KinoBase from a different card cannot inject its streams or restore its dialog',()=>{
+ const e=kinoEnvironment({delayVod:true});e.instance.open(kinoMovie);e.state.fireTimer(24000);const stale=e.kino.pending;
+ e.instance.open({title:'Other movie',original_title:'Other movie',release_date:'2026-01-01'});const menu=e.state.menu;stale.onload();
+ assert.equal(e.state.menu,menu);assert.ok(stale.aborted);assert.ok(!e.state.menu.items.some(r=>r.release?.source==='kinobase'));
+});
+
+test('UAKinogo playback keeps voice choices, restart intent, progress and a return to cached sources',()=>{
+ const e=environment({storage:{faborn_ukr_uakinogo_beta:'on',faborn_ukr_uakinogo_server:'http://192.168.88.191:8787'}});let cb;
+ e.root.document.createElement=()=>({});e.root.document.head={appendChild(script){script.onload();}};
+ e.root.Faborn4KLab=()=>({discover(m,s,n,c){cb=c;},cancel(){},playChoice(){
+  const data=cb.playerData({url:'http://127.0.0.1:12345/0123456789abcdef0123456789abcdef/0.m3u8'});data.faborn_4klab=true;e.root.Lampa.Player.play(data);
+ }});
+ e.instance.open(kinoMovie);
+ cb.result({season:0,episode:0,episodes:[{season:0,episode:0}],tracks:[{label:'UA',language:'uk',qualities:['2160p']},{label:'English',language:'en',qualities:['2160p']}]});
+ e.state.play('2160p');assert.equal(e.state.played.voiceovers.length,2);assert.equal(e.state.played.card.id,kinoMovie.id);
+ e.state.progress(120,600);e.root.Lampa.Player.close();assert.ok(e.state.menu.items.some(i=>i.release?.source==='uakinogo'));assert.equal(e.state.controller,'select');
+ e.state.choose(i=>i.action==='restart');assert.equal(e.state.played.faborn_from_start,undefined);assert.equal(e.state.played.timeline.time,0);
 });

@@ -18,6 +18,10 @@ test('source parser reads only the known embed and never runs inline scripts', (
     assert.equal(Core.player('<script>throw new Error()</script><iframe src="https://Rarity-as.stravers.live/?token_movie=a&amp;token=b"></iframe>'),'https://rarity-as.stravers.live/?token_movie=a&token=b&translation=154');
     assert.throws(()=>Core.player('<iframe src="https://other.stravers.live/?token=a&token_movie=b">'),/PLAYER/);
 });
+test('source parser accepts the root query form used by UAKinogo without widening hosts', () => {
+    assert.equal(Core.player('<span data-src="https://Rarity-as.stravers.live?token_movie=movie&amp;token=public" data-provider="1">'), 'https://rarity-as.stravers.live/?token_movie=movie&token=public&translation=154');
+    for (const src of ['https://rarity-as.stravers.live.evil.test?token_movie=a&token=b', 'https://other.stravers.live?token_movie=a&token=b', 'http://rarity-as.stravers.live?token_movie=a&token=b', 'https://rarity-as.stravers.live?token_movie=a']) assert.throws(() => Core.player('<span data-src="'+src+'">'), /PLAYER/);
+});
 test('session decoding reverses public permutations without eval', () => {
     function bits(n) { return n ? Math.floor(Math.log2(n))+1 : 0; }
     function transform(str,groups,order) { return order.map(g=>str.split('').filter((v,i)=>groups[i]===g).join('')).join(''); }
@@ -63,7 +67,7 @@ test('HTTP routes only accept GET/HEAD, exact private paths and a single byte ra
 });
 
 function harness() {
-    const state={prefs:{faborn_ukr_lab4k:'off'},workers:[],timers:new Map(),menu:null,controller:'settings_component',played:null,closes:0,playerEvents:{},videoEvents:{},nextTimer:0};
+    const state={prefs:{faborn_ukr_uakinogo_beta:'off',faborn_ukr_uakinogo_server:'http://192.168.88.191:8787'},workers:[],timers:new Map(),menu:null,controller:'settings_component',played:null,closes:0,playerEvents:{},videoEvents:{},nextTimer:0};
     function listener(events) { return {follow(name,fn) { (events[name] ||= []).push(fn); }}; }
     function emit(events,name,data) { for(const fn of events[name] || []) fn(data); }
     function Worker(url) { this.url=url;this.messages=[];state.workers.push(this); }
@@ -77,7 +81,7 @@ function harness() {
         Player:{listener:listener(state.playerEvents),playdata(){return state.played;},playlist(){},play(data){state.played=data;state.controller='player';emit(state.playerEvents,'start',data);},close(){state.closes++;state.played=null;emit(state.playerEvents,'destroy');}},
         PlayerVideo:{listener:listener(state.videoEvents)}};
     const ui=createUI(root,L,'https://serg-ill.github.io/ukr-by-faborn/lib/4klab/','0.1.0-beta.12');
-    state.enable=()=>{state.prefs.faborn_ukr_lab4k='on';ui.open();};
+    state.enable=()=>{state.prefs.faborn_ukr_uakinogo_beta='on';ui.open();};
     state.message=(type,data)=>state.workers.at(-1).onmessage({data:{type,data}});
     state.choose=action=>state.menu.onSelect(state.menu.items.find(r=>r.action===action));
     state.emitVideo=(name,data)=>emit(state.videoEvents,name,data);
@@ -87,6 +91,15 @@ function harness() {
 test('off means no worker, timers, menu, network or player listener changes', () => {
     const {ui,state}=harness();ui.open();
     assert.equal(state.workers.length,0);assert.equal(state.timers.size,0);assert.equal(state.menu,null);assert.deepEqual(state.playerEvents,{});
+});
+test('a missing Ubuntu address fails before allocating a worker',()=>{
+    const {ui,state}=harness();state.prefs.faborn_ukr_uakinogo_beta='on';delete state.prefs.faborn_ukr_uakinogo_server;
+    let error;ui.discover({title:'Film'},0,0,{error:e=>error=e});
+    assert.match(error,/адресу/);assert.equal(state.workers.length,0);assert.equal(state.timers.size,0);
+});
+test('only the new beta flag can send the configured server to a worker',()=>{
+    const {ui,state}=harness();state.prefs.faborn_ukr_lab4k='on';ui.open();assert.equal(state.workers.length,0);
+    state.enable();assert.equal(state.workers[0].messages[0].server,'http://192.168.88.191:8787');assert.equal(state.workers[0].messages[0].key,'');
 });
 test('browser without AVPlay reports unsupported and keeps native navigation usable', () => {
     const {ui,state,root}=harness();delete root.webapis;state.enable();
@@ -120,7 +133,7 @@ test('language selection launches only tokenized loopback and confirms playback 
 test('disabling closes only the owned test player, preserving ordinary streams and preferences', () => {
     const {ui,state}=harness();state.enable();
     state.played={url:'https://normal.example/movie.m3u8'};
-    state.prefs.faborn_ukr_lab4k='off';ui.disable();
+    state.prefs.faborn_ukr_uakinogo_beta='off';ui.disable();
     assert.equal(state.closes,0);assert.equal(state.played.url,'https://normal.example/movie.m3u8');
     assert.equal(state.prefs.player,undefined);
 });
@@ -191,7 +204,7 @@ test('card tracks retain real lower qualities and verify dimensions for the chos
 });
 test('background card discovery never steals navigation and sends the current card to the worker',()=>{
     const {ui,state}=harness(),received=[];
-    state.prefs.faborn_ukr_lab4k='on';state.controller='faborn_ukr_view';
+    state.prefs.faborn_ukr_uakinogo_beta='on';state.controller='faborn_ukr_view';
     const movie={name:'Джентльмени',original_name:'The Gentlemen',first_air_date:'2024-03-07'};
     ui.discover(movie,1,2,{stage:s=>received.push(s),result:r=>received.push(r)});
     assert.equal(state.controller,'faborn_ukr_view');assert.equal(state.menu,null);
@@ -202,12 +215,12 @@ test('background card discovery never steals navigation and sends the current ca
     ui.cancel();assert.equal(state.menu,null);assert.equal(state.controller,'faborn_ukr_view');
 });
 test('card incompatibility is returned to source status without replacing the source menu',()=>{
-    const {ui,state,root}=harness();delete root.webapis;state.prefs.faborn_ukr_lab4k='on';
+    const {ui,state,root}=harness();delete root.webapis;state.prefs.faborn_ukr_uakinogo_beta='on';
     let error;ui.discover({title:'Film'},0,0,{error:e=>error=e});
     assert.match(error,/AVPLAY/);assert.equal(state.menu,null);assert.equal(state.workers.length,0);
 });
 test('card playback keeps the selected language, quality and per-episode history data',()=>{
-    const {ui,state}=harness();state.prefs.faborn_ukr_lab4k='on';let backs=0;
+    const {ui,state}=harness();state.prefs.faborn_ukr_uakinogo_beta='on';let backs=0;
     ui.discover({name:'Friends'},1,2,{playerData(){return {title:'Friends · S1E2',season:1,episode:2,timeline:{time:60}}},back(){backs++}});
     state.message('resolved',{tracks:[],episodes:[],season:1,episode:2});
     ui.playChoice({season:1,episode:2,label:'English',language:'en',quality:'1080p'});
@@ -217,7 +230,7 @@ test('card playback keeps the selected language, quality and per-episode history
     state.emitVideo('timeupdate',{current:3});assert.match(state.prefs.faborn_ukr_lab4k_status,/1080p/);assert.equal(backs,0);
 });
 test('switching to a normal source stops the adapter but permits a later card choice',()=>{
- const {ui,state}=harness();state.prefs.faborn_ukr_lab4k='on';
+ const {ui,state}=harness();state.prefs.faborn_ukr_uakinogo_beta='on';
  ui.discover({title:'Film'},0,0,{});state.message('resolved',{tracks:[],episodes:[],season:0,episode:0});
  const old=state.workers[0];ui.cancel(true);old.onmessage({data:{type:'stopped'}});
  ui.playChoice({season:0,episode:0,label:'English',language:'en',quality:'1080p'});
@@ -225,7 +238,7 @@ test('switching to a normal source stops the adapter but permits a later card ch
  assert.equal(state.workers[1].messages[0].movie.title,'Film');
 });
 function playingCard(){
- const env=harness(),{ui,state}=env;state.prefs.faborn_ukr_lab4k='on';
+ const env=harness(),{ui,state}=env;state.prefs.faborn_ukr_uakinogo_beta='on';
  ui.discover({title:'Film'},0,0,{});state.message('resolved',{tracks:[],episodes:[],season:0,episode:0});
  ui.playChoice({season:0,episode:0,label:'UA',language:'uk',quality:'2160p'});
  state.message('play',{url:'http://127.0.0.1:12345/'+key+'/0.m3u8',label:'UA',quality:'2160p',codecs:'av01'});
