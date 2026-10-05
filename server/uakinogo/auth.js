@@ -8,7 +8,7 @@ function validate(data){
  if(!data||data.version!==1||typeof data.enabled!=='boolean'||!Array.isArray(data.users)||data.users.length>MAX_USERS)throw Error('Invalid account file');
  const seen=new Set();
  for(const u of data.users){
-  if(!u||!username(u.username)||seen.has(u.username)||!/^[a-f0-9]{32}$/.test(u.salt)||!/^[a-f0-9]{64}$/.test(u.hash))throw Error('Invalid account file');
+  if(!u||!username(u.username)||seen.has(u.username)||!/^[a-f0-9]{32}$/.test(u.salt)||!/^[a-f0-9]{64}$/.test(u.hash)||(u.disabled!==undefined&&typeof u.disabled!=='boolean'))throw Error('Invalid account file');
   seen.add(u.username);
  }
  if(!data.enabled&&data.users.length)throw Error('Invalid account file');
@@ -36,6 +36,7 @@ function basic(header){
 function createUserStore(file){
  if(typeof file!=='string'||!file)throw Error('Account file is required');
  return {
+  file,
   read:()=>readAccounts(file),
   async verify(header,data){
    const credentials=basic(header);if(!credentials)return false;
@@ -43,7 +44,7 @@ function createUserStore(file){
    // Unknown names still perform the same derivation. No plaintext passwords
    // are stored, cached or logged, and account changes apply on the next request.
    const hash=await digest(credentials.password,user?user.salt:'00000000000000000000000000000000');
-   return crypto.timingSafeEqual(hash,Buffer.from(user?user.hash:'0'.repeat(64),'hex'))&&!!user;
+   return crypto.timingSafeEqual(hash,Buffer.from(user?user.hash:'0'.repeat(64),'hex'))&&!!user&&!user.disabled;
   }
  };
 }

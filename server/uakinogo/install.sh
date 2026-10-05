@@ -2,18 +2,20 @@
 # Installs only the Faborn metadata service. Does not configure a video proxy,
 # router, firewall or system Node.js.
 set -Eeuo pipefail
-version='0.1.0-beta.46'
+version='0.1.0-beta.47'
 node_version='v24.21.0'
 base='/opt/faborn-resolver'
 bundle="faborn-uakinogo-${version}.tar.gz"
 release="https://github.com/serg-ill/ukr-by-faborn/releases/download/v${version}"
 usage() {
-    echo "Faborn UAKinogo ${version}: sudo bash install.sh [--port NUMBER] [--test-users] [--allow-lan CIDR|none]"
+    echo "Faborn UAKinogo ${version}: sudo bash install.sh [--port NUMBER] [--test-users] [--allow-lan CIDR|none] [--admin-lan CIDR|none]"
     echo 'Ubuntu 22.04+ x86_64/arm64, systemd. --test-users creates test1/test2 with private random passwords.'
     echo 'Keeps the configured port when available; otherwise tries the next 20 ports.'
     echo 'An explicit --port never silently selects another port.'
     echo '--allow-lan 192.168.88.0/24 permits that LAN without a password; outside clients still require configured accounts/keys.'
     echo '--allow-lan none removes that exception. Without this flag, the current policy is preserved.'
+    echo '--admin-lan 192.168.88.0/24 enables the LAN-only /admin/ panel with a separate generated admin password.'
+    echo '--admin-lan none disables the panel; existing users and statistics remain on disk.'
 }
 valid_port() { [[ "$1" =~ ^[0-9]{1,5}$ ]] && (( 10#$1 >= 1 && 10#$1 <= 65535 )); }
 valid_lan() {
@@ -35,6 +37,15 @@ write_lan() {
     [[ "$value" != none ]] || value=''
     temp=$(mktemp "${file}.XXXXXX")
     if ! awk -v value="$value" '/^[[:space:]]*FABORN_ALLOW_LAN=/{if (!written++) print "FABORN_ALLOW_LAN=" value; next} {print} END{if (!written) print "FABORN_ALLOW_LAN=" value}' "$file" > "$temp"; then
+        rm -f -- "$temp"; return 1
+    fi
+    chmod 0600 "$temp"; mv -f -- "$temp" "$file"
+}
+write_admin_setting() {
+    local file="$1" key="$2" value="$3" temp
+    case "$key" in FABORN_ADMIN_LAN|FABORN_ADMIN_FILE|FABORN_STATS_FILE) ;; *) return 2 ;; esac
+    temp=$(mktemp "${file}.XXXXXX")
+    if ! awk -v key="$key" -v value="$value" '$0 ~ "^[[:space:]]*" key "=" {if (!written++) print key "=" value; next} {print} END{if (!written) print key "=" value}' "$file" > "$temp"; then
         rm -f -- "$temp"; return 1
     fi
     chmod 0600 "$temp"; mv -f -- "$temp" "$file"
@@ -120,7 +131,7 @@ rollback_install() {
     echo 'Restored the previous configuration and service state. Other services were not changed.' >&2
 }
 main() {
-local requested_port='' requested_lan='' test_users=false env_file='/etc/faborn-resolver.env' service_file='/etc/systemd/system/faborn-resolver.service'
+local requested_port='' requested_lan='' requested_admin='' test_users=false env_file='/etc/faborn-resolver.env' service_file='/etc/systemd/system/faborn-resolver.service'
 local stage='' rollback_armed=false previous='' previous_node='' previous_active=false previous_enabled=false
 local configured_port port own_pid=0 healthy=false status
 while [[ $# -gt 0 ]]; do
@@ -133,6 +144,9 @@ while [[ $# -gt 0 ]]; do
         --allow-lan)
             [[ $# -ge 2 ]] && valid_lan "$2" || { echo '--allow-lan requires a private IPv4 network, e.g. 192.168.88.0/24, or none.' >&2; return 2; }
             requested_lan=$2; shift 2 ;;
+        --admin-lan)
+            [[ $# -ge 2 ]] && valid_lan "$2" || { echo '--admin-lan requires a private IPv4 network, e.g. 192.168.88.0/24, or none.' >&2; return 2; }
+            requested_admin=$2; shift 2 ;;
         *) echo 'Unknown argument. Use --help.' >&2; return 2 ;;
     esac
 done
@@ -182,6 +196,11 @@ tar -xJf "$stage/$node_archive" --no-same-owner --no-same-permissions --strip-co
 "$stage/node/bin/node" --check "$stage/app/server/uakinogo/resolver.js"
 "$stage/node/bin/node" --check "$stage/app/server/uakinogo/auth.js"
 "$stage/node/bin/node" --check "$stage/app/server/uakinogo/users.js"
+for script in network.js metrics.js admin.js admin/app.js; do
+    "$stage/node/bin/node" --check "$stage/app/server/uakinogo/$script"
+done
+test -s "$stage/app/server/uakinogo/admin/index.html"
+test -s "$stage/app/server/uakinogo/admin/style.css"
 "$stage/node/bin/node" -e 'const s=require(process.argv[1]);if(s.VERSION!==process.argv[2])process.exit(1)' "$stage/app/server/uakinogo/server.js" "$version"
 # Downloads take time: check again before changing the installed service.
 own_pid=0
@@ -192,6 +211,7 @@ if ! id faborn-resolver >/dev/null 2>&1; then
 fi
 install -d -m 0755 "$base/releases" "$base/runtimes"
 install -d -m 0700 -o faborn-resolver -g faborn-resolver "$base/auth"
+install -d -m 0700 -o faborn-resolver -g faborn-resolver "$base/state"
 if [[ ! -e "$base/auth/users.json" ]]; then
     install -m 0600 -o faborn-resolver -g faborn-resolver /dev/null "$base/auth/users.json"
     printf '%s\n' '{"version":1,"enabled":false,"users":[]}' > "$base/auth/users.json"
@@ -229,6 +249,30 @@ if [[ "$test_users" == true ]]; then
     fi
     "$runtime_dir/bin/node" "$release_dir/server/uakinogo/users.js" --file "$base/auth/users.json" test-users
 fi
+if [[ -n "$requested_admin" ]]; then
+    if [[ "$requested_admin" == none ]]; then
+        write_admin_setting "$env_file" FABORN_ADMIN_LAN ''
+    else
+        # Never repurpose the viewer database as the administrator database.
+        if ! awk -v admin="FABORN_ADMIN_FILE=$base/auth/admin.json" -v users="FABORN_USERS_FILE=$base/auth/users.json" '
+            /^[[:space:]]*FABORN_ADMIN_FILE=/{if ($0!=admin && $0!="FABORN_ADMIN_FILE=") bad=1}
+            /^[[:space:]]*FABORN_USERS_FILE=/{if ($0!=users) bad=1}
+            END{exit bad}' "$env_file"; then
+            echo 'Custom account paths must be configured manually; --admin-lan did not replace them.' >&2
+            rollback_install; exit 1
+        fi
+        if [[ ! -e "$base/auth/admin.json" ]]; then
+            echo 'Administrator credentials (save privately; separate from viewer accounts):'
+            "$runtime_dir/bin/node" "$release_dir/server/uakinogo/users.js" --file "$base/auth/admin.json" add admin --generate
+        else
+            "$runtime_dir/bin/node" -e 'require(process.argv[1]).readAccounts(process.argv[2]).then(d=>{if(!d.enabled||!d.users.some(u=>!u.disabled))process.exit(1)}).catch(()=>process.exit(1))' "$release_dir/server/uakinogo/auth.js" "$base/auth/admin.json"
+            echo 'Existing administrator password preserved.'
+        fi
+        write_admin_setting "$env_file" FABORN_ADMIN_LAN "$requested_admin"
+        write_admin_setting "$env_file" FABORN_ADMIN_FILE "$base/auth/admin.json"
+        write_admin_setting "$env_file" FABORN_STATS_FILE "$base/state/metrics.json"
+    fi
+fi
 ln -s "$release_dir" "$base/current.next.$$"
 mv -Tf "$base/current.next.$$" "$base/current"
 ln -s "$runtime_dir" "$base/node.next.$$"
@@ -256,6 +300,9 @@ cat "$stage/health.json"
 printf '\nInstalled %s with automatic startup. Port: %s. Video proxy: disabled.\n' "$version" "$port"
 echo 'Enter http://UBUNTU-LAN-IP:'"$port"' in Lampa > ukr by Faborn > UAKinogo · сервер > Сервер UAKinogo.'
 echo 'Users: sudo /opt/faborn-resolver/node/bin/node /opt/faborn-resolver/current/server/uakinogo/users.js --help'
+if [[ -n "$requested_admin" && "$requested_admin" != none ]]; then
+    echo 'Admin panel: http://UBUNTU-LAN-IP:'"$port"'/admin/ (LAN and localhost only; administrator password always required).'
+fi
 echo 'Existing firewall, router and access-key settings were not changed.'
 }
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi

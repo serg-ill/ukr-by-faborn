@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 const fs=require('node:fs/promises'),path=require('node:path'),crypto=require('node:crypto');
-const {readAccounts,record,username}=require('./auth');
+const {readAccounts,record,username,validate}=require('./auth');
 const DEFAULT_FILE='/opt/faborn-resolver/auth/users.json';
 async function change(file,operation){
  const dir=path.dirname(file),lock=await fs.open(file+'.lock','wx',0o600);
@@ -9,7 +9,7 @@ async function change(file,operation){
  try{
   let data;
   try{data=await readAccounts(file);}catch(e){if(e.code!=='ENOENT')throw e;data={version:1,enabled:false,users:[]};}
-  const output=await operation(data),owner=await fs.stat(dir);
+  const output=await operation(data),owner=await fs.stat(dir);validate(data);
   temp=path.join(dir,'.users-'+crypto.randomBytes(12).toString('hex'));
   const handle=await fs.open(temp,'wx',0o600);
   try{await handle.writeFile(JSON.stringify(data,null,2)+'\n');await handle.sync();}finally{await handle.close();}
@@ -32,12 +32,12 @@ async function main(args){
  if(i>=0){if(!args[i+1])throw Error('--file requires a path');file=path.resolve(args[i+1]);args=args.slice(0,i).concat(args.slice(i+2));}
  const [command,name,...flags]=args;
  if(!command||command==='--help'){
-  console.log('Faborn accounts: test-users | list | add USER --generate | reset USER --generate | add/reset USER --password-stdin | delete USER\nOptional: --file PATH. Default: '+DEFAULT_FILE);return;
+  console.log('Faborn accounts: test-users | list | add USER --generate | reset USER --generate | add/reset USER --password-stdin | block USER | unblock USER | delete USER\nOptional: --file PATH. Default: '+DEFAULT_FILE);return;
  }
  if(command==='list'){
   if(name)throw Error('Unexpected argument');
   const d=await readAccounts(file);console.log('Authentication: '+(d.enabled?'basic':'none'));
-  d.users.forEach(u=>console.log(u.username));return;
+  d.users.forEach(u=>console.log(u.username+(u.disabled?' [blocked]':'')));return;
  }
  if(command==='test-users'){
   if(name)throw Error('Unexpected argument');
@@ -52,7 +52,12 @@ async function main(args){
   });
   console.log('Credentials (shown only when created; save privately):');out.forEach(v=>console.log(v));return;
  }
- if(!['add','reset','delete'].includes(command)||!username(name))throw Error('Use --help for valid commands');
+ if(!['add','reset','block','unblock','delete'].includes(command)||!username(name))throw Error('Use --help for valid commands');
+ if(command==='block'||command==='unblock'){
+  if(flags.length)throw Error('Unexpected argument');
+  await change(file,async d=>{const u=d.users.find(u=>u.username===name);if(!u)throw Error('User does not exist');u.disabled=command==='block';});
+  console.log((command==='block'?'Blocked ':'Unblocked ')+name);return;
+ }
  if(command==='delete'){
   if(flags.length)throw Error('Unexpected argument');
   await change(file,async d=>{const i=d.users.findIndex(u=>u.username===name);if(i<0)throw Error('User does not exist');d.users.splice(i,1);d.enabled=true;});
@@ -65,7 +70,7 @@ async function main(args){
   if(command==='add'&&i>=0)throw Error('User exists; use reset to change the password');
   if(command==='reset'&&i<0)throw Error('User does not exist');
   if(i<0&&d.users.length>=128)throw Error('Account limit reached');
-  const u=await record(name,pass);if(i<0)d.users.push(u);else d.users[i]=u;d.enabled=true;
+  const u=await record(name,pass);if(i<0)d.users.push(u);else {if(d.users[i].disabled)u.disabled=true;d.users[i]=u;}d.enabled=true;
  });
  console.log(flags[0]==='--generate'?name+':'+pass:'Saved '+name);
 }

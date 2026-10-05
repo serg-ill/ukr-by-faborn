@@ -130,3 +130,18 @@ test('LAN exception updates only its own environment value and can be removed wi
  assert.equal(shell('write_lan "$ENV_FILE" none',{ENV_FILE:file}).status,0);
  assert.equal(fs.readFileSync(file,'utf8'),kept+'FABORN_ALLOW_LAN=\n');assert.equal(fs.statSync(file).mode&0o777,0o600);
 });
+
+test('admin LAN must be private and its setting does not change resolver access, keys or port',t=>{
+ for(const value of ['0.0.0.0/0','192.168.88.1/24','203.0.113.0/24','192.168.88.0/24;echo invalid']){
+  const r=spawnSync('bash',[installer,'--admin-lan',value],{encoding:'utf8'});assert.equal(r.status,2);assert.match(r.stderr,/--admin-lan requires/);
+ }
+ const dir=fixture(t),file=path.join(dir,'resolver.env');
+ const kept='PORT=8789\nFABORN_USERS_FILE=/opt/faborn-resolver/auth/users.json\nFABORN_ALLOW_LAN=192.168.88.0/24\nFABORN_ACCESS_KEYS=fixture\n';
+ fs.writeFileSync(file,kept+'FABORN_ADMIN_LAN=10.0.0.0/8\nFABORN_ADMIN_LAN=172.16.0.0/12\n');
+ assert.equal(shell('write_admin_setting "$ENV_FILE" FABORN_ADMIN_LAN 192.168.88.0/24',{ENV_FILE:file}).status,0);
+ assert.equal(fs.readFileSync(file,'utf8'),kept+'FABORN_ADMIN_LAN=192.168.88.0/24\n');
+ assert.equal(shell('write_admin_setting "$ENV_FILE" FABORN_ADMIN_LAN ""',{ENV_FILE:file}).status,0);
+ assert.equal(fs.readFileSync(file,'utf8'),kept+'FABORN_ADMIN_LAN=\n');
+ assert.equal(fs.statSync(file).mode&0o777,0o600);
+ assert.equal(shell('write_admin_setting "$ENV_FILE" PORT 1234',{ENV_FILE:file}).status,2);
+});

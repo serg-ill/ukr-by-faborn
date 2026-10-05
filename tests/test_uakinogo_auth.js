@@ -53,6 +53,14 @@ test('password reset changes access, retains other accounts and never writes a p
  const s=await service(t,f.file);assert.equal((await s.post(header('friend',old))).status,401);assert.equal((await s.post(header('friend',next))).status,200);
  assert.ok(!fs.readFileSync(f.file,'utf8').includes(next));assert.equal(f.cli('add','friend','--generate').status,1);
 });
+test('CLI block/unblock interoperates with admin schema and password reset preserves a block',async t=>{
+ const f=fixture(t),created=f.cli('add','friend','--generate');assert.equal(created.status,0);
+ const first=created.stdout.trim().split(':')[1],s=await service(t,f.file);
+ assert.equal(f.cli('block','friend').status,0);assert.equal((await s.post(header('friend',first))).status,401);
+ const reset=f.cli('reset','friend','--generate'),next=reset.stdout.trim().split(':')[1];assert.equal(reset.status,0);
+ assert.equal((await s.post(header('friend',next))).status,401);assert.match(f.cli('list').stdout,/friend \[blocked\]/);
+ assert.equal(f.cli('unblock','friend').status,0);assert.equal((await s.post(header('friend',next))).status,200);
+});
 test('configured but unreadable, missing or malformed account files fail closed',async t=>{
  const f=fixture(t);f.cli('test-users');const good=fs.readFileSync(f.file),s=await service(t,f.file);
  for(const data of ['not json',JSON.stringify({version:1,enabled:false,users:[{username:'friend'}]})]){

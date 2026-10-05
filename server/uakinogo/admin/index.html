@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="uk">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Faborn · Сервер</title><link rel="stylesheet" href="/admin/style.css"><script src="/admin/app.js" defer></script></head>
+<body>
+<svg class="symbols" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M17 5a3 3 0 0 1 0 6m1 4a5 5 0 0 1 3 5v1"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+<symbol id="i-arrow" viewBox="0 0 24 24"><path d="M8 3v16m-4-4 4 4 4-4M17 21V5m-4 4 4-4 4 4"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7a9 9 0 1 0 1 8M20 3v5h-5"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-out" viewBox="0 0 24 24"><path d="M10 4H4v16h6m5-12 4 4-4 4m-7-4h11"/></symbol>
+<symbol id="i-pulse" viewBox="0 0 24 24"><path d="M2 12h4l3-8 6 16 3-8h4"/></symbol>
+</defs></svg>
+<div id="login-view" class="login-wrap">
+  <form id="login-form" class="login-card">
+    <div class="brand-mark" aria-hidden="true">F<span>•</span></div><p class="eyebrow">FABORN SERVER</p>
+    <h1>Ваш сервер.<br>Усе під контролем.</h1><p class="muted">Увійдіть окремим обліковим записом адміністратора.</p>
+    <label>Логін<input name="username" autocomplete="username" required maxlength="64" placeholder="admin"></label>
+    <label>Пароль<input name="password" type="password" autocomplete="current-password" required maxlength="256"></label>
+    <button class="primary" type="submit">Увійти в панель <span aria-hidden="true">→</span></button>
+    <p id="login-error" class="error-text" role="alert"></p>
+    <p class="login-note"><svg><use href="#i-shield"/></svg> Доступ із домашньої мережі</p>
+  </form>
+</div>
+<div id="app" class="app" hidden>
+  <aside class="sidebar">
+    <a class="brand" href="/admin/"><span class="brand-mark">F<span>•</span></span><span>Faborn<small>SERVER CONSOLE</small></span></a>
+    <p class="nav-label">КЕРУВАННЯ</p>
+    <nav aria-label="Адмінпанель">
+      <button class="nav-item active" data-view="overview" aria-current="page"><svg><use href="#i-grid"/></svg>Огляд</button>
+      <button class="nav-item" data-view="users"><svg><use href="#i-users"/></svg>Користувачі <span id="nav-user-count" class="nav-count">0</span></button>
+      <button class="nav-item" data-view="activity"><svg><use href="#i-clock"/></svg>Журнал</button>
+    </nav>
+    <div class="sidebar-bottom"><div class="local"><span class="dot"></span> Локальна панель</div><p id="server-version">Faborn</p><button id="logout" class="quiet"><svg><use href="#i-out"/></svg>Вийти</button></div>
+  </aside>
+  <main>
+    <header class="topbar"><div><p class="eyebrow">ВАШ ДОМАШНІЙ СЕРВЕР</p><h1 id="page-title">Огляд сервера</h1></div><div class="top-actions"><label class="auto"><input id="auto-refresh" type="checkbox" checked>Автооновлення</label><button id="refresh" class="icon-button" aria-label="Оновити дані"><svg><use href="#i-refresh"/></svg></button><span class="admin-label" id="admin-name">admin</span></div></header>
+    <div id="notice" class="notice" role="status" hidden></div>
+    <section id="view-overview">
+      <div class="overview-heading"><div><span id="service-status" class="status"><span class="dot"></span>Сервер відповідає</span><span class="muted" id="server-uptime"></span></div><span id="updated" class="muted"></span></div>
+      <div class="stats-grid">
+        <article class="stat-card"><div class="stat-label">Запити <svg><use href="#i-pulse"/></svg></div><strong id="stat-requests">—</strong><span>За останні 30 днів</span></article>
+        <article class="stat-card"><div class="stat-label">Трафік API <svg><use href="#i-arrow"/></svg></div><strong id="stat-traffic">—</strong><span id="stat-traffic-detail">Дані між сервером і Lampa</span></article>
+        <article class="stat-card"><div class="stat-label">Успішні відповіді <svg><use href="#i-check"/></svg></div><strong id="stat-success">—</strong><span id="stat-errors">Немає запитів</span></article>
+        <article class="stat-card"><div class="stat-label">Обробляється зараз <svg><use href="#i-clock"/></svg></div><strong id="stat-active">—</strong><span>Запити до джерела</span></article>
+      </div>
+      <div class="two-columns">
+        <article class="panel"><div class="panel-heading"><h2>Активність запитів</h2><span class="tag">7 днів · UTC</span></div><div id="chart" class="chart"></div><p class="subtle">Враховано успішні відповіді, помилки та відмови доступу.</p></article>
+        <article class="panel"><div class="panel-heading"><h2>Стан обробника</h2><svg class="accent-icon"><use href="#i-pulse"/></svg></div><dl class="health-list"><div><dt>Пам’ять процесу</dt><dd id="runtime-memory">—</dd></div><div><dt>CPU процесу</dt><dd id="runtime-cpu">—</dd></div><div><dt>Середня відповідь</dt><dd id="runtime-latency">—</dd></div><div><dt>Відповіді з кешу</dt><dd id="runtime-cache">—</dd></div><div><dt>Зберігання статистики</dt><dd id="runtime-storage">—</dd></div></dl></article>
+      </div>
+      <article class="panel"><div class="panel-heading"><h2>Останні запити</h2><button class="text-button" data-view="activity">Весь журнал →</button></div><div id="recent-table" class="table-wrap"></div></article>
+      <div class="info-line"><svg><use href="#i-shield"/></svg><p>Відео надходить напряму на телевізор. Тут — обсяг JSON-запитів і відповідей обробника, без відео, HTTP-заголовків та трафіку до джерела.</p></div>
+    </section>
+    <section id="view-users" hidden>
+      <div class="section-intro"><p>Доступ до UAKinogo для ваших телевізорів і друзів.</p><button id="add-user" class="primary small"><svg><use href="#i-plus"/></svg>Додати користувача</button></div>
+      <p id="access-note" class="access-note"></p>
+      <article class="panel"><div class="panel-heading"><h2>Облікові записи</h2><input id="user-search" class="search" type="search" placeholder="Знайти логін" aria-label="Знайти користувача"></div><div id="users-table" class="table-wrap"></div></article>
+      <p class="subtle">Блокування застосовується до нових запитів із цим логіном. Уже запущене відео й окремий локальний доступ без пароля продовжують працювати.</p>
+    </section>
+    <section id="view-activity" hidden>
+      <div class="section-intro"><p>Історія звернень до сервера, а не історія перегляду.</p><label class="auto"><input type="checkbox" id="errors-only">Лише помилки</label></div>
+      <article class="panel"><div class="panel-heading"><h2>Запити до обробника</h2><span class="tag">Останні 300</span></div><div id="activity-table" class="table-wrap"></div></article>
+      <article class="panel"><div class="panel-heading"><h2>Дії адміністратора</h2><span class="tag">Останні 100</span></div><div id="audit-table" class="table-wrap"></div></article>
+    </section>
+    <footer><span>ukr by Faborn</span><span id="collection-start"></span></footer>
+  </main>
+</div>
+<dialog id="user-dialog"><form id="user-form"><div class="dialog-heading"><h2>Новий користувач</h2><button type="button" class="close-dialog quiet" aria-label="Закрити">×</button></div><p class="muted">Пароль створимо автоматично й покажемо один раз.</p><label>Логін<input name="username" pattern="[A-Za-z0-9_.-]{1,64}" maxlength="64" required placeholder="friend3" autocomplete="off"></label><p class="subtle">Латинські літери, цифри, крапка, дефіс або підкреслення.</p><button type="submit" class="primary">Створити доступ</button><p id="user-error" class="error-text" role="alert"></p></form></dialog>
+<dialog id="credentials-dialog"><div class="dialog-heading"><h2>Доступ готовий</h2><button class="close-dialog quiet" aria-label="Закрити">×</button></div><p class="muted">Збережіть пароль зараз. Після закриття можна лише створити новий.</p><label>Логін<input id="new-username" readonly></label><label>Пароль<input id="new-password" readonly></label><label>Адреса сервера для Lampa<input id="share-host" placeholder="IP-адреса:порт" autocomplete="off"></label><p class="subtle">Для друзів з іншої мережі вкажіть зовнішню адресу вашого сервера.</p><label>Посилання з доступом<input id="share-link" readonly></label><button id="copy-link" class="primary">Копіювати для Lampa</button><p id="copy-status" class="subtle" role="status"></p></dialog>
+</body></html>
