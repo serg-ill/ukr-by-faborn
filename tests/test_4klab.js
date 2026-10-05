@@ -132,6 +132,42 @@ test('rapid retry waits for the old native worker to stop instead of allocating 
     assert.match(state.menu.items[0].title,/Завершення попередньої/);
     old.onmessage({data:{type:'stopped'}});assert.equal(state.workers.length,2);assert.equal(old.terminated,true);
 });
+test('Alloha timeout keeps the exact stage when the card stores its callback error',()=>{
+    const {ui,state}=harness();state.prefs.faborn_ukr_uakinogo_beta='on';let failure,backs=0;
+    ui.discover({title:'Film'},0,0,{error(message,playback){
+        failure={message,playback};state.prefs.faborn_ukr_lab4k_status=message;
+    },back(){backs++;state.controller='faborn_ukr_view';}});
+    state.message('resolved',{tracks:[],episodes:[]});ui.playChoice({quality:'2160p',label:'UA'});
+    const old=state.workers[0],late=old.onmessage;
+    state.message('stage',{message:'Отримання списку сегментів 2160p…',phase:'network'});
+    assert.equal(state.fireTimer(23000),true);
+    assert.equal(failure.playback,true);assert.match(failure.message,/TIMEOUT:.*23 с.*Етап: Отримання списку сегментів 2160p/);
+    assert.equal(state.prefs.faborn_ukr_lab4k_status,failure.message);
+    assert.match(state.menu.items[0].subtitle,/списку сегментів/);assert.equal(state.played,null);
+    late({data:{type:'play',data:{url:'http://127.0.0.1:12345/'+key+'/0.m3u8'}}});
+    assert.equal(state.probes.length,0);assert.equal(state.played,null);
+    state.choose('retry');assert.equal(state.workers.length,1);
+    old.onmessage({data:{type:'stopped'}});assert.equal(state.workers.length,2);
+    assert.equal(state.workers[1].messages[0].choice.quality,'2160p');
+    state.menu.onBack();state.workers[1].onmessage({data:{type:'stopped'}});
+    assert.equal(backs,1);assert.equal(state.controller,'faborn_ukr_view');assert.equal(state.timers.size,0);
+});
+test('Alloha socket deadline is bounded and cannot be extended by an arbitrary worker timeout',()=>{
+    const {state}=harness();state.enable();
+    state.message('stage',{message:'Alloha · підтвердження доступу…',phase:'session',timeout:9999999});
+    assert.equal(state.fireTimer(15000),true);assert.match(state.prefs.faborn_ukr_lab4k_status,/15 с.*підтвердження доступу/);
+    state.menu.onBack();state.workers[0].onmessage({data:{type:'stopped'}});assert.equal(state.timers.size,0);
+});
+test('a native network error includes its stage in the source callback and dialog',()=>{
+    const {ui,state}=harness();state.prefs.faborn_ukr_uakinogo_beta='on';let reported;
+    ui.discover({title:'Film'},0,0,{error(message){reported=message;state.prefs.faborn_ukr_lab4k_status=message;}});
+    state.message('resolved',{tracks:[],episodes:[]});ui.playChoice({quality:'2160p'});
+    state.message('stage',{message:'Перевірка відеосегмента…',phase:'network'});
+    state.message('error',{message:'NETWORK: Operation timed out after 20000 milliseconds'});
+    assert.match(reported,/NETWORK:.*Етап: Перевірка відеосегмента/);
+    assert.equal(state.prefs.faborn_ukr_lab4k_status,reported);assert.match(state.menu.items[0].subtitle,/відеосегмента/);
+    state.menu.onBack();state.workers[0].onmessage({data:{type:'stopped'}});assert.equal(state.timers.size,0);
+});
 test('language selection launches only tokenized loopback and confirms playback only after time advances', () => {
     const {state}=harness();state.enable();
     state.message('tracks',[{index:7,label:'English <Original>',language:'en'}]);

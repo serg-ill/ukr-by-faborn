@@ -1,6 +1,6 @@
 # Faborn Server · мініадмінпанель
 
-Доступна у серверному пакеті **0.1.0-beta.51**. Потрібно оновити Ubuntu-обробник; звичайні телевізійні логіни й налаштування перегляду зберігаються.
+Доступна у серверному пакеті **0.1.0-beta.52**. Потрібно оновити Ubuntu-обробник; звичайні телевізійні логіни й налаштування перегляду зберігаються.
 
 **Нове у beta.48:** логотип F Fold, окрема статистика домашньої мережі, фільтр локальних запитів, зміна пароля адміністратора та власні паролі користувачів.
 
@@ -49,7 +49,7 @@ ssh USERNAME@192.168.88.191
 У відкритій SSH-сесії завантажте інсталятор beta.50. Приклад нижче зберігає ваш порт `8789` і вмикає панель лише в домашній мережі:
 
 ```sh
-curl -fL https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.51/server/uakinogo/install.sh -o /tmp/faborn-install.sh &&
+curl -fL https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.52/server/uakinogo/install.sh -o /tmp/faborn-install.sh &&
 sudo bash /tmp/faborn-install.sh --port 8789 --admin-lan 192.168.88.0/24
 ```
 
