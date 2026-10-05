@@ -13,7 +13,7 @@ async function fixture(t,{peer,clock,resolve,allowLan='',enabled=true}={}) {
     const users=createUserStore(file),server=createService({users,metrics,allowLan,
         resolve:resolve|| (async()=>({ok:true,tracks:[],url:'https://media.example/signed-private-value'})),
         admin:enabled?{file:adminFile,allowLan:'192.168.88.0/24',now:clock||Date.now}:null});
-    if(peer)server.prependListener('connection',socket=>Object.defineProperty(socket,'remoteAddress',{value:peer}));
+    if(peer)server.prependListener('connection',socket=>Object.defineProperty(socket,'remoteAddress',{get:()=>typeof peer==='function'?peer():peer}));
     await new Promise((r,j)=>{server.once('error',j);server.listen(0,'127.0.0.1',r);});
     t.after(async()=>{await new Promise(r=>{server.close(r);server.closeAllConnections();});await metrics.close();await fs.rm(dir,{recursive:true,force:true});});
     const base='http://127.0.0.1:'+server.address().port;
@@ -149,4 +149,122 @@ test('idle statistics expire on disk and malformed rows never crash the running 
  const broken=createMetrics({file,now:()=>time});await broken.ready;assert.ok(broken.snapshot().storageError);
  broken.record({status:200});assert.equal(broken.snapshot().total.requests,1);await broken.close();
  assert.equal(JSON.parse(await fs.readFile(file,'utf8')).events[0],null);
+});
+
+test('local traffic is counted by TCP peer, including authenticated requests, without double counting totals',async t=>{
+    let peer='192.168.88.20';
+    const s=await fixture(t,{peer:()=>peer,allowLan:'192.168.88.0/24'});
+    assert.equal((await s.post('')).status,200);
+    assert.equal((await s.post()).status,200);
+    peer='::ffff:192.168.88.21';assert.equal((await s.post('')).status,200);
+    assert.equal((await s.post(basic('friend','wrong'))).status,401);
+    peer='203.0.113.50';
+    assert.equal((await fetch(s.base+'/v1/resolve',{method:'POST',headers:{Authorization:basic('friend','viewer-fixture'),'X-Forwarded-For':'192.168.88.20'},body:JSON.stringify({movie:{title:'Fixture title'}})})).status,200);
+    const m=s.metrics.snapshot();
+    assert.equal(m.total.requests,5);assert.equal(m.local.total.requests,4);assert.equal(m.local.total.authFailures,1);
+    assert.equal(m.local.clients.length,2);assert.equal(m.local.unattributedRequests,0);
+    assert.equal(m.local.clients.find(c=>c.ip==='192.168.88.20').requests,2);
+    assert.equal(m.local.clients.find(c=>c.ip==='192.168.88.21').requests,2);
+    assert.equal(m.people.find(p=>p.name==='friend').requests,2);
+    assert.equal(m.events.find(e=>e.ip==='203.0.113.50').local,false);
+    assert.equal(m.events.filter(e=>e.local).length,4);
+    peer='192.168.88.20';await s.login();await s.api('api/overview');await fetch(s.base+'/health');
+    assert.equal(s.metrics.snapshot().total.requests,5,'admin polling and health probes do not inflate playback request counts');
+    await s.metrics.flush();const restored=createMetrics({file:path.join(s.dir,'metrics.json')});await restored.ready;
+    assert.deepEqual(restored.snapshot().local,m.local);await restored.close();
+});
+test('local classification never grants access and also works when the resolver is in open mode',async t=>{
+    const s=await fixture(t,{peer:'192.168.88.20'});
+    assert.equal((await s.post('')).status,401);
+    assert.equal((await s.post()).status,200);
+    await change(s.file,d=>{d.users=[];d.enabled=false;});
+    assert.equal((await s.post('')).status,200);
+    const m=s.metrics.snapshot();assert.equal(m.local.total.requests,3);
+    assert.equal(m.events[0].kind,'open');assert.equal(m.events[0].local,true);
+});
+test('legacy local totals survive without assigning all past traffic to the last IP',async t=>{
+    const dir=await fs.mkdtemp(path.join(os.tmpdir(),'faborn-metrics-legacy-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+    const file=path.join(dir,'metrics.json'),m=createMetrics({file});await m.ready;
+    m.record({kind:'lan',ip:'192.168.88.20',status:200,inputBytes:10,outputBytes:100});
+    m.record({kind:'lan',ip:'192.168.88.21',status:200,inputBytes:20,outputBytes:200});await m.close();
+    const old=JSON.parse(await fs.readFile(file,'utf8'));for(const d of old.days)delete d.local;for(const e of old.events)delete e.local;
+    await fs.writeFile(file,JSON.stringify(old));const restored=createMetrics({file});await restored.ready;
+    assert.equal(restored.snapshot().total.requests,2);assert.equal(restored.snapshot().local.total.requests,2);
+    assert.equal(restored.snapshot().local.clients.length,0);assert.equal(restored.snapshot().local.unattributedRequests,2);
+    assert.ok(restored.snapshot().events.every(e=>e.local));
+    restored.record({kind:'lan',ip:'192.168.88.20',status:200});
+    assert.equal(restored.snapshot().local.clients[0].requests,1);assert.equal(restored.snapshot().local.unattributedRequests,2);
+    await restored.close();
+});
+test('local IP storage is bounded while total counters and normal account statistics remain complete',async()=>{
+    const m=createMetrics();await m.ready;
+    for(let i=0;i<200;i++)m.record({kind:'user',name:'friend',local:true,ip:'192.168.88.'+i,status:200});
+    const s=m.snapshot();assert.equal(s.local.clients.length,160);assert.equal(s.local.total.requests,200);
+    assert.equal(s.local.unattributedRequests,40);assert.equal(s.people[0].requests,200);await m.close();
+});
+test('administrator can set a password after verifying the old one; all of their sessions are revoked',async t=>{
+    const s=await fixture(t);await s.login();
+    const otherBrowser=await s.api('api/login',{method:'POST',headers:{Cookie:''},body:{username:'admin',password:'admin-fixture'}});
+    assert.equal(otherBrowser.status,200);const earlierCookie=otherBrowser.headers.get('set-cookie').split(';')[0];
+    assert.equal((await s.api('api/overview',{headers:{Cookie:earlierCookie}})).status,200);
+    const next='new-admin:пароль@2026';
+    const r=await s.api('api/password',{method:'POST',body:{currentPassword:'admin-fixture',password:next,passwordConfirmation:next}});
+    assert.equal(r.status,200);assert.match(r.headers.get('set-cookie'),/Max-Age=0/);
+    assert.deepEqual(await r.json(),{ok:true,relogin:true});
+    assert.equal((await s.api('api/overview')).status,401);
+    assert.equal((await s.api('api/overview',{headers:{Cookie:earlierCookie}})).status,401);
+    assert.equal((await s.login()).status,401);assert.equal((await s.login('admin',next)).status,200);
+    assert.equal((await s.post()).status,200,'viewer credentials are unchanged');
+    const raw=await fs.readFile(s.adminFile,'utf8');assert.ok(!raw.includes(next));assert.equal((await fs.stat(s.adminFile)).mode&0o777,0o600);
+    const m=s.metrics.snapshot();assert.equal(m.audit.filter(e=>e.action==='admin_password').length,1);
+    for(const secret of [next,'admin-fixture'])assert.equal(JSON.stringify(m).includes(secret),false);
+});
+test('administrator password mutation validates current password, confirmation, origin and CSRF without changing the file',async t=>{
+    const s=await fixture(t);await s.login();const before=await fs.readFile(s.adminFile,'utf8');
+    const good={currentPassword:'admin-fixture',password:'changed-admin',passwordConfirmation:'changed-admin'};
+    for(const headers of [{'X-Faborn-CSRF':''},{Origin:'https://attacker.example'}])assert.equal((await s.api('api/password',{method:'POST',body:good,headers})).status,403);
+    for(const patch of [{password:'short',passwordConfirmation:'short'},{password:'different'}, {password:'x'.repeat(257)},{password:'1234567\n'},{currentPassword:''}]){
+        assert.equal((await s.api('api/password',{method:'POST',body:{...good,...patch}})).status,400);
+    }
+    assert.equal((await s.api('api/password',{method:'POST',body:{...good,currentPassword:'wrong-password'}})).status,403);
+    assert.equal((await s.api('api/overview')).status,200,'wrong current password keeps the session usable');
+    assert.equal(await fs.readFile(s.adminFile,'utf8'),before);
+    assert.equal(s.metrics.snapshot().audit.filter(e=>e.action==='admin_password_failed').length,1);
+});
+test('repeated attempts at changing the admin password are limited separately from viewer requests',async t=>{
+    const s=await fixture(t);await s.login();const body={currentPassword:'wrong-password',password:'next-admin-password',passwordConfirmation:'next-admin-password'};
+    for(let i=0;i<10;i++)assert.equal((await s.api('api/password',{method:'POST',body})).status,403);
+    assert.equal((await s.api('api/password',{method:'POST',body:{...body,currentPassword:'admin-fixture'}})).status,429);
+    assert.equal((await s.post()).status,200);assert.equal((await s.api('api/overview')).status,200);
+});
+test('a locked admin file is not overwritten and password changes leave other administrators signed in',async t=>{
+    const s=await fixture(t);await change(s.adminFile,async d=>{d.users.push(await record('second','second-fixture'));});
+    await s.login();const otherBrowser=await s.api('api/login',{method:'POST',headers:{Cookie:''},body:{username:'second',password:'second-fixture'}});
+    assert.equal(otherBrowser.status,200);const secondCookie=otherBrowser.headers.get('set-cookie').split(';')[0];
+    const body={currentPassword:'admin-fixture',password:'next-admin-password',passwordConfirmation:'next-admin-password'};
+    const original=await fs.readFile(s.adminFile,'utf8');await fs.writeFile(s.adminFile+'.lock','fixture');
+    assert.equal((await s.api('api/password',{method:'POST',body})).status,409);
+    assert.equal(await fs.readFile(s.adminFile,'utf8'),original);await fs.unlink(s.adminFile+'.lock');
+    assert.equal((await s.api('api/password',{method:'POST',body})).status,200);
+    assert.equal((await s.api('api/overview',{headers:{Cookie:secondCookie}})).status,200);
+});
+test('viewer accounts accept chosen passwords; reset preserves a block and old credentials immediately stop working',async t=>{
+    const s=await fixture(t);await s.login();const first='друг:перевірка@2026',next='new-friend-password';
+    const edit=(action,extra={})=>s.api('api/users',{method:'POST',body:{action,username:'chosen',...extra}});
+    const r=await edit('add',{password:first,passwordConfirmation:first});assert.equal(r.status,200);assert.equal((await r.json()).password,first);
+    assert.equal((await s.post(basic('chosen',first))).status,200);
+    await edit('block');assert.equal((await edit('reset',{password:next,passwordConfirmation:next})).status,200);
+    assert.equal((await s.post(basic('chosen',next))).status,401);await edit('unblock');
+    assert.equal((await s.post(basic('chosen',first))).status,401);assert.equal((await s.post(basic('chosen',next))).status,200);
+    const raw=await fs.readFile(s.file,'utf8'),metrics=JSON.stringify(s.metrics.snapshot());
+    for(const secret of [first,next]){assert.equal(raw.includes(secret),false);assert.equal(metrics.includes(secret),false);}
+});
+test('invalid chosen viewer passwords are rejected rather than replaced silently with generated credentials',async t=>{
+    const s=await fixture(t);await s.login();const before=await fs.readFile(s.file,'utf8');
+    for(const pass of ['',null,123,'short','x'.repeat(257),'1234567\n']){
+        assert.equal((await s.api('api/users',{method:'POST',body:{action:'add',username:'chosen',password:pass,passwordConfirmation:pass}})).status,400);
+    }
+    assert.equal((await s.api('api/users',{method:'POST',body:{action:'reset',username:'friend',password:'new-password',passwordConfirmation:'wrong'}})).status,400);
+    assert.equal(await fs.readFile(s.file,'utf8'),before);
+    assert.equal((await s.post()).status,200);
 });

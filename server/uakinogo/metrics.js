@@ -7,6 +7,8 @@ const number=value=>Number.isFinite(value) && value>=0 ? Math.min(value,Number.M
 function empty() { return Object.fromEntries(fields.map(key=>[key,0])); }
 function add(target,source) { for (const key of fields) target[key]+=number(source[key]); return target; }
 function dayKey(time) { return new Date(time).toISOString().slice(0,10); }
+const address=value=>clean(value,64).replace(/^::ffff:/i,'');
+function localGroup() { return {total:empty(),clients:[]}; }
 
 // Only allowlisted resolver metadata is persisted. Headers, bodies, passwords,
 // source URLs and signed media URLs never enter this store.
@@ -23,7 +25,7 @@ function createMetrics({file='',now=Date.now,flushMs=30000}={}) {
     }
     function day() {
         const date=dayKey(now()); let row=data.days.find(d=>d.date===date);
-        if (!row) { row={date,total:empty(),people:[]}; data.days.push(row); }
+        if (!row) { row={date,total:empty(),people:[],local:localGroup()}; data.days.push(row); }
         return row;
     }
     function record(input) {
@@ -31,7 +33,7 @@ function createMetrics({file='',now=Date.now,flushMs=30000}={}) {
         const time=now(), kind=['user','lan','key','open','denied'].includes(input.kind)?input.kind:'denied';
         const name=kind==='user' ? clean(input.name,64) : '';
         const status=Math.floor(number(input.status));
-        const event={time,kind,name,ip:clean(input.ip,64),title:clean(input.title),season:number(input.season),episode:number(input.episode),
+        const event={time,kind,name,ip:address(input.ip),local:input.local===true||kind==='lan',title:clean(input.title),season:number(input.season),episode:number(input.episode),
             status,cacheHit:input.cacheHit===true,inputBytes:number(input.inputBytes),outputBytes:number(input.outputBytes),durationMs:Math.round(number(input.durationMs))};
         const counts={requests:1,success:status>=200&&status<300?1:0,errors:status>=400?1:0,authFailures:status===401?1:0,
             cacheHits:event.cacheHit?1:0,inputBytes:event.inputBytes,outputBytes:event.outputBytes,durationMs:event.durationMs};
@@ -39,6 +41,14 @@ function createMetrics({file='',now=Date.now,flushMs=30000}={}) {
         let person=row.people.find(p=>p.kind===kind && p.name===name);
         if (!person && row.people.length<MAX_IDENTITIES) { person={kind,name,...empty(),lastSeen:time,lastIp:event.ip}; row.people.push(person); }
         if (person) { add(person,counts); person.lastSeen=time; person.lastIp=event.ip; }
+        if (event.local) {
+            add(row.local.total,counts);
+            let client=row.local.clients.find(c=>c.ip===event.ip);
+            if (!client && event.ip && row.local.clients.length<MAX_IDENTITIES) {
+                client={ip:event.ip,...empty(),lastSeen:time,lastKind:kind,lastName:name}; row.local.clients.push(client);
+            }
+            if (client) { add(client,counts); client.lastSeen=time; client.lastKind=kind; client.lastName=name; }
+        }
         data.events.push(event); trim(); dirty=true;
     }
     function audit(action,actor,target='',ip='') {
@@ -58,14 +68,23 @@ function createMetrics({file='',now=Date.now,flushMs=30000}={}) {
                     if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d.date) || !d.total || !Array.isArray(d.people) || d.people.length>MAX_IDENTITIES) throw Error('Invalid metrics file');
                     for (const row of [d.total,...d.people]) for (const key of fields) if (!row || !Number.isFinite(row[key]) || row[key]<0) throw Error('Invalid metrics file');
                     for (const p of d.people) if (typeof p.kind!=='string' || typeof p.name!=='string' || typeof p.lastIp!=='string' || !Number.isFinite(p.lastSeen)) throw Error('Invalid metrics file');
+                    if (d.local!==undefined) {
+                        if (!d.local || !d.local.total || !Array.isArray(d.local.clients) || d.local.clients.length>MAX_IDENTITIES) throw Error('Invalid local metrics');
+                        for (const row of [d.local.total,...d.local.clients]) for (const key of fields) if (!row || !Number.isFinite(row[key]) || row[key]<0) throw Error('Invalid local metrics');
+                        for (const c of d.local.clients) if (!['ip','lastKind','lastName'].every(k=>typeof c[k]==='string') || !Number.isFinite(c.lastSeen)) throw Error('Invalid local metrics');
+                    }
                 }
                 for (const e of value.events) if (!e || typeof e.kind!=='string' || typeof e.name!=='string' || typeof e.ip!=='string' || typeof e.title!=='string' ||
                     !['time','season','episode','status','inputBytes','outputBytes','durationMs'].every(k=>Number.isFinite(e[k])&&e[k]>=0)) throw Error('Invalid metrics file');
                 for (const e of value.audit) if (!e || !Number.isFinite(e.time) || !['action','actor','target','ip'].every(k=>typeof e[k]==='string')) throw Error('Invalid metrics file');
                 const counts=row=>Object.fromEntries(fields.map(k=>[k,row[k]]));
+                const local=d=>d.local?{total:counts(d.local.total),clients:d.local.clients.map(c=>({ip:address(c.ip),lastSeen:c.lastSeen,lastKind:clean(c.lastKind,16),lastName:clean(c.lastName,64),...counts(c)}))}:
+                    // Legacy LAN totals are reliable; the last IP cannot tell us
+                    // how older requests were distributed across devices.
+                    {total:d.people.filter(p=>p.kind==='lan').reduce(add,empty()),clients:[]};
                 data={version:1,since:value.since,
-                    days:value.days.map(d=>({date:d.date,total:counts(d.total),people:d.people.map(p=>({kind:clean(p.kind,16),name:clean(p.name,64),lastSeen:p.lastSeen,lastIp:clean(p.lastIp,64),...counts(p)}))})),
-                    events:value.events.map(e=>({time:e.time,kind:clean(e.kind,16),name:clean(e.name,64),ip:clean(e.ip,64),title:clean(e.title),season:e.season,episode:e.episode,status:e.status,
+                    days:value.days.map(d=>({date:d.date,total:counts(d.total),local:local(d),people:d.people.map(p=>({kind:clean(p.kind,16),name:clean(p.name,64),lastSeen:p.lastSeen,lastIp:address(p.lastIp),...counts(p)}))})),
+                    events:value.events.map(e=>({time:e.time,kind:clean(e.kind,16),name:clean(e.name,64),ip:address(e.ip),local:e.local===true||e.kind==='lan',title:clean(e.title),season:e.season,episode:e.episode,status:e.status,
                         cacheHit:e.cacheHit===true,inputBytes:e.inputBytes,outputBytes:e.outputBytes,durationMs:e.durationMs})),
                     audit:value.audit.map(e=>({time:e.time,action:clean(e.action,40),actor:clean(e.actor,64),target:clean(e.target,64),ip:clean(e.ip,64)}))};
             } catch (error) {
@@ -76,9 +95,15 @@ function createMetrics({file='',now=Date.now,flushMs=30000}={}) {
         for (const [type,item] of pending.splice(0)) { if (type==='record') record(item); else audit(...item); }
     })();
     function snapshot() {
-        trim(); const total=empty(), people=new Map();
+        trim(); const total=empty(), people=new Map(), localTotal=empty(), clients=new Map();
         for (const d of data.days) {
             add(total,d.total);
+            add(localTotal,d.local.total);
+            for (const c of d.local.clients) {
+                if (!clients.has(c.ip)) clients.set(c.ip,{ip:c.ip,...empty(),lastSeen:0,lastKind:'',lastName:''});
+                const row=clients.get(c.ip); add(row,c);
+                if (c.lastSeen>=row.lastSeen) { row.lastSeen=c.lastSeen; row.lastKind=c.lastKind; row.lastName=c.lastName; }
+            }
             for (const p of d.people) {
                 const id=p.kind+':'+p.name;
                 if (!people.has(id)) people.set(id,{kind:p.kind,name:p.name,...empty(),lastSeen:0,lastIp:''});
@@ -88,7 +113,9 @@ function createMetrics({file='',now=Date.now,flushMs=30000}={}) {
         }
         const days=[];
         for (let i=6;i>=0;i--) { const date=dayKey(now()-i*DAY),d=data.days.find(d=>d.date===date); days.push({date,...(d?d.total:empty())}); }
-        return JSON.parse(JSON.stringify({since:data.since,retentionDays:RETENTION,total,days,people:[...people.values()],
+        const localClients=[...clients.values()].sort((a,b)=>b.lastSeen-a.lastSeen);
+        const local={total:localTotal,clients:localClients,unattributedRequests:Math.max(0,localTotal.requests-localClients.reduce((sum,c)=>sum+c.requests,0))};
+        return JSON.parse(JSON.stringify({since:data.since,retentionDays:RETENTION,total,local,days,people:[...people.values()],
             events:data.events.slice().reverse(),audit:data.audit.slice().reverse(),persistent:Boolean(file)&&!blocked,storageError}));
     }
     async function flush() {

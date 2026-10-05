@@ -1,7 +1,7 @@
 'use strict';
 (() => {
     const $=id=>document.getElementById(id);
-    let csrf='', sessionName='', overview=null, accounts=null, loading=false, generation=0, view='overview';
+    let csrf='', sessionName='', overview=null, accounts=null, loading=false, generation=0, view='overview', userAction='add';
     const numeric=value=>Number(value||0).toLocaleString('uk-UA');
     function bytes(value) {
         if (!value) return '0 Б';
@@ -30,7 +30,9 @@
     function showLogin() {
         generation++;csrf='';sessionName='';overview=null;accounts=null;$('app').hidden=true;$('login-view').hidden=false;
         for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();clearCredentials();
+        $('user-form').reset();$('admin-password-form').reset();
         $('login-form').elements.password.value='';
+        $('login-message').textContent='';$('login-error').textContent='';
     }
     async function api(route,method='GET',body) {
         const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
@@ -49,7 +51,8 @@
             const status=cell(''), good=e.status>=200&&e.status<300;
             status.append(badge(good?(e.cacheHit?'Із кешу':'Успішно'):'HTTP '+e.status,good?(e.cacheHit?'neutral':''):'error'));
             const episode=e.season&&e.episode?'S'+e.season+' · E'+e.episode:'';
-            return [cell(date(e.time,true),'','nowrap'),cell(nameFor(e),e.ip),cell(e.title||'Без даних картки',episode,'title'),status,cell(numeric(e.durationMs)+' мс','','nowrap'),cell(bytes(e.inputBytes+e.outputBytes),'','nowrap')];
+            const identity=cell(nameFor(e),e.ip);if(e.local)identity.append(badge('Локально','local-pill'));
+            return [cell(date(e.time,true),'','nowrap'),identity,cell(e.title||'Без даних картки',episode,'title'),status,cell(numeric(e.durationMs)+' мс','','nowrap'),cell(bytes(e.inputBytes+e.outputBytes),'','nowrap')];
         });
     }
     function renderEvents() {
@@ -57,8 +60,8 @@
         const m=overview.metrics,heads=['Час','Користувач','Назва','Результат','Час відповіді','API-трафік'];
         if(view==='overview')table('recent-table',heads,eventRows(m.events.slice(0,5)));
         if(view!=='activity')return;
-        table('activity-table',heads,eventRows(m.events.filter(e=>!$('errors-only').checked||e.status>=400)));
-        const actions={login:'Вхід у панель',login_failed:'Невдалий вхід',add:'Створено користувача',reset:'Змінено пароль',block:'Доступ заблоковано',unblock:'Доступ відновлено',delete:'Користувача видалено'};
+        table('activity-table',heads,eventRows(m.events.filter(e=>(!$('errors-only').checked||e.status>=400)&&(!$('local-only').checked||e.local))));
+        const actions={login:'Вхід у панель',login_failed:'Невдалий вхід',add:'Створено користувача',reset:'Змінено пароль користувача',admin_password:'Змінено пароль адміністратора',admin_password_failed:'Неправильний поточний пароль',block:'Доступ заблоковано',unblock:'Доступ відновлено',delete:'Користувача видалено'};
         table('audit-table',['Час','Дія','Адміністратор','Користувач','IP'],m.audit.map(e=>[cell(date(e.time,true),'','nowrap'),cell(actions[e.action]||e.action),cell(e.actor||'—'),cell(e.target||'—'),cell(e.ip)]));
     }
     function renderUsers() {
@@ -69,7 +72,7 @@
         table('users-table',['Логін','Статус','Останній запит','Запити · 30 днів','API-трафік','Керування'],accounts.users.filter(u=>u.username.toLowerCase().includes(filter)).map(u=>{
             const s=u.stats||{},status=cell(''),actions=cell(''),buttons=element('div',undefined,'table-actions');
             status.append(badge(u.disabled?'Заблоковано':'Доступний',u.disabled?'warn':''));
-            for(const [action,label] of [[u.disabled?'unblock':'block',u.disabled?'Увімкнути':'Блокувати'],['reset','Новий пароль'],['delete','Видалити']]){
+            for(const [action,label] of [[u.disabled?'unblock':'block',u.disabled?'Увімкнути':'Блокувати'],['reset','Змінити пароль'],['delete','Видалити']]){
                 const b=element('button',label,action==='delete'?'danger':'');b.type='button';
                 b.setAttribute('aria-label',label+' · '+u.username);b.addEventListener('click',()=>editUser(action,u.username,b));buttons.append(b);
             }
@@ -79,6 +82,16 @@
         const lan=overview?.runtime.anonymousLan;
         $('access-note').textContent=!accounts.enabled?'Авторизація ще не ввімкнена. Створення першого користувача ввімкне перевірку логіна й пароля.':
             'Запити з логіном перевіряються за обліковими записами.'+(lan?' Локальна мережа '+lan+' також має окремий доступ без пароля.':'')+(overview?.runtime.keysConfigured?' Ключі доступу також увімкнені.':'');
+        const local=overview?.metrics.local;
+        if(local){
+            $('local-total').textContent='Запити: '+numeric(local.total.requests)+' · '+bytes(local.total.inputBytes+local.total.outputBytes);
+            table('local-table',['IP пристрою','Останній запит','Запити · 30 днів','Отримано ↓','Віддано ↑','Останній доступ'],local.clients.map(c=>[
+                cell(c.ip),cell(date(c.lastSeen,true),'','nowrap'),cell(numeric(c.requests),c.errors?numeric(c.errors)+' помилок':''),
+                cell(bytes(c.inputBytes),'','nowrap'),cell(bytes(c.outputBytes),'','nowrap'),cell(nameFor({kind:c.lastKind,name:c.lastName}))
+            ]));
+            $('local-history-note').hidden=!local.unattributedRequests;
+            $('local-history-note').textContent='Без розподілу за IP: '+numeric(local.unattributedRequests)+' запитів. Це старі дані або записи після досягнення ліміту адрес; їхній трафік враховано в підсумку.';
+        }
     }
     function render() {
         const {runtime:r,metrics:m}=overview,t=m.total;
@@ -87,6 +100,8 @@
         $('stat-traffic-detail').textContent='↓ '+bytes(t.inputBytes)+' отримано · ↑ '+bytes(t.outputBytes)+' віддано';
         $('stat-success').textContent=t.requests?(100*t.success/t.requests).toLocaleString('uk-UA',{maximumFractionDigits:1})+'%':'—';
         $('stat-errors').textContent=t.requests?numeric(t.errors)+' помилок · '+numeric(t.authFailures)+' відмов доступу':'Немає запитів';
+        const local=m.local;
+        $('local-summary-detail').textContent=local?.total.requests?'Запити: '+numeric(local.total.requests)+' · '+bytes(local.total.inputBytes+local.total.outputBytes)+' · '+numeric(local.clients.length)+' IP':'Поки немає запитів';
         $('stat-active').textContent=r.activeRequests;
         const hours=Math.floor(r.uptimeSeconds/3600),mins=Math.floor(r.uptimeSeconds%3600/60);
         $('server-uptime').textContent='Працює '+(hours?hours+' год ':'')+mins+' хв';
@@ -129,7 +144,8 @@
         } catch(error){$('share-link').value='';}
     }
     async function editUser(action,name,button) {
-        const prompt={reset:'Створити новий пароль для '+name+'? Старий перестане працювати.',delete:'Видалити доступ для '+name+'?',block:'Заблокувати нові запити з логіном '+name+'?'}[action];
+        if(action==='reset'){openUserForm('reset',name);return;}
+        const prompt={delete:'Видалити доступ для '+name+'?',block:'Заблокувати нові запити з логіном '+name+'?'}[action];
         if(prompt&&!confirm(prompt))return;button.disabled=true;
         try {const data=await api('users','POST',{action,username:name});if(data.password)credentials(data);await refresh();}
         catch(error){if(error.status===401)showLogin();else showNotice(error.message);}
@@ -144,14 +160,51 @@
     $('logout').addEventListener('click',async()=>{try{await api('logout','POST',{});showLogin();}catch(error){showNotice(error.message);}});
     $('refresh').addEventListener('click',refresh);
     for(const button of document.querySelectorAll('[data-view]'))button.addEventListener('click',()=>switchView(button.dataset.view));
-    $('user-search').addEventListener('input',renderUsers);$('errors-only').addEventListener('change',renderEvents);
-    $('add-user').addEventListener('click',()=>{$('user-form').reset();$('user-error').textContent='';$('user-dialog').showModal();});
+    $('user-search').addEventListener('input',renderUsers);
+    for(const id of ['errors-only','local-only'])$(id).addEventListener('change',renderEvents);
+    function passwordMode(){
+        const auto=$('user-password-auto').checked;$('user-password-fields').hidden=auto;
+        for(const name of ['password','passwordConfirmation']){const field=$('user-form').elements[name];field.disabled=auto;field.required=!auto;if(auto)field.value='';}
+    }
+    function openUserForm(action,name=''){
+        userAction=action;const reset=action==='reset',form=$('user-form');form.reset();form.elements.username.value=name;form.elements.username.readOnly=reset;
+        $('user-dialog-title').textContent=reset?'Пароль користувача':'Новий користувач';
+        $('user-dialog-description').textContent=reset?'Після збереження старий пароль перестане працювати. Оновіть посилання в Lampa на його телевізорі.':'Оберіть власний пароль або створіть випадковий.';
+        $('username-hint').hidden=reset;$('user-password-auto').checked=!reset;passwordMode();
+        $('user-submit').textContent=reset?'Зберегти пароль':'Створити доступ';$('user-error').textContent='';$('user-dialog').showModal();
+    }
+    $('add-user').addEventListener('click',()=>openUserForm('add'));
+    $('user-password-auto').addEventListener('change',passwordMode);
     for(const button of document.querySelectorAll('.close-dialog'))button.addEventListener('click',()=>button.closest('dialog').close());
     $('credentials-dialog').addEventListener('close',clearCredentials);
+    $('user-dialog').addEventListener('close',()=>{$('user-form').reset();passwordMode();});
     $('user-form').addEventListener('submit',async event=>{
-        event.preventDefault();const button=event.currentTarget.querySelector('[type=submit]');button.disabled=true;$('user-error').textContent='';
-        try{const data=await api('users','POST',{action:'add',username:event.currentTarget.elements.username.value});$('user-dialog').close();credentials(data);await refresh();}
-        catch(error){if(error.status===401)showLogin();else $('user-error').textContent=error.message;}finally{button.disabled=false;}
+        event.preventDefault();const form=event.currentTarget,button=$('user-submit'),current=generation;
+        const input={action:userAction,username:form.elements.username.value};
+        $('user-error').textContent='';
+        if(!$('user-password-auto').checked){
+            input.password=form.elements.password.value;input.passwordConfirmation=form.elements.passwordConfirmation.value;
+            if(input.password!==input.passwordConfirmation){$('user-error').textContent='Новий пароль і повторення не збігаються';return;}
+        }
+        button.disabled=true;
+        try{const data=await api('users','POST',input);if(current!==generation)return;$('user-dialog').close();credentials(data);await refresh();}
+        catch(error){if(current!==generation)return;if(error.status===401)showLogin();else $('user-error').textContent=error.message;}finally{button.disabled=false;}
+    });
+    $('change-admin-password').addEventListener('click',()=>{
+        const form=$('admin-password-form');form.reset();form.elements.username.value=sessionName;$('admin-password-error').textContent='';$('admin-password-dialog').showModal();
+    });
+    $('admin-password-dialog').addEventListener('close',()=>{$('admin-password-form').reset();});
+    $('admin-password-form').addEventListener('submit',async event=>{
+        event.preventDefault();const form=event.currentTarget,button=form.querySelector('[type=submit]'),current=generation,name=sessionName;
+        const input={currentPassword:form.elements.currentPassword.value,password:form.elements.password.value,passwordConfirmation:form.elements.passwordConfirmation.value};
+        $('admin-password-error').textContent='';
+        if(input.password!==input.passwordConfirmation){$('admin-password-error').textContent='Новий пароль і повторення не збігаються';return;}
+        button.disabled=true;
+        try{
+            await api('password','POST',input);if(current!==generation)return;showLogin();$('login-form').elements.username.value=name;
+            $('login-message').textContent='Пароль змінено. Увійдіть з новим паролем.';
+        }catch(error){if(current!==generation)return;if(error.status===401)showLogin();else $('admin-password-error').textContent=error.message;}
+        finally{button.disabled=false;}
     });
     $('share-host').addEventListener('input',shareLink);
     $('copy-link').addEventListener('click',async()=>{

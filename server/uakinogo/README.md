@@ -1,4 +1,6 @@
-# UAKinogo · серверна бета 0.1.0-beta.47
+# UAKinogo · серверна бета 0.1.0-beta.48
+
+**beta.48:** логотип F Fold, окрема статистика локальних IP й фільтр журналу, зміна пароля адміністратора та власні паролі користувачів. Для цих змін оновіть обробник; конфігурація та збережена статистика залишаються. [Керування панеллю](ADMIN.md).
 
 **beta.47:** [мініадмінпанель сервера](ADMIN.md): логіни, керування доступом, запити, API-трафік і журнал помилок. Для панелі потрібне оновлення Ubuntu та параметр `--admin-lan 192.168.88.0/24`; пароль адміністратора окремий. Порт, користувачі й попередні правила локального доступу зберігаються. Механізм відео та API для Lampa сумісні з beta.45 / beta.46.
 
@@ -20,10 +22,10 @@
 ssh USERNAME@192.168.88.191
 ```
 
-У вже відкритій SSH-сесії завантажте [інсталятор beta.47](https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.47/server/uakinogo/install.sh) та запустіть. Він містить виправлення конфлікту портів і встановлює серверний пакет beta.47:
+У вже відкритій SSH-сесії завантажте [інсталятор beta.48](https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.48/server/uakinogo/install.sh) та запустіть. Він містить виправлення конфлікту портів і встановлює серверний пакет beta.48:
 
 ```sh
-curl -fL https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.47/server/uakinogo/install.sh -o /tmp/faborn-install.sh
+curl -fL https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.48/server/uakinogo/install.sh -o /tmp/faborn-install.sh
 sudo bash /tmp/faborn-install.sh --test-users
 ```
 
@@ -45,7 +47,7 @@ sudo bash /tmp/faborn-install.sh --port 8788
 curl http://192.168.88.191:8787/health
 ```
 
-Очікувана відповідь містить `"ok":true`, `"version":"0.1.0-beta.47"`, `"auth":"basic"` (із тестовими користувачами), `"videoProxy":false`.
+Очікувана відповідь містить `"ok":true`, `"version":"0.1.0-beta.48"`, `"auth":"basic"` (із тестовими користувачами), `"videoProxy":false`.
 
 ## Налаштування телевізора
 

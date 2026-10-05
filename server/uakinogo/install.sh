@@ -2,7 +2,7 @@
 # Installs only the Faborn metadata service. Does not configure a video proxy,
 # router, firewall or system Node.js.
 set -Eeuo pipefail
-version='0.1.0-beta.47'
+version='0.1.0-beta.48'
 node_version='v24.21.0'
 base='/opt/faborn-resolver'
 bundle="faborn-uakinogo-${version}.tar.gz"
@@ -201,6 +201,7 @@ for script in network.js metrics.js admin.js admin/app.js; do
 done
 test -s "$stage/app/server/uakinogo/admin/index.html"
 test -s "$stage/app/server/uakinogo/admin/style.css"
+test -s "$stage/app/server/uakinogo/admin/icon.svg"
 "$stage/node/bin/node" -e 'const s=require(process.argv[1]);if(s.VERSION!==process.argv[2])process.exit(1)' "$stage/app/server/uakinogo/server.js" "$version"
 # Downloads take time: check again before changing the installed service.
 own_pid=0

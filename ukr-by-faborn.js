@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.47 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.48 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,12 +8,15 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.47';
+    var VERSION = '0.1.0-beta.48';
     var NAME = 'ukr by Faborn';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
     var commentsUI = null, commentsScript = null;
     var commentsFeature = null, commentsFeatureOriginal;
-    var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 2h16a6 6 0 0 1 6 6v8H2V8a6 6 0 0 1 6-6z" fill="#168BFF"/><path d="M2 16h28v8a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6z" fill="#FFD54A"/><path d="M12 8.5 24 16 12 23.5z" fill="#101923"/></svg>';
+    // Fold logo source: assets/icon.svg. Each inline instance owns its gradients.
+    var ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" class="faborn-logo" focusable="false" aria-hidden="true"><defs><linearGradient id="faborn-fold-stem" gradientUnits="userSpaceOnUse" x1="8" y1="16" x2="27" y2="60"><stop stop-color="#12c1f5"/><stop offset="1" stop-color="#a63bfa"/></linearGradient><linearGradient id="faborn-fold-top" gradientUnits="userSpaceOnUse" x1="8" y1="18" x2="59" y2="5"><stop stop-color="#129fee"/><stop offset="1" stop-color="#41e7f7"/></linearGradient><linearGradient id="faborn-fold-middle" gradientUnits="userSpaceOnUse" x1="27" y1="38" x2="52" y2="29"><stop stop-color="#4937f0"/><stop offset="1" stop-color="#af43fb"/></linearGradient><linearGradient id="faborn-fold-crease" gradientUnits="userSpaceOnUse" x1="8" y1="16" x2="27" y2="29"><stop stop-color="#0254d5"/><stop offset="1" stop-color="#1332b8"/></linearGradient></defs><path d="M8 16 27 18V60H8Z" fill="url(#faborn-fold-stem)"/><path d="M27 29H52L43 41H27Z" fill="url(#faborn-fold-middle)"/><path d="M8 16 27 18V29Z" fill="url(#faborn-fold-crease)"/><path d="M8 16 21 5H59L50 18H27Z" fill="url(#faborn-fold-top)"/></svg>';
+    var iconSerial = 0;
+    function brandIcon() { return ICON.replace(/faborn-fold-/g, 'faborn-fold-'+(++iconSerial)+'-'); }
     var L, $, installed = false, currentCatalog, catalogLoadedAt = 0, requestSerial = 0, lastDiagnostic = '', returnController = 'content';
     var pendingRequest, playbackTimer, watchedPlayback, playbackContext, historyPlayback;
     var torrentRows = [], torrentFiles = [], pendingTorrent = null, torrentListRelease = '', progressPaintTimer, progressWriting = false;
@@ -600,7 +603,7 @@
         var hint = busy ? 'Назад — скасувати' : selected ? selected.voice+' · '+sourceName(selected.entries[0].release.source) : 'Назад — повернутися до картки';
         if (!busy && selected) hint += subtitleHint(selected.entries[0].episode);
         var art = posterURL(session.movie), story = '<div class="fbr-story">'+(art ? '<img class="fbr-art" alt="" src="'+escapeHTML(art)+'">' : '')+'<div class="fbr-story-info">'+heading+'<p class="fbr-overview">'+escapeHTML(plain(session.movie.overview || ''))+'</p>'+track+'</div></div>';
-        var html = $('<div class="fbr-overlay'+(cinema ? ' fbr-cinema' : ' fbr-panel')+'"><section class="fbr-window" role="dialog" aria-modal="true" aria-label="'+escapeHTML(NAME+' · '+title.title)+'"><div class="fbr-header"><div class="fbr-brand">'+ICON+'<span>'+NAME+'<small>'+(cinema ? 'Кінозал' : 'Панель')+'</small></span></div>'+close+'</div><div class="fbr-layout">'+story+'<div class="fbr-content">'+content+'</div></div><div class="fbr-footer">'+play+'<div class="fbr-hint">'+escapeHTML(hint)+'</div></div></section></div>');
+        var html = $('<div class="fbr-overlay'+(cinema ? ' fbr-cinema' : ' fbr-panel')+'"><section class="fbr-window" role="dialog" aria-modal="true" aria-label="'+escapeHTML(NAME+' · '+title.title)+'"><div class="fbr-header"><div class="fbr-brand">'+brandIcon()+'<span>'+NAME+'<small>'+(cinema ? 'Кінозал' : 'Панель')+'</small></span></div>'+close+'</div><div class="fbr-layout">'+story+'<div class="fbr-content">'+content+'</div></div><div class="fbr-footer">'+play+'<div class="fbr-hint">'+escapeHTML(hint)+'</div></div></section></div>');
         var focusKey = busy ? 'close' : session.uiFocus || (selected ? 'voice-'+selected.key : 'refresh');
         mountPresentation(session,html,actions,focusKey,restore,!busy);
     }
@@ -1920,7 +1923,7 @@
                 var label = '<span class="fbr-episode-image"><b>'+row.value+'</b>'+(image ? '<img alt="" src="'+escapeHTML(image)+'">' : '')+'</span><span class="fbr-episode-body"><strong>'+escapeHTML(row.title)+'</strong><span class="fbr-episode-status">'+(percent >= 90 ? '&#10003; ' : '')+escapeHTML(row.subtitle)+'</span>'+(percent ? '<span class="fbr-progress-track"><i style="width:'+percent+'%"></i></span>' : '')+'<span class="fbr-episode-overview">'+escapeHTML(plain(row.info.overview || ''))+'</span></span>';
                 content += buttonHTML(action,label,'fbr-episode',row.selected);
             });
-            var html = $('<div class="fbr-overlay fbr-episodes '+(storage('layout','panel') === 'cinema' ? 'fbr-cinema' : 'fbr-panel')+'"><section class="fbr-window" role="dialog" aria-modal="true" aria-label="Серії"><div class="fbr-header"><div class="fbr-brand">'+ICON+'<span>Серії та прогрес</span></div>'+buttonHTML('close','&#215;','fbr-close')+'</div><div class="fbr-content">'+content+'</div><div class="fbr-footer"><div class="fbr-hint">Кадри й назви: TMDB · Назад — до джерел</div></div></section></div>');
+            var html = $('<div class="fbr-overlay fbr-episodes '+(storage('layout','panel') === 'cinema' ? 'fbr-cinema' : 'fbr-panel')+'"><section class="fbr-window" role="dialog" aria-modal="true" aria-label="Серії"><div class="fbr-header"><div class="fbr-brand">'+brandIcon()+'<span>Серії та прогрес</span></div>'+buttonHTML('close','&#215;','fbr-close')+'</div><div class="fbr-content">'+content+'</div><div class="fbr-footer"><div class="fbr-hint">Кадри й назви: TMDB · Назад — до джерел</div></div></section></div>');
             mountPresentation(session,html,actions,session.episodeFocus,back,false);
             html.find('.fbr-episode-image img').on('error',function () { $(this).remove(); });
         }
@@ -3369,7 +3372,7 @@
     function settings() {
         var api = L.SettingsApi;
         if (!api || !api.addComponent || !api.addParam) return;
-        api.addComponent({component: 'faborn_ukr', name: NAME, icon: ICON});
+        api.addComponent({component: 'faborn_ukr', name: NAME, icon: brandIcon()});
         var grouped=!!(L.Template && L.Template.add && L.Settings && L.Settings.create),register=api.addParam;
         var groups=[
             {id:'playback',title:'Перегляд і джерела',description:'Плеєр, якість, озвучення та пропуски',icon:HEADER_ICONS.continue},
@@ -3459,7 +3462,7 @@
     var TORRENT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h5v10a3 3 0 0 0 6 0V3h5v10a8 8 0 0 1-16 0Z" fill="#28dbbf"/><path d="M12 16a3 3 0 0 0 3-3V3h5v10a8 8 0 0 1-8 8Z" fill="#369bff"/><path d="M4 3h5v4H4Zm11 0h5v4h-5Z" fill="#d3fff7"/><path d="M6 9v4a6 6 0 0 0 4 5.65" fill="none" stroke="#91ffe4" stroke-width="1.2" stroke-linecap="round"/></svg>';
     function buttonMarkup(kind) {
         var torrent = kind === 'torrent', label = torrent ? 'Торренти' : NAME;
-        return '<div class="full-start__button selector view--faborn-'+(torrent ? 'torrent' : 'ukr')+'" role="button" aria-label="'+label+'" data-faborn-action="'+kind+'" data-title="'+label+'" data-subtitle="'+label+'">'+(torrent ? TORRENT_ICON : ICON)+'<span aria-hidden="true" style="display:none!important;font-size:0!important;line-height:0!important;width:0!important;height:0!important;overflow:hidden!important">'+label+'</span></div>';
+        return '<div class="full-start__button selector view--faborn-'+(torrent ? 'torrent' : 'ukr')+'" role="button" aria-label="'+label+'" data-faborn-action="'+kind+'" data-title="'+label+'" data-subtitle="'+label+'">'+(torrent ? TORRENT_ICON : brandIcon())+'<span aria-hidden="true" style="display:none!important;font-size:0!important;line-height:0!important;width:0!important;height:0!important;overflow:hidden!important">'+label+'</span></div>';
     }
     function torrentRequest(movie,language) {
         var localized=movie.title || movie.name || '', original=movie.original_title || movie.original_name || localized;

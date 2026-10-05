@@ -2,12 +2,13 @@
 const http=require('node:http'),crypto=require('node:crypto');
 const {createResolver,card}=require('./resolver');
 const {createUserStore,basic}=require('./auth');
-const {lanPolicy}=require('./network');
+const {lanPolicy,loopback}=require('./network');
 const {createMetrics}=require('./metrics');
 const {createAdmin}=require('./admin');
-const VERSION='0.1.0-beta.47';
+const VERSION='0.1.0-beta.48';
 function createService({resolve=createResolver(),keys=[],users=null,allowLan='',maxActive=3,maxAuth=3,metrics=createMetrics(),admin=null}={}){
  const fromTrustedLan=lanPolicy(allowLan);
+ const fromAdminLan=lanPolicy(admin?.allowLan||'');
  const cache=new Map(),rates=new Map(),contexts=new WeakMap();let active=0,authenticating=0;
  const adminHandler=admin?createAdmin({...admin,users,metrics,version:VERSION,state:()=>({activeRequests:active,cacheEntries:cache.size,authenticating,anonymousLan:allowLan,keysConfigured:keys.length>0})}):null;
  function authorized(key){return keys.some(k=>{const a=Buffer.from(k),b=Buffer.from(String(key||''));return a.length===b.length&&crypto.timingSafeEqual(a,b);});}
@@ -24,7 +25,10 @@ function createService({resolve=createResolver(),keys=[],users=null,allowLan='',
    catch(ignore){return send(res,503,{ok:false,error:'Файл облікових записів недоступний',videoProxy:false});}
   }
   if(req.method!=='POST'||req.url!=='/v1/resolve')return send(res,404,{error:'Маршрут відсутній'});
-  const started=Date.now(),context={kind:'denied',ip:req.socket.remoteAddress,inputBytes:0,outputBytes:0};contexts.set(res,context);
+  const peer=req.socket.remoteAddress;
+  // Classify traffic independently of authentication. An authenticated home
+  // viewer is still local, but this marker never grants access to the API.
+  const started=Date.now(),context={kind:'denied',ip:peer,local:loopback(peer)||fromTrustedLan(peer)||fromAdminLan(peer),inputBytes:0,outputBytes:0};contexts.set(res,context);
   let recorded=false;
   const finish=()=>{if(recorded)return;recorded=true;metrics.record({...context,status:res.writableFinished?res.statusCode:499,durationMs:Date.now()-started});};
   res.once('finish',finish);res.once('close',finish);

@@ -12,11 +12,12 @@ class AdminError extends Error { constructor(status,message) { super(message); t
 function createAdmin({file,allowLan,users,metrics,state,version,now=Date.now}) {
     if (!file || !allowLan) throw Error('Admin account file and LAN policy are required');
     if (users?.file && path.resolve(file)===path.resolve(users.file)) throw Error('Admin and viewer accounts must use different files');
-    const permitted=lanPolicy(allowLan), accounts=createUserStore(file), sessions=new Map(), rates=new Map();
+    const permitted=lanPolicy(allowLan), accounts=createUserStore(file), sessions=new Map(), rates=new Map(), passwordRates=new Map();
     let authenticating=0, changing=false, lastCpu=process.cpuUsage(), lastTime=process.hrtime.bigint();
     const assets=new Map([
         ['/admin/',{type:'text/html; charset=utf-8',body:fs.readFileSync(path.join(__dirname,'admin/index.html'))}],
         ['/admin/app.js',{type:'text/javascript; charset=utf-8',body:fs.readFileSync(path.join(__dirname,'admin/app.js'))}],
+        ['/admin/icon.svg',{type:'image/svg+xml; charset=utf-8',body:fs.readFileSync(path.join(__dirname,'admin/icon.svg'))}],
         ['/admin/style.css',{type:'text/css; charset=utf-8',body:fs.readFileSync(path.join(__dirname,'admin/style.css'))}]
     ]);
     function send(res,status,body,extra={}) {
@@ -61,6 +62,7 @@ function createAdmin({file,allowLan,users,metrics,state,version,now=Date.now}) {
         const time=now();
         for (const [id,s] of sessions) if(time-s.seen>=IDLE_MS || time-s.created>=MAX_AGE) sessions.delete(id);
         for (const [ip,r] of rates) if(time-r.start>=15*60000) rates.delete(ip);
+        for (const [name,r] of passwordRates) if(time-r.start>=15*60000) passwordRates.delete(name);
     }
     async function adminData() {
         try { const d=await accounts.read(); if (!d.enabled) throw Error('Disabled'); return d; }
@@ -108,13 +110,52 @@ function createAdmin({file,allowLan,users,metrics,state,version,now=Date.now}) {
         lastCpu=cpu;lastTime=current;
         return {version,uptimeSeconds:Math.floor(process.uptime()),rssBytes:process.memoryUsage().rss,cpuPercent,...state()};
     }
+    function chosenPassword(input) {
+        if (!password(input.password) || input.password.length<8 || !input.password.trim()) throw new AdminError(400,'Новий пароль: від 8 символів, до 256 байтів, без керівних символів');
+        if (input.password!==input.passwordConfirmation) throw new AdminError(400,'Новий пароль і повторення не збігаються');
+        return input.password;
+    }
+    async function editAdminPassword(req,res,s) {
+        const input=await body(req), pass=chosenPassword(input);
+        if (!password(input.currentPassword)) throw new AdminError(400,'Введіть поточний пароль адміністратора');
+        if (pass===input.currentPassword) throw new AdminError(400,'Новий пароль має відрізнятися від поточного');
+        if (changing) throw new AdminError(409,'Інша зміна ще виконується. Повторіть за мить');
+        prune();
+        if (!passwordRates.has(s.name)) {
+            if (passwordRates.size>=128) throw new AdminError(429,'Зачекайте перед наступною спробою');
+            passwordRates.set(s.name,{start:now(),count:0});
+        }
+        if (++passwordRates.get(s.name).count>10 || authenticating>=2) throw new AdminError(429,'Забагато спроб. Спробуйте через 15 хвилин');
+        changing=true; authenticating++;
+        try {
+            await change(file,async d=>{
+                const index=d.users.findIndex(u=>u.username===s.name),old=d.users[index];
+                // Recheck under the file lock: a concurrent CLI reset or block
+                // must not be overwritten by an already authenticated request.
+                if (!d.enabled || !old || old.disabled || !equal(s.fingerprint,digest(old.salt+old.hash))) throw new AdminError(401,'Обліковий запис змінився. Увійдіть повторно');
+                const header='Basic '+Buffer.from(s.name+':'+input.currentPassword).toString('base64');
+                if (!await accounts.verify(header,d)) {
+                    metrics.audit('admin_password_failed',s.name,'',req.socket.remoteAddress);
+                    throw new AdminError(403,'Поточний пароль неправильний');
+                }
+                d.users[index]=await record(s.name,pass);
+            });
+            for (const [id,entry] of sessions) if (entry.name===s.name) sessions.delete(id);
+            passwordRates.delete(s.name);
+            metrics.audit('admin_password',s.name,'',req.socket.remoteAddress);
+            send(res,200,{ok:true,relogin:true},{'Set-Cookie':cookie(req,'',0)});
+        } catch (error) {
+            if (error.code==='EEXIST') throw new AdminError(409,'Обліковий запис зараз змінюється. Повторіть за мить');
+            throw error;
+        } finally { changing=false; authenticating--; }
+    }
     async function editUser(req,res,s) {
         await viewerAccounts(); const input=await body(req);
         if (!username(input.username) || !['add','reset','block','unblock','delete'].includes(input.action)) throw new AdminError(400,'Оберіть дію та коректний логін');
+        const pass=['add','reset'].includes(input.action)?(Object.hasOwn(input,'password')?chosenPassword(input):crypto.randomBytes(18).toString('base64url')):'';
         if (changing) throw new AdminError(409,'Інша зміна ще виконується. Повторіть за мить');
         changing=true;
         try {
-            const pass=['add','reset'].includes(input.action)?crypto.randomBytes(18).toString('base64url'):'';
             await change(users.file,async d=>{
                 const index=d.users.findIndex(u=>u.username===input.username),old=d.users[index];
                 if(input.action==='add' && old) throw new AdminError(409,'Такий користувач уже існує');
@@ -150,6 +191,7 @@ function createAdmin({file,allowLan,users,metrics,state,version,now=Date.now}) {
             if(req.method==='POST' && req.url==='/admin/api/logout') {
                 sessions.delete(s.id);return send(res,200,{ok:true},{'Set-Cookie':cookie(req,'',0)});
             }
+            if(req.method==='POST' && req.url==='/admin/api/password') return await editAdminPassword(req,res,s);
             if(req.method==='GET' && req.url==='/admin/api/overview') {
                 await metrics.ready;
                 return send(res,200,{runtime:runtime(),metrics:metrics.snapshot(),videoProxy:false,trafficScope:'resolver-json-payload',adminLan:allowLan});
