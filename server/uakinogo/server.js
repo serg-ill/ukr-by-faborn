@@ -6,7 +6,7 @@ const {lanPolicy,loopback}=require('./network');
 const {createMetrics}=require('./metrics');
 const {failure,statusCode}=require('./diagnostics');
 const {createAdmin}=require('./admin');
-const VERSION='0.1.0-beta.50';
+const VERSION='0.1.0-beta.51';
 function createService({resolve=createResolver(),resolveUafix=createUafixResolver(),keys=[],users=null,allowLan='',maxActive=3,maxAuth=3,metrics=createMetrics(),admin=null}={}){
  const fromTrustedLan=lanPolicy(allowLan);
  const fromAdminLan=lanPolicy(admin?.allowLan||'');

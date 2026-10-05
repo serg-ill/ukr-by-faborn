@@ -8,7 +8,7 @@ function environment() {
   play(){calls.push(['play']);return video.promise;},pause(){calls.push(['pause']);},
   addEventListener(name,fn){(events[name] ||= new Set()).add(fn);},removeEventListener(name,fn){events[name]?.delete(fn);}};
  function Hls(config){this.config=config;this.handlers={};this.sources=[];instances.push(this);}
- Hls.isSupported=()=>supported;Hls.Events={ERROR:'error',MEDIA_ATTACHED:'attached'};
+ Hls.isSupported=()=>supported;Hls.Events={ERROR:'error',MEDIA_ATTACHED:'attached'};Hls.ErrorDetails={BUFFER_APPEND_ERROR:'bufferAppendError',FRAG_PARSING_ERROR:'fragParsingError'};
  Hls.prototype.on=function(n,fn){this.handlers[n]=fn;};Hls.prototype.attachMedia=function(v){this.video=v;};
  Hls.prototype.loadSource=function(url){this.sources.push(url);};Hls.prototype.destroy=function(){this.destroyed=true;};
  const root={document:{createElement(name){assert.equal(name,'video');return video;}},setTimeout(fn){jobs.set(++serial,fn);return serial;},clearTimeout(id){jobs.delete(id);}};
@@ -66,4 +66,14 @@ test('late play promise rejection cannot affect a closed or replacement video',a
 test('unsupported MediaSource refuses playback and cannot silently fall back to native AVPlay',()=>{
  const e=environment();e.unsupported();assert.equal(e.api.available(),false);e.api.open('https://example.org/stream.m3u8');
  assert.throws(()=>e.api.prepareAsync(()=>{}),error=>error.name==='MSEUnavailableError');assert.equal(e.instances.length,0);e.api.close();
+});
+
+test('fatal HLS details distinguish append and parsing failures even without an HTTP or video code',()=>{
+ for(const details of ['bufferAppendError','fragParsingError','https://secret/token']){
+  const e=environment();let received,errors=0;e.api.open('https://example.org/stream.m3u8');
+  e.api.setListener({onerror(){errors++;},onerrormsg(name,text){received=JSON.parse(text);}});e.api.prepareAsync(()=>{});e.ready();e.api.play();
+  e.instances[0].handlers.error('error',{fatal:true,type:'mediaError',details,error:new Error('https://secret/token')});
+  assert.equal(received.error_code,0);assert.equal(received.demux,'MSE');assert.equal(received.resolution,'3840x2160');assert.equal(errors,1);
+  assert.equal(received.hls_detail,details.startsWith('https')?undefined:details);assert.doesNotMatch(JSON.stringify(received),/secret|token/);e.api.close();
+ }
 });

@@ -1,4 +1,6 @@
-# UAKinogo · серверна бета 0.1.0-beta.50
+# UAKinogo · серверна бета 0.1.0-beta.51
+
+**beta.51:** виправлення Alloha розміщене у плагіні. Наявний сервер beta.50 сумісний; оновлювати Ubuntu для усунення `Illegal invocation` не потрібно.
 
 **beta.50:** журнал містить джерело запиту й конкретну причину помилки. Для цих полів оновіть Ubuntu; попередні записи збережуться без відсутніх подробиць. «Дані отримано» означає відповідь із метаданими, а не підтвердження відтворення. Оновлений плагін підтримує поточну сесію Alloha без передавання відео через сервер.
 
@@ -26,10 +28,10 @@
 ssh USERNAME@192.168.88.191
 ```
 
-У вже відкритій SSH-сесії завантажте [інсталятор beta.50](https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.50/server/uakinogo/install.sh) та запустіть. Він містить виправлення конфлікту портів і встановлює серверний пакет beta.50:
+У вже відкритій SSH-сесії завантажте [інсталятор beta.50](https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.51/server/uakinogo/install.sh) та запустіть. Він містить виправлення конфлікту портів і встановлює серверний пакет beta.50:
 
 ```sh
-curl -fL https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.50/server/uakinogo/install.sh -o /tmp/faborn-install.sh
+curl -fL https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.51/server/uakinogo/install.sh -o /tmp/faborn-install.sh
 sudo bash /tmp/faborn-install.sh --test-users
 ```
 
@@ -51,7 +53,7 @@ sudo bash /tmp/faborn-install.sh --port 8788
 curl http://192.168.88.191:8787/health
 ```
 
-Очікувана відповідь містить `"ok":true`, `"version":"0.1.0-beta.50"`, `"auth":"basic"` (із тестовими користувачами), `"videoProxy":false`.
+Очікувана відповідь містить `"ok":true`, `"version":"0.1.0-beta.51"`, `"auth":"basic"` (із тестовими користувачами), `"videoProxy":false`.
 
 ## Налаштування телевізора
 

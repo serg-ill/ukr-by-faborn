@@ -23,8 +23,10 @@ function harness(withSession=false){
             const content=url.startsWith(Core.origin+'/?')?'<meta name="viewporti" content="fixture"><script>fileList=JSON.parse(\'{"type":"movie","all":{"theatrical":{"t154":{"0":{"id":42}}}}}\')</script>':url.includes('/bnsi/movies/')?JSON.stringify(raw):url.includes('/master.m3u8')?'#EXTM3U\n#EXT-X-STREAM-INF:RESOLUTION=3840x2160,CODECS="av01,aac"\nvideo.m3u8':url.includes('/video.m3u8')?'#EXTM3U\n#EXT-X-MAP:URI="init.mp4"\n#EXTINF:6,\nseg.m4s\n#EXT-X-ENDLIST':'fixture media bytes';
             bodyPtr=alloc(content);return range?206:200;
         }};
-    const ctx={self:{Faborn4KCore:Core,WebSocket:Socket,close(){}},navigator:{userAgent:'Mozilla/5.0 (SMART-TV; Tizen 6.5)'},postMessage:m=>events.push(m),importScripts(){},XMLHttpRequest:XHR,
-        tizentvwasm:{SocketsManager:{}},FabornNative:()=>({then:fn=>fn(native)}),URL,setTimeout(fn,ms){const id=nextTimer++;timeouts.set(id,{fn,ms});return id;},clearTimeout:id=>timeouts.delete(id),setInterval(fn,ms){const id=nextTimer++;intervals.set(id,{fn,ms});return id;},clearInterval:id=>intervals.delete(id)};
+    function timerReceiver(value){if(value && value.self!==value)throw new TypeError('Illegal invocation');}
+    const ctx={Faborn4KCore:Core,WebSocket:Socket,close(){},navigator:{userAgent:'Mozilla/5.0 (SMART-TV; Tizen 6.5)'},postMessage:m=>events.push(m),importScripts(){},XMLHttpRequest:XHR,
+        tizentvwasm:{SocketsManager:{}},FabornNative:()=>({then:fn=>fn(native)}),URL,setTimeout(fn,ms){timerReceiver(this);const id=nextTimer++;timeouts.set(id,{fn,ms});return id;},clearTimeout(id){timerReceiver(this);timeouts.delete(id);},setInterval(fn,ms){timerReceiver(this);const id=nextTimer++;intervals.set(id,{fn,ms});return id;},clearInterval(id){timerReceiver(this);intervals.delete(id);}};
+    ctx.self=ctx;
     vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../lib/4klab/worker'),'utf8'),ctx);
     const get=native.ccall;native.ccall=function(name,type,types,args){if(failures.some(part=>args[0].includes(part)))return 403;return get(name,type,types,args);};
     return {ctx,events,http,media,intervals,timeouts,sockets,native,failures,operations,answer};

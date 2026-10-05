@@ -109,8 +109,8 @@ test('only an explicitly owned tokenized loopback can use HTTP in the beta playe
 test('native failure captures bounded codec details and Back closes the failed player in one action',()=>{
  const e=environment();e.api.play(e.spec());const listener=e.avState.listeners;
  listener.onerror('PLAYER_ERROR_INVALID_OPERATION');
- listener.onerrormsg('PLAYER_ERROR_INVALID_OPERATION',JSON.stringify({error_code:42,codec:'AV1',demux:'HLS',resolution:'3840x2160',fps:24,detail_info:'secret',url:'https://secret/token',headers:{Cookie:'private'}}));
- e.advance(0);assert.match(e.errors[0],/IDLE.*codec=AV1.*3840x2160/);assert.doesNotMatch(e.errors[0],/secret|private|https|Cookie/);
+ listener.onerrormsg('PLAYER_ERROR_INVALID_OPERATION',JSON.stringify({error_code:42,codec:'AV1',demux:'HLS',resolution:'3840x2160',fps:24,hls_detail:'bufferAppendError',detail_info:'secret',url:'https://secret/token',headers:{Cookie:'private'}}));
+ e.advance(0);assert.match(e.errors[0],/IDLE.*codec=AV1.*3840x2160/);assert.match(e.errors[0],/hls_detail=bufferAppendError/);assert.doesNotMatch(e.errors[0],/secret|private|https|Cookie/);
  e.key('keydown',10009);assert.equal(e.closed,1);assert.equal(e.controller,'full_start');assert.equal(e.avState.state,'NONE');assert.equal(e.jobs.size,0);
  listener.onerrormsg('error','not JSON');listener.onerror('PLAYER_ERROR_INVALID_OPERATION');e.advance(0);assert.equal(e.errors.length,1);
 });
