@@ -134,6 +134,61 @@ function environment(options = {}) {
     return {state, root, instance};
 }
 
+function pagesDiagnostic(env) {
+    env.state.params.find(p=>p.param.name==='faborn_ukr_diagnostic').onChange();
+    return env.state.menu.items.find(row=>row.title.startsWith('GitHub Pages: ')).title;
+}
+test('cached main script without a URL still loads the Alloha adapter from official Pages',()=>{
+    const scripts=[],e=environment({document:{currentScript:{src:''},getElementsByTagName(){return [];}},
+        storage:{faborn_ukr_uakinogo_beta:'on',faborn_ukr_uakinogo_server:'http://192.168.88.191:8789',plugins:[]}});
+    assert.equal(pagesDiagnostic(e),'GitHub Pages: https://serg-ill.github.io/ukr-by-faborn/');
+    e.root.document.createElement=()=>({});e.root.document.head={appendChild(s){scripts.push(s);}};
+    let discovered=false;
+    e.root.Faborn4KLab=(root,L,base)=>{
+        assert.equal(base,'https://serg-ill.github.io/ukr-by-faborn/lib/4klab/');
+        return {discover(){discovered=true;},cancel(){}};
+    };
+    filmQualityMenu(e);
+    const adapter=scripts.find(s=>s.src.includes('/4klab/ui.js?'));
+    assert.ok(adapter,'The cached plugin must request its lazy dependency');
+    assert.equal(adapter.src,'https://serg-ill.github.io/ukr-by-faborn/lib/4klab/ui.js?v='+api.version);
+    adapter.onload();assert.equal(discovered,true);
+});
+test('account plugin URLs and legacy local entries survive inline cache loading',()=>{
+    const document={getElementsByTagName(){return [];}};
+    const cases=[
+        {loaded:()=>['https://account.github.io/faborn/ukr-by-faborn.js?reset=1'],base:'https://account.github.io/faborn/'},
+        {loaded:()=>[],awaits:()=>['https://account.github.io/waiting/ukr-by-faborn.js'],base:'https://account.github.io/waiting/'},
+        {loaded:()=>{throw new Error('unavailable');},awaits:()=>['https://account.github.io/waiting/ukr-by-faborn.js'],base:'https://account.github.io/waiting/'},
+        {local:[null,{url:'https://bad.example/ukr-by-faborn.js'},'https://local.github.io/faborn/ukr-by-faborn.js'],base:'https://local.github.io/faborn/'},
+        {local:[{url:'https://disabled.github.io/ukr-by-faborn.js',status:0},{url:'https://local.github.io/faborn/ukr-by-faborn.js',status:1}],base:'https://local.github.io/faborn/'},
+        {local:'unexpected storage',base:'https://serg-ill.github.io/ukr-by-faborn/'}
+    ];
+    for(const item of cases){
+        const e=environment({document,storage:{plugins:item.local}});
+        e.root.Lampa.Plugins={loaded:item.loaded,awaits:item.awaits};
+        assert.equal(pagesDiagnostic(e),'GitHub Pages: '+item.base);
+    }
+});
+test('untrusted script candidates cannot shadow a valid Pages script or a local preview',()=>{
+    for(const base of ['https://fork.github.io/faborn/','http://localhost:8765/test/','http://127.0.0.1:8765/test/']){
+        const e=environment({document:{currentScript:{src:'https://bad.example/ukr-by-faborn.js'},getElementsByTagName(){return [
+            {src:base+'ukr-by-faborn.js?v=48#cached'},{src:'https://other.example/ukr-by-faborn.js'}
+        ];}}});
+        assert.equal(pagesDiagnostic(e),'GitHub Pages: '+base);
+    }
+});
+test('explicit Pages address overrides autodetection and can be cleared without an unsafe fallback',()=>{
+    const e=environment({storage:{faborn_ukr_pages:' https://override.github.io/test/ukr-by-faborn.js?v=1 '}});
+    assert.equal(pagesDiagnostic(e),'GitHub Pages: https://override.github.io/test/');
+    e.state.storage.faborn_ukr_pages='';
+    assert.equal(pagesDiagnostic(e),'GitHub Pages: https://faborn.github.io/lampa/');
+    for(const address of ['https://github.io.evil.test/','https://user:pass@fork.github.io/','https://fork.github.io/path\\escape/',"https://fork.github.io/a'path/",'http://192.168.88.191:8789/']){
+        e.state.storage.faborn_ukr_pages=address;
+        assert.equal(pagesDiagnostic(e),'GitHub Pages: https://faborn.github.io/lampa/');
+    }
+});
+
 test('app reload requires a deliberate choice, leaves storage intact and ignores stale OK',()=>{
     const e=environment({storage:{faborn_ukr_accent:'mint',account:{id:'profile'},file_view:{film:{time:123}}}});let calls=0;
     e.root.location={reload(){calls++;}};e.state.controller='head';const saved=JSON.stringify(e.state.storage);
@@ -345,6 +400,10 @@ test('clearing server credentials removes both fields and preserves local endpoi
 
 function betaEnvironment(options={}) {
     const e=environment({...options,storage:{...options.storage,faborn_ukr_player:'beta'}});
+    return mockBetaPlayer(e);
+}
+function mockBetaPlayer(e) {
+    e.state.storage.faborn_ukr_player='beta';
     let spec,active=false;const choices=[];
     e.root.webapis={avplay:{getState(){return active?'PLAYING':'NONE';}}};
     e.root.FabornPlayer=()=>({available:()=>true,active:()=>active,apply(){},play(value){spec=value;active=true;},close(restore=true){active=false;spec.onClose(restore);},change(action){choices.push(action);spec.request(action,(error,value)=>{if(error)e.state.notices.push(error.message);else spec=value;});}});
@@ -371,7 +430,62 @@ test('browser player errors retain source, exact quality and stage in diagnostic
  const e=betaEnvironment({storage:{faborn_ukr_beta_engine:'mse'}});e.root.FabornHls=function(){};e.root.FabornHlsTransport=function(){};
  filmQualityMenu(e);e.state.play('1080p');e.getSpec().onError('HLSNetworkError · MSE IDLE · prepareAsync · HTTP 403');
  assert.match(e.state.storage.faborn_ukr_last_error,/UAKino.*1080p.*MSE.*HTTP 403/);
- assert.match(e.state.storage.faborn_ukr_last_launch,/Браузерний HLS/);e.close();
+ assert.equal(e.state.storage.faborn_ukr_avplay_state,'');
+    assert.match(e.state.storage.faborn_ukr_last_launch,/Браузерний HLS/);e.close();
+});
+test('KinoBase UHD diagnostics do not claim native decoder preparation in browser mode',()=>{
+    for(const engine of ['mse','avplay']){
+        const e=mockBetaPlayer(kinoEnvironment());
+        e.root.navigator={userAgent:'Mozilla/5.0 (SMART-TV; Tizen 3.0)'};
+        e.root.FabornHls=function(){};e.root.FabornHlsTransport=function(){};
+        Object.assign(e.state.storage,{faborn_ukr_beta_engine:engine,faborn_ukr_legacy4k:'on'});
+        e.instance.open(kinoMovie);e.state.play('2160p');
+        assert.equal(e.getSpec().legacy4k,engine==='avplay');
+        if(engine==='mse'){
+            assert.match(e.state.storage.faborn_ukr_legacy4k_status,/Не застосовується до браузерного HLS.*Samsung AVPlay/);
+            e.getSpec().onError('HLSMediaError · MSE PLAYING · play · error_code=3 · resolution=3840x2160');
+            assert.match(e.state.storage.faborn_ukr_last_error,/KinoBase.*2160p.*error_code=3.*3840x2160/);
+        }else assert.match(e.state.storage.faborn_ukr_legacy4k_status,/Очікування UHD-режиму/);
+        assert.equal(e.state.storage.faborn_ukr_beta_engine,engine);
+        e.close();assert.ok(e.state.menu.items.some(i=>i.group));
+    }
+});
+test('opted-in Tizen 3 routes confirmed KinoBase AVC UHD to AVPlay without changing the saved engine',()=>{
+    const e=mockBetaPlayer(kinoEnvironment({codecs:'avc1.640032,mp4a.40.2'}));
+    e.root.navigator={userAgent:'Mozilla/5.0 (SMART-TV; Tizen 3.0)'};
+    e.root.FabornHls=function(){};e.root.FabornHlsTransport=function(){};
+    Object.assign(e.state.storage,{faborn_ukr_beta_engine:'mse',faborn_ukr_legacy4k:'on'});
+    e.instance.open(kinoMovie);e.state.play('2160p');
+    assert.equal(e.getSpec().engine,'avplay');assert.equal(e.getSpec().legacy4k,true);
+    assert.match(e.state.storage.faborn_ukr_last_launch,/AVPlay.*сумісність H.264 4K/);
+    e.getSpec().request({type:'quality',quality:'1080p'},(error,next)=>{
+        assert.equal(error,undefined);assert.equal(next.engine,'mse');assert.equal(next.legacy4k,false);
+    });
+    assert.equal(e.state.storage.faborn_ukr_beta_engine,'mse');
+    assert.match(e.state.storage.faborn_ukr_last_launch,/1080p.*Браузерний HLS/);
+    e.close();
+});
+test('automatic AVC compatibility does not guess codecs or override other TVs, qualities or opt-outs',()=>{
+    for(const item of [{version:'6.0'},{enabled:false},{codecs:'av01.0.12M.08'},{codecs:''},{quality:'1080p'},{uhd:false}]){
+        const e=mockBetaPlayer(kinoEnvironment({codecs:item.codecs===undefined?'avc1.640032,mp4a.40.2':item.codecs}));
+        e.root.navigator={userAgent:'Tizen '+(item.version || '3.0')};
+        e.root.webapis.productinfo={isUdPanelSupported:()=>item.uhd!==false};
+        e.root.FabornHls=function(){};e.root.FabornHlsTransport=function(){};
+        Object.assign(e.state.storage,{faborn_ukr_beta_engine:'mse',faborn_ukr_legacy4k:item.enabled===false?'off':'on'});
+        e.instance.open(kinoMovie);e.state.play(item.quality || '2160p');
+        assert.equal(e.getSpec().engine,'mse');assert.equal(e.getSpec().legacy4k,false);e.close();
+    }
+});
+test('an unavailable decoder on quality change retains the current beta progress context',()=>{
+    const e=mockBetaPlayer(kinoEnvironment({codecs:'avc1.640032,mp4a.40.2'})),create=e.root.FabornPlayer;
+    e.root.FabornPlayer=()=>{const p=create();p.available=spec=>spec.engine==='avplay';return p;};
+    e.root.navigator={userAgent:'Tizen 3.0'};e.root.FabornHls=function(){};e.root.FabornHlsTransport=function(){};
+    Object.assign(e.state.storage,{faborn_ukr_beta_engine:'mse',faborn_ukr_legacy4k:'on'});
+    e.instance.open(kinoMovie);e.state.play('2160p');const spec=e.getSpec();
+    spec.request({type:'quality',quality:'1080p'},error=>assert.match(error.message,/Поточний потік збережено/));
+    spec.onTime({current:498,duration:6000,force:true});
+    assert.ok(Object.values(e.state.timelines).some(t=>t.time===498));
+    assert.match(e.state.storage.faborn_ukr_last_launch,/2160p.*AVPlay/);e.close();
 });
 test('selected beta bypasses native Lampa even with another global player and persists shared progress',()=>{
     const e=betaEnvironment({player:'inner'});e.instance.open({id:866398,title:'Бджоляр',original_title:'The Beekeeper',release_date:'2024-01-10'});e.state.play('1080p');
@@ -882,13 +996,13 @@ function kinoEnvironment(options={}) {
             if(options.delayVod){stateData.pending=req;return;}
         } else if(/https:\/\/(?:primary.redcdn.org|mirror.threnet.xyz)\//.test(req.url)) {
             const q=+new URL(req.url).pathname.split('/')[1],width=({'2160':3840,'1080':1920,'720':1280})[q];
-            req.responseText='#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="track",URI="audio.m3u8"\n#EXT-X-STREAM-INF:RESOLUTION='+width+'x'+q+',AUDIO="track"\nvideo.m3u8';
+            req.responseText='#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="track",URI="audio.m3u8"\n#EXT-X-STREAM-INF:RESOLUTION='+width+'x'+q+',AUDIO="track"'+(options.codecs?',CODECS="'+options.codecs+'"':'')+'\nvideo.m3u8';
             if(options.failPrimary&&req.url.includes('primary.redcdn.org'))req.status=404;
             if(options.delayManifest) { (stateData.manifests ||= []).push(req); return; }
         } else {req.status=403;req.responseText='';}
         req.onload();
     }
-    const env=environment({respond,panelEvents:options.panelEvents});
+    const env=environment({respond,panelEvents:options.panelEvents,document:options.document});
     env.root.FabornKinoBase=kinoReader;env.kino=stateData;
     stateData.nativeRequests=[];stateData.clients=0;stateData.cancels=0;
     if(options.native) env.root.FabornKinoSession=()=>{
@@ -904,6 +1018,18 @@ function kinoEnvironment(options={}) {
     stateData.respond=respond;
     return env;
 }
+test('cached KinoBase adapter uses official Pages and continues the pending title search after loading',()=>{
+    const scripts=[],e=kinoEnvironment({document:{getElementsByTagName(){return [];}}});
+    delete e.root.FabornKinoBase;
+    e.root.document.createElement=()=>({});e.root.document.head={appendChild(s){scripts.push(s);}};
+    e.instance.open(kinoMovie);
+    const script=scripts.find(s=>s.src.includes('/lib/kinobase.js?'));
+    assert.ok(script);assert.equal(script.src,'https://serg-ill.github.io/ukr-by-faborn/lib/kinobase.js?v='+api.version);
+    e.root.FabornKinoBase=kinoReader;script.onload();
+    e.state.play('2160p');assert.equal(e.state.played.faborn_quality,'2160p');
+    assert.match(e.state.played.url,/primary\.redcdn\.org\/2160\//);
+    assert.match(e.state.storage.faborn_ukr_last_launch,/KinoBase/);
+});
 test('session 404 reopens the title in a Samsung session then lists and plays English directly',()=>{
  const env=kinoEnvironment({failEndpoint:'/user_data?',native:true,english:true});env.instance.open(kinoMovie);env.state.language('all');
  assert.match(env.kino.nativeRequests[0].url,/\/film\//);
@@ -1137,8 +1263,8 @@ test('HLS subtitle playlists stay attached when selecting a quality',()=>{
  assert.deepEqual(api.parseMaster(body,masterURL),{'1080p':masterURL});
 });
 
-test('a video server soft 404 is diagnosed as unavailable, not as a Playerjs parsing error',()=>{
- assert.throws(()=>api.playerEntries('<html><title>404 Not Found</title><h1>404 Not Found</h1></html>',{}),/404: відео недоступне/);
+test('a video server soft 404 can indicate a source-page restriction rather than a missing video',()=>{
+ assert.throws(()=>api.playerEntries('<html><title>404 Not Found</title><h1>404 Not Found</h1></html>',{}),/404.*зі сторінки джерела/);
 });
 
 function voicePlayer(env) {
@@ -1395,6 +1521,63 @@ test('a soft 404 in the first episode iframe falls through to its second support
  env.instance.open({name:'Джентльмени',original_name:'The Gentlemen',first_air_date:'2024-03-07'});
  assert.ok(env.state.menu.items.some(r=>r.group && r.subtitle.includes('UAFix')));
  assert.ok(env.state.requests.some(r=>r.url==='https://ashdi.vip/vod/99001'));
+});
+
+function uafixRefererEnvironment(options={}) {
+ const page='https://uafix.net/films/oppengejmer/',embed='https://zetvideo.net/vod/19767',master='https://zetvideo.net/vid/fixture/hls/index.m3u8';
+ const playerHtml='new Playerjs({file:"'+master+'"})';
+ const movie={title:'Оппенгеймер',original_title:'Oppenheimer',release_date:'2023-07-19'};
+ const env=environment({storage:{faborn_ukr_uakinogo_beta:'on',faborn_ukr_uakinogo_server:'http://192.168.88.191:8789',...options.storage},respond(req){
+  req.status=200;
+  if(req.url.includes('catalog.json'))req.responseText=JSON.stringify(catalog);
+  else if(req.url==='https://uafix.net/search.html')req.responseText='<h1>Пошук</h1><a class="sres-wrap" href="'+page+'"><h2>Оппенгеймер / Oppenheimer</h2></a>';
+  else if(req.url===page)req.responseText='<h1>Оппенгеймер</h1><span class="forigin">Oppenheimer</span><li>Рік: 2023</li><li>Переклад: Українська</li><iframe src="'+embed+'"></iframe>';
+  else if(req.url===embed)req.responseText=options.direct?playerHtml:'<title>404 Not Found</title>';
+  else if(req.url.endsWith('/v1/uafix/player')){
+   if(options.pending)return;
+   req.status=options.status||200;req.responseText=JSON.stringify({schema:1,provider:'uafix',sourcePage:page,embed,playerHtml,...options.response});
+  }
+  else if(req.url===master)req.responseText='#EXTM3U\n#EXT-X-STREAM-INF:RESOLUTION=1920x1080\n1080.m3u8';
+  else if(req.url===master.replace('index','1080'))req.responseText='#EXTM3U\n#EXTINF:6,\na.ts';
+  else {req.status=404;req.responseText='';}
+  req.onload();
+ }});
+ env.root.btoa=value=>Buffer.from(value,'binary').toString('base64');
+ return {...env,movie,master,page,embed};
+}
+test('UAFix soft 404 uses the opted-in metadata server, then obtains and plays HLS directly',()=>{
+ const e=uafixRefererEnvironment({storage:{faborn_ukr_uakinogo_login:'friend',faborn_ukr_uakinogo_password:'пароль:fixture'}});
+ e.instance.open(e.movie);
+ const req=e.state.requests.find(r=>r.url.endsWith('/v1/uafix/player'));
+ assert.ok(req);assert.equal(req.headers.Authorization,'Basic '+Buffer.from('friend:пароль:fixture').toString('base64'));
+ assert.equal(req.headers['Content-Type'],'application/json');assert.equal(req.timeout,20000);
+ assert.deepEqual(JSON.parse(req.body),{movie:{title:'Оппенгеймер',media_type:'movie'},sourcePage:e.page,embed:e.embed});
+ assert.ok(!req.url.includes('friend') && !req.body.includes('fixture'));
+ assert.ok(e.state.requests.some(r=>r.url===e.master));
+ e.state.play('1080p',r=>r.release.source==='uafix');
+ assert.equal(e.state.played.url,e.master.replace('index','1080'));
+ assert.ok(e.state.requests.filter(r=>r.url.startsWith('https://zetvideo.net/')).every(r=>!r.headers.Authorization));
+});
+test('UAFix direct success, missing server or explicit beta opt-out never contacts the metadata helper',()=>{
+ for(const options of [{direct:true},{storage:{faborn_ukr_uakinogo_beta:'off'}},{storage:{faborn_ukr_uakinogo_server:''}}]){
+  const e=uafixRefererEnvironment(options);e.instance.open(e.movie);
+  assert.ok(!e.state.requests.some(r=>r.url.endsWith('/v1/uafix/player')));
+ }
+});
+test('UAFix server errors are explicit; invalid responses never become a playable source',()=>{
+ for(const options of [{status:404},{status:401},{response:{embed:'https://zetvideo.net/vod/99'}},{response:{schema:2}}]){
+  const e=uafixRefererEnvironment(options);e.instance.open(e.movie);
+  assert.ok(!e.state.requests.some(r=>r.url===e.master));
+  const status=e.state.storage.faborn_ukr_source_status.join(';');
+  assert.match(status,options.status===404?/онови обробник Ubuntu/:options.status===401?/логін і пароль/:/некоректна відповідь/);
+ }
+});
+test('Back aborts a pending UAFix metadata request and a late reply cannot reopen sources',()=>{
+ const e=uafixRefererEnvironment({pending:true});e.instance.open(e.movie);
+ const req=e.state.requests.find(r=>r.url.endsWith('/v1/uafix/player'));assert.ok(req);
+ e.state.menu.onBack();assert.equal(req.aborted,true);assert.equal(e.state.controller,'full_start');
+ req.status=200;req.responseText=JSON.stringify({schema:1,provider:'uafix',sourcePage:e.page,embed:e.embed,playerHtml:'new Playerjs({file:"'+e.master+'"})'});req.onload();
+ assert.ok(!e.state.requests.some(r=>r.url===e.master));assert.equal(e.state.controller,'full_start');
 });
 
 test('torrent shortcut routes TV metadata and selected search language to native Lampa',()=>{

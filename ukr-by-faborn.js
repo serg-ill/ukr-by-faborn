@@ -1,4 +1,4 @@
-/* ukr by Faborn 0.1.0-beta.48 — GitHub Pages edition. */
+/* ukr by Faborn 0.1.0-beta.49 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,8 +8,9 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.48';
+    var VERSION = '0.1.0-beta.49';
     var NAME = 'ukr by Faborn';
+    var DEFAULT_PAGES = 'https://serg-ill.github.io/ukr-by-faborn/';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
     var commentsUI = null, commentsScript = null;
     var commentsFeature = null, commentsFeatureOriginal;
@@ -56,18 +57,25 @@
         return /^https:\/\/(?:[a-z0-9-]+\.)*(?:ashdi\.vip|hdvbua\.pro|zetvideo\.net|redcdn\.org|threnet\.xyz|tortuga\.(?:tw|wtf))\//i.test(text(value)) && !/[\s<>"\\]/.test(value);
     }
     function safeBase(value) {
-        return /^(https:\/\/[a-z0-9-]+\.github\.io(?:\/[^?#]*)?|http:\/\/(?:localhost|127\.0\.0\.1):\d+(?:\/[^?#]*)?)$/i.test(value);
+        return !/[\s<>"'\\]/.test(value) && /^(https:\/\/[a-z0-9-]+\.github\.io(?:\/[^?#]*)?|http:\/\/(?:localhost|127\.0\.0\.1):\d+(?:\/[^?#]*)?)$/i.test(value);
+    }
+    function normalizeBase(value) {
+        var base = text(value).replace(/^\s+|\s+$/g, '');
+        base = fromScript(base) || base;
+        if (!safeBase(base)) return '';
+        return base.charAt(base.length - 1) === '/' ? base : base + '/';
     }
     function fromScript(url) {
         var clean = text(url).split(/[?#]/)[0];
-        return /\/ukr-by-faborn\.js$/.test(clean) ? clean.replace(/ukr-by-faborn\.js$/, '') : '';
+        var base = /\/ukr-by-faborn\.js$/i.test(clean) ? clean.replace(/ukr-by-faborn\.js$/i, '') : '';
+        return safeBase(base) ? base : '';
     }
     function detectBase() {
         var doc = root.document, base = '', scripts, i;
         if (!doc) return '';
         if (doc.currentScript) base = fromScript(doc.currentScript.src);
         if (!base) {
-            scripts = doc.getElementsByTagName('script');
+            scripts = doc.getElementsByTagName ? doc.getElementsByTagName('script') : [];
             for (i = scripts.length - 1; i >= 0; i--) {
                 base = fromScript(scripts[i].src);
                 if (base) break;
@@ -125,16 +133,23 @@
         else if (sourceCommentsEnabled()) loadComments();
     }
     function baseURL() {
-        var base = capturedBase, plugins;
-        if (!base) {
-            try {
-                plugins = L.Storage.get('plugins', []);
-                plugins.forEach(function (p) { if (!base) base = fromScript(typeof p === 'string' ? p : p.url); });
-            } catch (ignore) { /* The settings override remains available. */ }
+        var base = normalizeBase(storage('pages', '')) || capturedBase;
+        function scan(plugins) {
+            if (!Array.isArray(plugins)) return;
+            plugins.some(function (p) {
+                if (!p || typeof p === 'object' && (p.status === 0 || p.status === false)) return false;
+                base = fromScript(typeof p === 'string' ? p : p.url);
+                return !!base;
+            });
         }
-        base = base || text(storage('pages', ''));
-        if (base && base.charAt(base.length - 1) !== '/') base += '/';
-        return safeBase(base) ? base : '';
+        // Lampa can insert cached plugins as inline scripts. Account extensions
+        // are in Plugins.loaded/awaits, but need not be in local Storage.plugins.
+        if (!base && L && L.Plugins) ['loaded','awaits'].some(function (method) {
+            try { if (typeof L.Plugins[method] === 'function') scan(L.Plugins[method]()); } catch (ignore) {}
+            return !!base;
+        });
+        if (!base) { try { scan(L.Storage.get('plugins', [])); } catch (ignore) {} }
+        return base || DEFAULT_PAGES;
     }
     function notify(message) { if (L && L.Noty) L.Noty.show(message); }
     function appReloadBlocked() {
@@ -1295,7 +1310,7 @@
         return episode.embeddedSubtitles ? ' · CC: субтитри у плеєрі' : '';
     }
     function playerEntries(html, defaults) {
-        if (/<title>\s*404 Not Found\s*<\/title>/i.test(text(html))) throw new Error('Відеосервер повернув сторінку 404: відео недоступне.');
+        if (/<title>\s*404 Not Found\s*<\/title>/i.test(text(html))) throw new Error('Відеосервер повернув сторінку 404. Плеєр може вимагати відкриття зі сторінки джерела.');
         var start = text(html).search(/new\s+Playerjs\s*\(/);
         if (start < 0) throw new Error('Не знайдено відкриту конфігурацію відеоплеєра.');
         var config = playerConfig(html), raw = config.file, tree, out = [];
@@ -1375,6 +1390,55 @@
         },12000,post,ajax);
         if (!completed) requests.push(req);
     }
+    function metadataConnection() {
+        try {
+            var value=text(storage('uakinogo_server','')).trim(), Parser=typeof root.URL==='function'?root.URL:typeof URL==='function'?URL:null;
+            if(!value || value.length>2048 || !Parser)return null;
+            var url=new Parser(/^[a-z][a-z0-9+.-]*:\/\//i.test(value)?value:'http://'+value);
+            var login=text(storage('uakinogo_login','') || decodeURIComponent(url.username || '')),password=text(storage('uakinogo_password','') || decodeURIComponent(url.password || ''));
+            if((login || password) && (!/^[A-Za-z0-9_.-]{1,64}$/.test(login) || !password || /[\x00-\x1f\x7f]/.test(password) || unescape(encodeURIComponent(password)).length>256))return null;
+            var host=url.hostname,ip=host.split('.').map(Number),local=host==='localhost' || ip.length===4 && ip.every(function(n){return n>=0 && n<=255 && Math.floor(n)===n;}) && (ip[0]===127 || ip[0]===10 || ip[0]===192 && ip[1]===168 || ip[0]===172 && ip[1]>=16 && ip[1]<=31);
+            if(url.search || url.hash || url.protocol!=='https:' && !(url.protocol==='http:' && (local || login && password)))return null;
+            url.username='';url.password='';
+            return {base:url.href.replace(/\/$/,''),authorization:login?'Basic '+root.btoa(unescape(encodeURIComponent(login+':'+password))):storage('uakinogo_key','')?'Bearer '+text(storage('uakinogo_key','')):''};
+        } catch(ignore) { return null; }
+    }
+    function providerPlayer(serial,provider,sourcePage,title,embed,stage,done) {
+        publicRequest(serial,stage,embed,function(error,html) {
+            var denied=error ? /^HTTP 404$/.test(error.message) : /<title>\s*404 Not Found\s*<\/title>/i.test(text(html));
+            if(provider!=='uafix' || !denied || !/^https:\/\/zetvideo\.net\/(?:vod|serial)\/\d+\/?$/.test(embed) || storage('uakinogo_beta','off')!=='on' || !text(storage('uakinogo_server','')).trim())return done(error,html);
+            var connection=metadataConnection();
+            if(!connection)return done(new Error('UAFix: перевір адресу та облікові дані сервера Faborn.'));
+            // A source-page Referer is required by this iframe. Ask the opted-in
+            // metadata server for its public config; HLS and video stay direct.
+            var request=new root.XMLHttpRequest(),finished=false;
+            function finish(problem,body) {
+                if(finished)return;finished=true;
+                var index=requests.indexOf(request);if(index>=0)requests.splice(index,1);
+                if(serial!==requestSerial)return;
+                trace('UAFix · сервер',problem?problem.message:'Конфігурацію отримано; відео напряму');
+                done(problem,body);
+            }
+            request.onload=function() {
+                if(request.status!==200)return finish(new Error('UAFix · сервер: HTTP '+request.status+(request.status===404?' — онови обробник Ubuntu.':request.status===401?' — перевір логін і пароль.':'')));
+                try {
+                    if(request.responseText.length>2*1024*1024)throw new Error();
+                    var data=JSON.parse(request.responseText);
+                    if(!data || data.schema!==1 || data.provider!=='uafix' || data.sourcePage!==sourcePage || data.embed!==embed || typeof data.playerHtml!=='string')throw new Error();
+                    finish(null,data.playerHtml);
+                } catch(ignore) { finish(new Error('UAFix: некоректна відповідь сервера.')); }
+            };
+            request.onerror=function(){finish(new Error('UAFix: немає з’єднання із сервером Faborn.'));};
+            request.ontimeout=function(){finish(new Error('UAFix: сервер не відповів за 20 секунд.'));};
+            requests.push(request);trace('UAFix · сервер','Отримання конфігурації плеєра');
+            try {
+                request.open('POST',connection.base+'/v1/uafix/player',true);request.timeout=20000;
+                request.setRequestHeader('Content-Type','application/json');
+                if(connection.authorization)request.setRequestHeader('Authorization',connection.authorization);
+                request.send(JSON.stringify({movie:{title:text(title.title).slice(0,180),media_type:title.type},sourcePage:sourcePage,embed:embed}));
+            } catch(ignore) { finish(new Error('UAFix: не вдалося надіслати запит серверу.')); }
+        });
+    }
     function getTitle(serial, provider, movie, url, done) {
         publicRequest(serial,provider.name+' · сторінка',url,function (err,body) {
             if (err) return done(err);
@@ -1404,7 +1468,7 @@
             });
             function expand() {
                 parallel(title.embeds,2,function (embed,next) {
-                    publicRequest(serial,provider.name+' · сезони й озвучення',embed,function (error,html) {
+                    providerPlayer(serial,provider.id,url,title,embed,provider.name+' · сезони й озвучення',function (error,html) {
                         if (error) playerError = error;
                         if (!error) {
                             try {
@@ -1572,7 +1636,7 @@
         }
         function embed(url,fallback) {
             var fail = fallback || done;
-            publicRequest(serial,sourceName(release.source)+' · плеєр',url,function (err,body) {
+            providerPlayer(serial,release.source,episode.page || release.sourcePage,title,url,sourceName(release.source)+' · плеєр',function (err,body) {
                 if (err) return fail(err);
                 try {
                     var entries = playerEntries(body,{type:title.type,season:episode.season,episode:episode.episode,voice:release.voice,audioLanguage:release.audioLanguage,originalLanguage:title.originalLanguage});
@@ -2924,32 +2988,44 @@
             context.movieWatched=hubUI.saveMovie(data.card,'watched').ok;
         }
     }
+    function betaEngineSelection(episode,quality) {
+        var version=/\bTizen[\s\/]+([\d.]+)/i.exec(text(root.navigator && root.navigator.userAgent));
+        var legacy=!!(episode.kino && quality==='2160p' && storage('legacy4k','off')==='on' && version && parseFloat(version[1])>=2.3 && parseFloat(version[1])<5);
+        try { if(root.webapis.productinfo && root.webapis.productinfo.isUdPanelSupported && root.webapis.productinfo.isUdPanelSupported()===false)legacy=false; } catch(ignore){}
+        var requestedEngine=storage('beta_engine','avplay')==='mse' ? 'mse' : 'avplay', engine=requestedEngine;
+        // Samsung's 2017 H.264 MSE decoder is limited to FHD. Respect the opt-in
+        // compatibility switch and route only a confirmed UHD AVC stream natively.
+        var nativeUHD=legacy && requestedEngine==='mse' && parseFloat(version[1])>=3 && parseFloat(version[1])<4 && /\bavc[13]\./i.test(episode.streamInfo && episode.streamInfo[quality] || '');
+        if (nativeUHD) engine='avplay';
+        var browserEngine=engine==='mse', legacyBrowser=legacy && browserEngine;
+        if (browserEngine) legacy=false;
+        return {engine:engine,legacy:legacy,nativeUHD:nativeUHD,legacyBrowser:legacyBrowser};
+    }
     function betaSpec(context,fromStart) {
         var episode=context.episode,release=context.release,title=context.title;
         var data=context.lab ? context.lab.item : playData(context.movie,title,release,episode,context.quality);context.data=data;
         var urls=context.lab ? [data.url] : unique([data.url].concat(episode.mirrors && episode.mirrors[context.quality] || [])).filter(mediaURL).slice(0,3);
-        var version=/\bTizen[\s\/]+([\d.]+)/i.exec(text(root.navigator && root.navigator.userAgent));
-        var legacy=!!(episode.kino && context.quality==='2160p' && storage('legacy4k','off')==='on' && version && parseFloat(version[1])>=2.3 && parseFloat(version[1])<5);
-        try { if(root.webapis.productinfo && root.webapis.productinfo.isUdPanelSupported && root.webapis.productinfo.isUdPanelSupported()===false)legacy=false; } catch(ignore){}
+        var mode=betaEngineSelection(episode,context.quality),engine=mode.engine,legacy=mode.legacy,nativeUHD=mode.nativeUHD,legacyBrowser=mode.legacyBrowser,browserEngine=engine==='mse';
         historyPlayback=data;betaSelection(context);
         save('last_'+title.id,episode.id);save('last_error','');save('avplay_state','');
-        save('legacy4k_status',legacy ? 'Очікування UHD-режиму · Faborn Player' : 'Не застосовується · Faborn Player');
+        save('legacy4k_status',legacyBrowser ? 'Не застосовується до браузерного HLS · для UHD-режиму обери Samsung AVPlay' : legacy ? 'Очікування UHD-режиму · Faborn Player' : 'Не застосовується · Faborn Player');
         save('stream_format',episode.streamInfo && episode.streamInfo[context.quality] || '');
         save('kino_playback','');
-        save('last_launch',title.title+' · '+context.quality+' · '+sourceName(release.source)+' · '+voiceLabel(release,episode)+(title.type==='tv' ? ' · S'+episode.season+'E'+episode.episode : '')+' · Faborn Player · бета'+(storage('beta_engine','avplay')==='mse' ? ' · Браузерний HLS' : ' · AVPlay'));
+        save('last_launch',title.title+' · '+context.quality+' · '+sourceName(release.source)+' · '+voiceLabel(release,episode)+(title.type==='tv' ? ' · S'+episode.season+'E'+episode.episode : '')+' · Faborn Player · бета'+(browserEngine ? ' · Браузерний HLS' : ' · AVPlay')+(nativeUHD ? ' · сумісність H.264 4K' : ''));
         save('autoplay_status',title.type==='tv' ? 'Faborn Player · S'+episode.season+'E'+episode.episode+(betaNext(context) ? ' → S'+betaNext(context).season+'E'+betaNext(context).episode : ' · остання доступна серія') : '');
+        function captureState() { if (browserEngine) save('avplay_state',''); else captureNativeState(); }
         return {
-            url:data.url,urls:urls,title:title.title+(title.type==='tv' ? ' · S'+episode.season+'E'+episode.episode : ''),
+            engine:engine,url:data.url,urls:urls,title:title.title+(title.type==='tv' ? ' · S'+episode.season+'E'+episode.episode : ''),
             detail:sourceName(release.source)+' · '+voiceLabel(release,episode)+' · '+context.quality,
             quality:context.quality,qualities:qualityNames(episode),voice:release.id,
             voices:playerVoiceRows(title,release,episode,context.quality).filter(function(row){return !context.lab || row.episode.lab;}).map(function(row){return {id:row.release.id,title:voiceLabel(row.release,row.episode),detail:sourceName(row.release.source)};}),
             subtitles:data.subtitles || [],next:!!betaNext(context),legacy4k:legacy,loopback:context.lab ? data.url : '',
             time:!fromStart && data.timeline && canResume(data.timeline) ? +data.timeline.time || 0 : 0,
             onTime:function(event){if(context.data===data)betaProgress(context,event);},
-            onStarted:function(){if(betaCurrent(context)){save('last_error','');captureNativeState();}},
-            onStatus:function(message){if(betaCurrent(context)){save('beta_player_status',message);captureNativeState();}},
+            onStarted:function(){if(betaCurrent(context)){save('last_error','');captureState();}},
+            onStatus:function(message){if(betaCurrent(context)){save('beta_player_status',message);captureState();}},
             onLegacy:function(message){if(betaCurrent(context))save('legacy4k_status',message);},
-            onError:function(code){if(betaCurrent(context)){save('last_error',sourceName(release.source)+' · '+context.quality+' · Faborn Player · '+code);captureNativeState();}},
+            onError:function(code){if(betaCurrent(context)){save('last_error',sourceName(release.source)+' · '+context.quality+' · Faborn Player · '+code);captureState();}},
             onEnded:function(){
                 if(!betaCurrent(context) || context.data!==data)return;
                 completePlayback(data);
@@ -3013,6 +3089,7 @@
             episodeRequest(serial,episode,url,'Faborn Player',function(error,body){
                 if(!valid())return;
                 if(error || !/^\s*#EXTM3U/.test(body))return fail(error || new Error('Некоректний HLS-потік.'));
+                if(!betaPlayer.available(betaEngineSelection(episode,quality)))return fail(new Error('Механізм для цієї якості недоступний. Поточний потік збережено.'));
                 stopKinoSession();context.busy=false;
                 // Resolution completes before replacing the playing entry; errors retain its progress.
                 context.episode=episode;context.release=release;context.quality=quality;
@@ -3027,7 +3104,7 @@
         loading(session,'Faborn Player · бета');
         ensureBetaPlayer(function(error,player){
             if(serial!==requestSerial || activeSession!==session)return;
-            if(error || !player.available()){notify(error ? error.message : 'Samsung AVPlay недоступний.');renderSources(session);return;}
+            if(error){notify(error.message);renderSources(session);return;}
             if(L.Player.opened && L.Player.opened()){notify('Спочатку заверши перегляд у Lampa.');renderSources(session);return;}
             if(betaContext)return;
             closePresentation();L.Select.hide();L.Controller.toggle(returnController);
@@ -3446,18 +3523,18 @@
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_source', type: 'select', values: {uakino:'UAKino', uaserials:'UASerials', uafix:'UAFix', kinobase:'KinoBase', kinoukr:'KinoUkr'}, default: 'uakino'}, field: {name: 'Пріоритет джерела', description: 'Вибір джерела також доступний перед переглядом.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_audio_language',type:'select',values:SOURCE_LANGUAGES,default:'uk'},field:{name:'Мова озвучення',description:'Типово українська. Можна змінити перед переглядом; інша мова не вмикається автоматично.'},onChange:function(){save('quality','best');if(L.Settings&&L.Settings.update)L.Settings.update();}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найкраща', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: '«Найкраща» — максимальна якість кожного озвучення вибраною мовою. Збережений ручний вибір також діє для наступних карток.'}});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_beta',type:'select',values:{off:'Вимкнено',on:'Увімкнено'},default:'off'},field:{name:'UAKinogo · серверна бета',description:'Окремий обробник знаходить посилання. Відео надходить прямо на Samsung через локальний адаптер. Потрібні Tizen Sockets і сумісний кодек.'},onChange:labChanged});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_beta',type:'select',values:{off:'Вимкнено',on:'Увімкнено'},default:'off'},field:{name:'UAKinogo · серверна бета',description:'Обробник знаходить посилання UAKinogo та відновлює конфігурацію UAFix після 404. Відео надходить прямо на телевізор. Для Alloha потрібні Tizen Sockets, WebAssembly і сумісний кодек.'},onChange:labChanged});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_server',type:'button'},field:{name:'Сервер UAKinogo',description:'Можна вставити user:password@server:port. Логін і пароль будуть збережені окремо; тут залишиться лише адреса. HTTPS шифрує облікові дані.'},onRender:function(item){item.append($('<div class="settings-param__value"></div>').text(storage('uakinogo_server','')||'Задати адресу'));},onChange:serverAddress});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_login',type:'button'},field:{name:'Логін сервера',description:'Потрібен, якщо сервер вимагає авторизацію. Локальний доступ без пароля дозволяється окремо на Ubuntu.'},onRender:function(item){item.append($('<div class="settings-param__value"></div>').text(storage('uakinogo_login','')||'Не задано'));},onChange:serverLogin});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_password',type:'button'},field:{name:'Пароль сервера',description:'Редагування із прихованими символами; пароль не додається до історії клавіатури.'},onRender:function(item){item.append('<div class=\"settings-param__value\">'+(storage('uakinogo_password','')?'Задано · змінити':'Задати пароль')+'</div>');},onChange:serverPassword});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_clear_credentials',type:'button'},field:{name:'Очистити логін і пароль',description:'Зберігає адресу. Для локального підключення без авторизації, дозволеного на сервері.'},onChange:clearServerCredentials});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_kino_session',type:'select',values:{auto:'Автоматично',direct:'Лише звичайний запит'},default:'auto'},field:{name:'Сесія KinoBase',description:'Після помилки сесії повторює запит через мережевий API Samsung, якщо він доступний у застосунку. Окремий сервер не потрібен.'}});
-        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_legacy4k',type:'select',values:{off:'Вимкнено',on:'Увімкнено · тест сумісності'},default:'off'},field:{name:'4K на старому Tizen',description:'Лише KinoBase 2160p та Tizen 2.3–4.x: явно вмикає UHD-декодер перед запуском. Для наступного відкриття відео. Не змінює кодек; результат видно у діагностиці.'}});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_legacy4k',type:'select',values:{off:'Вимкнено',on:'Увімкнено · тест сумісності'},default:'off'},field:{name:'4K на старому Tizen',description:'KinoBase 2160p, Tizen 2.3–4.x: вмикає UHD-декодер AVPlay. На Tizen 3 потік H.264 4K запускає через AVPlay навіть при виборі браузерного HLS. Інші потоки зберігають обраний механізм. Не змінює кодек; результат видно у діагностиці.'}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_refresh', type: 'button'}, field: {name: 'Оновити індекс із GitHub'}, onChange: function () {
             loadCatalog(true, function (error, catalog) { notify(error ? error.message : 'Індекс оновлено: ' + catalog.titles.length + ' назв'); });
         }});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_diagnostic', type: 'button'}, field: {name: 'Версія та діагностика', description: VERSION}, onChange: function () { rememberController(); diagnostics(); }});
-        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_pages', type: 'input', values: '', default: '', placeholder: 'Визначається автоматично'}, field: {name: 'Адреса GitHub Pages', description: 'Зазвичай визначається автоматично. Резерв: https://USERNAME.github.io/REPOSITORY/'}});
+        api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_pages', type: 'input', values: '', default: '', placeholder: 'Визначається автоматично'}, field: {name: 'Адреса GitHub Pages', description: 'Необов’язкова власна адреса, має пріоритет. Автоматично: '+DEFAULT_PAGES+' Після зміни перезапусти Lampa.'}});
     }
     var TORRENT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h5v10a3 3 0 0 0 6 0V3h5v10a8 8 0 0 1-16 0Z" fill="#28dbbf"/><path d="M12 16a3 3 0 0 0 3-3V3h5v10a8 8 0 0 1-8 8Z" fill="#369bff"/><path d="M4 3h5v4H4Zm11 0h5v4h-5Z" fill="#d3fff7"/><path d="M6 9v4a6 6 0 0 0 4 5.65" fill="none" stroke="#91ffe4" stroke-width="1.2" stroke-linecap="round"/></svg>';
     function buttonMarkup(kind) {

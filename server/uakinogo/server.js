@@ -1,12 +1,12 @@
 'use strict';
 const http=require('node:http'),crypto=require('node:crypto');
-const {createResolver,card}=require('./resolver');
+const {createResolver,card,uafixInput,createUafixResolver}=require('./resolver');
 const {createUserStore,basic}=require('./auth');
 const {lanPolicy,loopback}=require('./network');
 const {createMetrics}=require('./metrics');
 const {createAdmin}=require('./admin');
-const VERSION='0.1.0-beta.48';
-function createService({resolve=createResolver(),keys=[],users=null,allowLan='',maxActive=3,maxAuth=3,metrics=createMetrics(),admin=null}={}){
+const VERSION='0.1.0-beta.49';
+function createService({resolve=createResolver(),resolveUafix=createUafixResolver(),keys=[],users=null,allowLan='',maxActive=3,maxAuth=3,metrics=createMetrics(),admin=null}={}){
  const fromTrustedLan=lanPolicy(allowLan);
  const fromAdminLan=lanPolicy(admin?.allowLan||'');
  const cache=new Map(),rates=new Map(),contexts=new WeakMap();let active=0,authenticating=0;
@@ -24,7 +24,8 @@ function createService({resolve=createResolver(),keys=[],users=null,allowLan='',
    try{return send(res,200,{ok:true,version:VERSION,auth:mode(users?await users.read():null),localAccess:allowLan?'allowed':'authenticated',videoProxy:false});}
    catch(ignore){return send(res,503,{ok:false,error:'Файл облікових записів недоступний',videoProxy:false});}
   }
-  if(req.method!=='POST'||req.url!=='/v1/resolve')return send(res,404,{error:'Маршрут відсутній'});
+  const uafix=req.url==='/v1/uafix/player';
+  if(req.method!=='POST'||req.url!=='/v1/resolve'&&!uafix)return send(res,404,{error:'Маршрут відсутній'});
   const peer=req.socket.remoteAddress;
   // Classify traffic independently of authentication. An authenticated home
   // viewer is still local, but this marker never grants access to the API.
@@ -56,12 +57,13 @@ function createService({resolve=createResolver(),keys=[],users=null,allowLan='',
    const season=data.season===undefined?0:data.season,episode=data.episode===undefined?0:data.episode;
    if(!Number.isInteger(season)||!Number.isInteger(episode)||season<0||season>1000||episode<0||episode>10000)return send(res,400,{error:'Некоректна серія'});
    context.title=movie.title||movie.name||movie.original_title||movie.original_name;context.season=season;context.episode=episode;
-   const id=JSON.stringify([movie,season,episode]);
+   const player=uafix?uafixInput(data):null;
+   const id=JSON.stringify([movie,season,episode,player]);
    const cached=cache.get(id);if(data.fresh!==true&&cached&&now-cached.time<45000){context.cacheHit=true;return send(res,200,cached.data);}
    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),18000);
    res.on('close',()=>{if(!res.writableEnded)controller.abort();});active++;
    try{
-    const result=await resolve(movie,season,episode,controller.signal);
+    const result=uafix?await resolveUafix(player,controller.signal):await resolve(movie,season,episode,controller.signal);
     if(JSON.stringify(result).length>4*1024*1024)throw new Error('Завелика відповідь');
     for(const [k,v] of cache)if(now-v.time>45000)cache.delete(k);
     while(cache.size>=64)cache.delete(cache.keys().next().value);

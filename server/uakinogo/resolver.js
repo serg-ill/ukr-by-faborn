@@ -54,4 +54,29 @@ function createResolver(fetcher=fetch){
   return {schema:1,sourcePage,referer:embed,origin:Core.origin,season,episode,episodes:Core.episodes(info),tracks:tracks.map(t=>({label:t.label,language:t.language,qualities:t.qualities}))};
  };
 }
-module.exports={createResolver,card};
+function uafixInput(data){
+ const sourcePage=String(data.sourcePage||''),embed=String(data.embed||'');
+ if(!/^https:\/\/uafix\.net\/(?:films|serials)\/[a-z0-9-]+\/(?:season-\d+-episode-\d+\/)?$/.test(sourcePage)||!/^https:\/\/zetvideo\.net\/(?:vod|serial)\/\d+\/?$/.test(embed))throw new Error('Некоректна сторінка UAFix');
+ return {sourcePage,embed};
+}
+function createUafixResolver(fetcher=fetch){
+ return async function resolve(input,signal){
+  const {sourcePage,embed}=uafixInput(input);
+  async function read(url,referer){
+   // Only these exact metadata pages are requested. Never follow a redirect
+   // to a private host, stream, or another provider, and never fetch video.
+   const response=await fetcher(url,{redirect:'manual',signal,headers:{'User-Agent':'Mozilla/5.0','Accept':'text/html',...(referer?{Referer:referer}:{})}});
+   if(!response.ok){await response.body?.cancel();throw new Error('UAFix: HTTP '+response.status);}
+   let size=0;const chunks=[];
+   for await(const chunk of response.body){size+=chunk.length;if(size>1024*1024)throw new Error('Завелика сторінка UAFix');chunks.push(chunk);}
+   return Buffer.concat(chunks).toString('utf8');
+  }
+  const page=(await read(sourcePage)).replace(/<!--[\s\S]*?-->/g,'').replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,'').split(/<[^>]+(?:id=["']dle-comments|class=["'](?:full-comms|comments)\b)/i)[0];
+  const refs=[...page.matchAll(/<(?:iframe|link|li|div)\b([^>]*)>/gi)].flatMap(m=>[...m[1].matchAll(/(?:^|\s)(?:src|data-src|data-file|value)\s*=\s*["']([^"']+)["']/gi)].map(a=>a[1].replace(/^\/\//,'https:')));
+  if(!refs.includes(embed))throw new Error('Плеєр не належить сторінці UAFix');
+  const playerHtml=await read(embed,sourcePage);
+  if(/<title>\s*404 Not Found\s*<\/title>/i.test(playerHtml)||!/new\s+Playerjs\s*\(/.test(playerHtml))throw new Error('UAFix не віддав конфігурацію плеєра');
+  return {schema:1,provider:'uafix',sourcePage,embed,playerHtml};
+ };
+}
+module.exports={createResolver,card,uafixInput,createUafixResolver};

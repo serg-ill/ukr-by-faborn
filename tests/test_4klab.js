@@ -111,6 +111,14 @@ test('browser without AVPlay reports unsupported and keeps native navigation usa
     assert.equal(state.workers.length,0);assert.match(state.menu.items[0].title,/AVPLAY/);
     state.menu.onBack();assert.equal(state.controller,'settings_component');assert.equal(state.menu,null);
 });
+test('compatibility failure names only missing APIs and Back leaves no worker or timer',()=>{
+    for(const [key,label] of [['WebAssembly','WebAssembly'],['Worker','Worker'],['crypto','Web Crypto'],['Blob','Blob URL'],['URL','Blob URL']]){
+        const {state,root}=harness();delete root[key];state.enable();
+        assert.ok(state.menu.items[0].title.startsWith('COMPAT: у застосунку відсутні '+label+'.'));
+        assert.equal(state.workers.length,0);assert.equal(state.timers.size,0);
+        state.menu.onBack();assert.equal(state.controller,'settings_component');assert.equal(state.menu,null);
+    }
+});
 test('cancel during startup ignores all stale worker replies and releases native worker', () => {
     const {state}=harness();state.enable();const w=state.workers[0],late=w.onmessage;
     state.menu.onBack();assert.equal(state.controller,'settings_component');

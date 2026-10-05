@@ -8,6 +8,7 @@ function environment(options={}) {
  function element(tag){
   const e={tagName:tag,children:[],style:{},attrs:{},className:'',textContent:'',scrollTop:0,clientHeight:400,offsetTop:0,offsetHeight:45,
    appendChild(child){child.parentNode=this;this.children.push(child);return child;},removeChild(child){this.children=this.children.filter(x=>x!==child);child.parentNode=null;},
+   insertBefore(child,before){child.parentNode=this;const at=this.children.indexOf(before);this.children.splice(at<0?this.children.length:at,0,child);return child;},
    setAttribute(k,v){this.attrs[k]=String(v);},getAttribute(k){return this.attrs[k];},getBoundingClientRect(){return {left:0,width:100};}};
   let content='';Object.defineProperty(e,'textContent',{get:()=>content,set(value){content=value;this.children=[];}});
   e.classList={contains:c=>e.className.split(' ').includes(c),add(c){if(!this.contains(c))e.className+=' '+c;},remove(c){e.className=e.className.split(' ').filter(x=>x!==c).join(' ');},toggle(c,on){if(on)this.add(c);else this.remove(c);}};
@@ -134,6 +135,45 @@ test('browser network failures try only a supplied mirror of the selected stream
  api.play(e.spec({urls}));e.avState.prepared[0].fail({name:'HLSNetworkError'});e.advance(0);
  assert.deepEqual(e.calls.filter(c=>c[0]==='open').map(c=>c[1]),urls);assert.equal(e.errors.length,0);
  e.avState.prepared[1].fail({name:'NotSupportedError'});e.advance(0);assert.match(e.errors[0],/MSE IDLE.*prepareAsync/);api.close();assert.equal(e.jobs.size,0);
+});
+test('per-stream AVPlay compatibility preserves the browser preference and does not need MSE support',()=>{
+ const e=environment({storage:{faborn_ukr_beta_engine:'mse'}});
+ e.root.FabornHlsTransport=()=>{throw new Error('MSE must not be initialized for this stream');};
+ assert.equal(e.api.available({engine:'avplay'}),true);
+ e.api.play(e.spec({engine:'avplay',legacy4k:true,time:498}));e.prepare();e.at(499);
+ assert.ok(e.all().some(el=>el.tagName==='object'));assert.ok(!e.all().some(el=>el.tagName==='video'));
+ assert.deepEqual(e.calls.filter(c=>c[0]==='seek'),[['seek',498000]]);
+ assert.match(e.statuses.at(-1),/AVPlay/);assert.equal(e.store.faborn_ukr_beta_engine,'mse');
+ e.key('keydown',10009);assert.equal(e.closed,1);assert.equal(e.jobs.size,0);
+});
+test('quality changes can switch decoders and preserve progress, pause and Back ownership',()=>{
+ const e=environment({storage:{faborn_ukr_beta_engine:'mse'}}),transport={...e.root.webapis.avplay};
+ let browserOpens=0,nativeOpens=0;
+ const open=transport.open;
+ transport.open=url=>{browserOpens++;open(url);};
+ e.root.webapis.avplay.open=url=>{nativeOpens++;open(url);};
+ transport.surface=()=>e.doc.createElement('video');transport.available=()=>true;
+ e.root.FabornHlsTransport=()=>transport;e.root.FabornHls=function(){};
+ const api=factory(e.root,e.L);
+ function request(action,done){done(null,e.spec({engine:action.quality==='2160p'?'avplay':'mse',quality:action.quality,request}));}
+ api.play(e.spec({engine:'mse',quality:'1080p',request}));e.prepare();e.at(498);e.click('Пауза');
+ const old=e.avState.listeners;
+ api.change({type:'quality',quality:'2160p'});e.prepare();
+ assert.equal(e.avState.state,'PAUSED');assert.equal(e.avState.time,498000);
+ assert.equal(browserOpens,1);assert.equal(nativeOpens,1);
+ assert.equal(e.all().filter(el=>el.tagName==='object').length,1);assert.ok(!e.all().some(el=>el.tagName==='video'));
+ old.onerror('HLSMediaError');e.advance(0);assert.equal(e.errors.length,0);
+ api.change({type:'quality',quality:'1080p'});e.prepare();
+ assert.equal(e.avState.state,'PAUSED');assert.equal(e.avState.time,498000);assert.equal(browserOpens,2);
+ assert.equal(e.all().filter(el=>el.tagName==='video').length,1);assert.ok(!e.all().some(el=>el.tagName==='object'));
+ assert.equal(e.store.faborn_ukr_beta_engine,'mse');e.key('keydown',10009);
+ assert.equal(e.closed,1);assert.equal(e.controller,'full_start');assert.equal(e.jobs.size,0);
+});
+test('decoder errors keep the failing state instead of the state after cleanup',()=>{
+ const e=environment();e.api.play(e.spec());e.prepare();e.at(20);
+ e.avState.listeners.onerror('PLAYER_ERROR_NOT_SUPPORTED_FORMAT');e.advance(0);
+ assert.match(e.statuses.at(-1),/Помилка відтворення.*AVPlay PLAYING/);
+ assert.equal(e.avState.state,'NONE');e.api.close();
 });
 test('an accepted resume seek without an advancing playback clock still times out',()=>{
  const e=environment();e.api.play(e.spec({time:210}));e.prepare();e.advance(45000);

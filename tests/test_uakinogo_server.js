@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {createService} = require('../server/uakinogo/server');
-const {createResolver, card} = require('../server/uakinogo/resolver');
+const {createResolver, card, createUafixResolver} = require('../server/uakinogo/resolver');
 const Core = require('../lib/4klab/core');
 
 const movie = {title:'Fixture film', original_title:'Fixture film', release_date:'2023-01-01', media_type:'movie'};
@@ -134,4 +134,48 @@ test('TV accepts only a LAN HTTP or HTTPS resolver and validates the returned ep
     for(const u of ['http://public.example','file:///etc/passwd','http://192.168.1.1/?url=x','https://example/#x']) assert.equal(Core.resolverBase(u),'');
     assert.equal(Core.resolverResult(result(),0,0).tracks[0].qualities['2160p'][0],media);
     for(const change of [{schema:2},{episode:2},{referer:'https://evil.test/'},{origin:'https://evil.test'},{sourcePage:'https://uakinogo.is.evil.test/42-x.html'},{episodes:[]},{tracks:[{label:'EN',language:'en',qualities:{'2160p':['http://127.0.0.1/a']}}]}]) assert.throws(()=>Core.resolverResult({...result(),...change},0,0),/SERVER/);
+});
+
+const fixPage='https://uafix.net/films/oppengejmer/',fixEmbed='https://zetvideo.net/vod/19767';
+const fixHtml='new Playerjs({file:"https://zetvideo.net/vid/fixture/hls/index.m3u8"})';
+test('UAFix fallback fetches only its confirmed page and iframe with Referer, never the HLS or video',async()=>{
+ const calls=[],resolver=createUafixResolver(async(url,options)=>{calls.push({url,options});return new Response(url===fixPage?'<iframe src="'+fixEmbed+'"></iframe>':fixHtml);});
+ const controller=new AbortController(),data=await resolver({sourcePage:fixPage,embed:fixEmbed},controller.signal);
+ assert.deepEqual(calls.map(c=>c.url),[fixPage,fixEmbed]);assert.equal(calls[1].options.headers.Referer,fixPage);
+ assert.ok(calls.every(c=>c.options.redirect==='manual' && c.options.signal===controller.signal));
+ assert.equal(data.playerHtml,fixHtml);assert.equal(data.provider,'uafix');assert.equal(data.schema,1);
+});
+test('UAFix metadata cannot request arbitrary hosts, media routes, redirects, or an unlisted player',async()=>{
+ for(const patch of [{sourcePage:'http://uafix.net/films/a/'},{sourcePage:'https://uafix.net@127.0.0.1/films/a/'},{sourcePage:fixPage+'?url=secret'},{sourcePage:'https://uafix.net/films/a/../'},{embed:'https://zetvideo.net/vid/1/hls/index.m3u8'},{embed:'https://zetvideo.net.evil.test/vod/1'},{embed:'https://127.0.0.1/vod/1'}]){
+  let calls=0;const resolve=createUafixResolver(async()=>{calls++;throw Error('unexpected');});
+  await assert.rejects(resolve({sourcePage:fixPage,embed:fixEmbed,...patch}),/Некоректна сторінка/);assert.equal(calls,0);
+ }
+ for(const body of ['<iframe src="https://zetvideo.net/vod/999"></iframe>','<!-- <iframe src="'+fixEmbed+'"></iframe> -->','<script>var x=\'<iframe src="'+fixEmbed+'"></iframe>\';</script>','<div id="dle-comments"><iframe src="'+fixEmbed+'"></iframe>']){
+  let calls=0;const resolve=createUafixResolver(async()=>{calls++;return new Response(body);});
+  await assert.rejects(resolve({sourcePage:fixPage,embed:fixEmbed}),/не належить/);assert.equal(calls,1);
+ }
+ let calls=0;const redirect=createUafixResolver(async()=>{calls++;return new Response(null,{status:302,headers:{location:'http://127.0.0.1/private'}});});
+ await assert.rejects(redirect({sourcePage:fixPage,embed:fixEmbed}),/HTTP 302/);assert.equal(calls,1);
+});
+test('UAFix metadata applies response bounds and rejects an upstream soft 404 even with the right Referer',async()=>{
+ for(const body of ['<title>404 Not Found</title>','x'.repeat(1024*1024+1)]){
+  const resolve=createUafixResolver(async url=>new Response(url===fixPage?'<iframe src="'+fixEmbed+'"></iframe>':body));
+  await assert.rejects(resolve({sourcePage:fixPage,embed:fixEmbed}),/не віддав|Завелика/);
+ }
+});
+test('UAFix route shares authentication, cache revocation, metrics and cancellation with the resolver',async t=>{
+ let calls=0,valid=true,signal,started;
+ const begun=new Promise(r=>started=r),users={read:async()=>({enabled:true}),verify:async header=>valid&&header==='Basic Zml4dHVyZTpwYXNz'};
+ const s=await service(t,{users,resolveUafix:async(input,sig)=>{calls++;if(input.embed.endsWith('/2')){signal=sig;started();await new Promise((r,j)=>sig.addEventListener('abort',()=>j(Error('cancelled'))));}return {schema:1,provider:'uafix',...input,playerHtml:fixHtml};}});
+ const body={movie,sourcePage:fixPage,embed:fixEmbed};
+ const post=(data=body,authorization='Basic Zml4dHVyZTpwYXNz',abort)=>fetch(s.base+'/v1/uafix/player',{method:'POST',headers:{Authorization:authorization},body:JSON.stringify(data),signal:abort});
+ assert.equal((await post(body,'')).status,401);assert.equal(calls,0);
+ assert.equal((await post()).status,200);assert.equal((await post()).status,200);assert.equal(calls,1);
+ valid=false;assert.equal((await post()).status,401);assert.equal(calls,1);valid=true;
+ assert.equal((await post({...body,embed:'https://127.0.0.1/vod/1'})).status,400);assert.equal(calls,1);
+ const controller=new AbortController(),pending=post({...body,embed:'https://zetvideo.net/vod/2'},undefined,controller.signal).catch(()=>{});
+ await begun;const aborted=new Promise(r=>signal.addEventListener('abort',r));controller.abort();await pending;await aborted;assert.equal(signal.aborted,true);
+ const history=s.server.metrics.snapshot();assert.ok(history.total.requests>=5);
+ assert.ok(history.events.some(e=>e.status===200&&e.cacheHit&&e.title===movie.title));assert.ok(history.events.some(e=>e.status===401));
+ assert.equal((await (await fetch(s.base+'/health')).json()).videoProxy,false);
 });
