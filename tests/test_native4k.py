@@ -26,6 +26,8 @@ class NativeLoopbackTests(unittest.TestCase):
         cls.lib.lab_request.restype = ctypes.c_char_p
         cls.lib.lab_send.argtypes = [ctypes.c_void_p, ctypes.c_int]
         cls.lib.lab_get.argtypes = [ctypes.c_char_p] * 6 + [ctypes.c_int]
+        cls.lib.lab_get_media.argtypes = [ctypes.c_char_p] * 5 + [ctypes.c_int]
+        cls.lib.lab_set_agent.argtypes = [ctypes.c_char_p]
 
     @classmethod
     def tearDownClass(cls):
@@ -100,6 +102,12 @@ class NativeLoopbackTests(unittest.TestCase):
         self.assertEqual(self.lib.lab_init(), 1)
         self.assertLess(self.lib.lab_get(b'file:///etc/passwd', b'', b'', b'', b'', b'', 1024), 0)
         self.assertLess(self.lib.lab_get(b'https://example.com', b'x\r\nBad: a', b'', b'', b'', b'', 1024), 0)
+        self.assertLess(self.lib.lab_get_media(b'https://example.com', b'', b'', b'', b'x\r\nBad: a', 1024), 0)
+        self.assertLess(self.lib.lab_get_media(b'https://example.com', b'', b'', b'', b'x' * 257, 1024), 0)
+        self.assertLess(self.lib.lab_get_media(b'https://example.com', b'', b'', b'0-10\r\nBad: a', b'', 1024), 0)
+        self.assertEqual(self.lib.lab_set_agent(b'Mozilla/5.0 (SMART-TV; Tizen 6.5)'), 1)
+        self.assertEqual(self.lib.lab_set_agent(b'Mozilla/5.0\r\nBad: a'), 0)
+        self.assertEqual(self.lib.lab_set_agent(b'x' * 1024), 0)
 
 
 if __name__ == '__main__':

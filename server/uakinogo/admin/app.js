@@ -48,16 +48,19 @@
     function nameFor(event) { return event.kind==='user'?event.name:({lan:'Локальний доступ',key:'Ключ доступу',open:'Без авторизації',denied:'Відмовлено'})[event.kind]||'Невідомо'; }
     function eventRows(events) {
         return events.map(e=>{
-            const status=cell(''), good=e.status>=200&&e.status<300;
-            status.append(badge(good?(e.cacheHit?'Із кешу':'Успішно'):'HTTP '+e.status,good?(e.cacheHit?'neutral':''):'error'));
+            const status=cell('','','request-result'), good=e.status>=200&&e.status<300;
+            status.append(badge(good?(e.cacheHit?'Дані з кешу':'Дані отримано'):'HTTP '+e.status,good?(e.cacheHit?'neutral':''):'error'));
+            if(!good)status.append(element('small',e.reason||'Причину не записано','request-reason'));
+            const source=cell('');
+            source.append(e.provider==='uakinogo'?badge('UAKinogo / Alloha','source-pill'):e.provider==='uafix'?badge('UAFix','source-pill'):element('small','Не записано'));
             const episode=e.season&&e.episode?'S'+e.season+' · E'+e.episode:'';
             const identity=cell(nameFor(e),e.ip);if(e.local)identity.append(badge('Локально','local-pill'));
-            return [cell(date(e.time,true),'','nowrap'),identity,cell(e.title||'Без даних картки',episode,'title'),status,cell(numeric(e.durationMs)+' мс','','nowrap'),cell(bytes(e.inputBytes+e.outputBytes),'','nowrap')];
+            return [cell(date(e.time,true),'','nowrap'),identity,cell(e.title||'Без даних картки',episode,'title'),source,status,cell(numeric(e.durationMs)+' мс','','nowrap'),cell(bytes(e.inputBytes+e.outputBytes),'','nowrap')];
         });
     }
     function renderEvents() {
         if(!overview)return;
-        const m=overview.metrics,heads=['Час','Користувач','Назва','Результат','Час відповіді','API-трафік'];
+        const m=overview.metrics,heads=['Час','Користувач','Назва','Джерело','Результат і причина','Час відповіді','API-трафік'];
         if(view==='overview')table('recent-table',heads,eventRows(m.events.slice(0,5)));
         if(view!=='activity')return;
         table('activity-table',heads,eventRows(m.events.filter(e=>(!$('errors-only').checked||e.status>=400)&&(!$('local-only').checked||e.local))));

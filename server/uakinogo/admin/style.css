@@ -7,3 +7,5 @@
 .local-panel{margin-top:24px}.local-description{font-size:12px;margin-bottom:18px}.local-pill{margin-top:6px}
 .journal-filters{display:flex;gap:16px;flex-wrap:wrap}.password-mode{margin:10px 0 18px;white-space:normal}.password-mode input{flex:none}.success-text{font-size:12px;color:var(--accent);margin-top:12px}.success-text:empty{display:none}
 @media(max-width:760px){.sidebar-bottom{position:static;padding-top:8px}.account-actions{flex-direction:row;justify-content:flex-end;gap:16px}.local-summary{align-items:flex-start}.local-summary>div{gap:7px}#local-summary-detail{flex-basis:100%}.journal-filters{flex-direction:column;gap:8px}}
+/* Keep the reason readable without turning each request into a large card. */
+td.request-result{min-width:190px;max-width:290px}td .request-reason{color:#b3c2ca;font-size:11px;line-height:1.45;max-width:280px;overflow-wrap:anywhere;margin-top:6px}.pill.source-pill{color:#bcdcf3;background:#1b303f}

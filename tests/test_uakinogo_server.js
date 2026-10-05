@@ -95,6 +95,9 @@ test('disconnect aborts the metadata request',async t=>{
     const req=fetch(s.base+'/v1/resolve',{method:'POST',body:JSON.stringify({movie}),signal:controller.signal}).catch(()=>{});
     await begun;const aborted=new Promise(resolve=>signal.addEventListener('abort',resolve));controller.abort();await req;await aborted;
     assert.equal(signal.aborted,true);
+    const event=s.server.metrics.snapshot().events[0];
+    assert.equal(event.status,499);assert.equal(event.errorCode,'client_closed');
+    assert.equal(event.provider,'uakinogo');assert.match(event.reason,/Клієнт закрив/);
 });
 test('resolver visits only title metadata and the player API, never a CDN or media resource',async()=>{
     const calls=[];

@@ -1,5 +1,6 @@
 'use strict';
 const fs=require('node:fs/promises'), path=require('node:path'), crypto=require('node:crypto');
+const {eventDetails,reason}=require('./diagnostics');
 const DAY=86400000, RETENTION=30, MAX_EVENTS=300, MAX_AUDIT=100, MAX_IDENTITIES=160, MAX_FILE=4*1024*1024;
 const fields=['requests','success','errors','authFailures','cacheHits','inputBytes','outputBytes','durationMs'];
 const clean=(value,max=180)=>String(value||'').replace(/[\x00-\x1f\x7f]/g,' ').slice(0,max);
@@ -34,7 +35,7 @@ function createMetrics({file='',now=Date.now,flushMs=30000}={}) {
         const name=kind==='user' ? clean(input.name,64) : '';
         const status=Math.floor(number(input.status));
         const event={time,kind,name,ip:address(input.ip),local:input.local===true||kind==='lan',title:clean(input.title),season:number(input.season),episode:number(input.episode),
-            status,cacheHit:input.cacheHit===true,inputBytes:number(input.inputBytes),outputBytes:number(input.outputBytes),durationMs:Math.round(number(input.durationMs))};
+            status,...eventDetails({...input,status}),cacheHit:input.cacheHit===true,inputBytes:number(input.inputBytes),outputBytes:number(input.outputBytes),durationMs:Math.round(number(input.durationMs))};
         const counts={requests:1,success:status>=200&&status<300?1:0,errors:status>=400?1:0,authFailures:status===401?1:0,
             cacheHits:event.cacheHit?1:0,inputBytes:event.inputBytes,outputBytes:event.outputBytes,durationMs:event.durationMs};
         trim(); const row=day(); add(row.total,counts);
@@ -85,7 +86,7 @@ function createMetrics({file='',now=Date.now,flushMs=30000}={}) {
                 data={version:1,since:value.since,
                     days:value.days.map(d=>({date:d.date,total:counts(d.total),local:local(d),people:d.people.map(p=>({kind:clean(p.kind,16),name:clean(p.name,64),lastSeen:p.lastSeen,lastIp:address(p.lastIp),...counts(p)}))})),
                     events:value.events.map(e=>({time:e.time,kind:clean(e.kind,16),name:clean(e.name,64),ip:address(e.ip),local:e.local===true||e.kind==='lan',title:clean(e.title),season:e.season,episode:e.episode,status:e.status,
-                        cacheHit:e.cacheHit===true,inputBytes:e.inputBytes,outputBytes:e.outputBytes,durationMs:e.durationMs})),
+                        ...eventDetails(e),cacheHit:e.cacheHit===true,inputBytes:e.inputBytes,outputBytes:e.outputBytes,durationMs:e.durationMs})),
                     audit:value.audit.map(e=>({time:e.time,action:clean(e.action,40),actor:clean(e.actor,64),target:clean(e.target,64),ip:clean(e.ip,64)}))};
             } catch (error) {
                 if (error.code!=='ENOENT') { storageError='Не вдалося прочитати статистику. Попередній файл збережено; нові дані поки лише в пам’яті.'; blocked=true; }
@@ -116,7 +117,7 @@ function createMetrics({file='',now=Date.now,flushMs=30000}={}) {
         const localClients=[...clients.values()].sort((a,b)=>b.lastSeen-a.lastSeen);
         const local={total:localTotal,clients:localClients,unattributedRequests:Math.max(0,localTotal.requests-localClients.reduce((sum,c)=>sum+c.requests,0))};
         return JSON.parse(JSON.stringify({since:data.since,retentionDays:RETENTION,total,local,days,people:[...people.values()],
-            events:data.events.slice().reverse(),audit:data.audit.slice().reverse(),persistent:Boolean(file)&&!blocked,storageError}));
+            events:data.events.slice().reverse().map(e=>({...e,reason:reason(e)})),audit:data.audit.slice().reverse(),persistent:Boolean(file)&&!blocked,storageError}));
     }
     async function flush() {
         await ready;

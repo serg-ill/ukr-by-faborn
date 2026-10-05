@@ -289,6 +289,8 @@ test('committed Samsung WASM and generated factory actually initialize together'
         module.then(m=>{try {
             m.FS.writeFile('/cacert.pem',fs.readFileSync(require.resolve('../lib/4klab/cacert.pem')));
             assert.equal(m._lab_init(),1);assert.equal(m._lab_size(),0);assert.equal(typeof m._lab_listen,'function');
+            assert.equal(m.ccall('lab_set_agent','number',['string'],['Mozilla/5.0 (SMART-TV; Tizen 6.5)']),1);
+            assert.equal(m.ccall('lab_get_media','number',['string','string','string','string','string','number'],['http://invalid.test','','','','a'.repeat(32),1024]),-1);
             assert.equal(m.ccall('lab_get','number',['string','string','string','string','string','string','number'],['http://invalid.test','','','','','',1024]),-1);
             m._lab_stop();resolve();
         } catch(error) { reject(error); }});

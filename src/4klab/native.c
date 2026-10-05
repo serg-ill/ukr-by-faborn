@@ -27,6 +27,7 @@ static unsigned char *body;
 static size_t body_size, body_limit;
 static char error_text[CURL_ERROR_SIZE], location[8192], content_range[160];
 static char request_buffer[8193];
+static char user_agent[1024] = "Mozilla/5.0";
 static int listener = -1, client = -1;
 
 /* Samsung's fcntl(F_SETFL) changes Emscripten bookkeeping only. Use the
@@ -77,11 +78,17 @@ API int lab_init(void) {
     http = curl_easy_init();
     return http != NULL;
 }
+API int lab_set_agent(const char *value) {
+    if (!value || !*value || strlen(value) >= sizeof(user_agent) || strpbrk(value, "\r\n")) return 0;
+    snprintf(user_agent, sizeof(user_agent), "%s", value);
+    return 1;
+}
 /* Redirects are deliberately handled by the worker, which validates each destination. */
-API int lab_get(const char *url, const char *origin, const char *referer,
-                const char *post, const char *borth, const char *range, int limit) {
+static int get(const char *url, const char *origin, const char *referer,
+               const char *post, const char *borth, const char *range, const char *controls, int limit) {
     if (!http || !url || strncmp(url, "https://", 8)) return -1;
     if (strpbrk(url, "\r\n") || strpbrk(origin, "\r\n") || strpbrk(referer, "\r\n") || strpbrk(borth, "\r\n")) return -1;
+    if (strpbrk(range, "\r\n") || strlen(controls) > 256 || strspn(controls, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != strlen(controls)) return -1;
     free(body); body = NULL; body_size = 0;
     body_limit = limit > 0 && limit <= MAX_BODY ? (size_t)limit : MAX_BODY;
     error_text[0] = location[0] = content_range[0] = 0;
@@ -90,7 +97,7 @@ API int lab_get(const char *url, const char *origin, const char *referer,
     curl_easy_setopt(http, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
     curl_easy_setopt(http, CURLOPT_FOLLOWLOCATION, 0L);
     curl_easy_setopt(http, CURLOPT_PROXY, "");
-    curl_easy_setopt(http, CURLOPT_USERAGENT, "Mozilla/5.0");
+    curl_easy_setopt(http, CURLOPT_USERAGENT, user_agent);
     curl_easy_setopt(http, CURLOPT_CONNECTTIMEOUT, 8L);
     curl_easy_setopt(http, CURLOPT_TIMEOUT, 20L);
     curl_easy_setopt(http, CURLOPT_LOW_SPEED_LIMIT, 1024L);
@@ -117,6 +124,10 @@ API int lab_get(const char *url, const char *origin, const char *referer,
         headers = curl_slist_append(headers, value);
         headers = curl_slist_append(headers, "X-Requested-With: XMLHttpRequest");
     }
+    if (*controls) {
+        snprintf(value, sizeof(value), "Accepts-Controls: %s", controls);
+        headers = curl_slist_append(headers, value);
+    }
     if (*post) {
         headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
         curl_easy_setopt(http, CURLOPT_POSTFIELDS, post);
@@ -132,6 +143,15 @@ API int lab_get(const char *url, const char *origin, const char *referer,
     }
     return (int)status;
 }
+API int lab_get(const char *url, const char *origin, const char *referer,
+                const char *post, const char *borth, const char *range, int limit) {
+    return get(url, origin, referer, post, borth, range, "", limit);
+}
+/* The stream token is request-local: metadata requests never inherit it. */
+API int lab_get_media(const char *url, const char *origin, const char *referer,
+                      const char *range, const char *controls, int limit) {
+    return get(url, origin, referer, "", "", range, controls, limit);
+}
 API const unsigned char *lab_body(void) { return body; }
 API int lab_size(void) { return (int)body_size; }
 API const char *lab_error(void) { return error_text; }
@@ -145,6 +165,7 @@ API void lab_stop(void) {
     lab_close_client();
     if (listener >= 0) { close(listener); listener = -1; }
     free(body); body = NULL; body_size = 0;
+    snprintf(user_agent, sizeof(user_agent), "%s", "Mozilla/5.0");
     if (http) { curl_easy_cleanup(http); http = NULL; curl_global_cleanup(); }
 }
 API int lab_listen(void) {
