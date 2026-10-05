@@ -29,6 +29,7 @@ static char error_text[CURL_ERROR_SIZE], location[8192], content_range[160];
 static char request_buffer[8193];
 static char user_agent[1024] = "Mozilla/5.0";
 static int listener = -1, client = -1;
+static int nonblocking_http;
 
 /* Samsung's fcntl(F_SETFL) changes Emscripten bookkeeping only. Use the
  * supported native poll + socket timeouts instead of relying on O_NONBLOCK. */
@@ -83,6 +84,24 @@ API int lab_set_agent(const char *value) {
     snprintf(user_agent, sizeof(user_agent), "%s", value);
     return 1;
 }
+/* Per-WASM-instance opt-in. KinoBase retains the original transport. */
+API int lab_set_nonblocking(int enabled) {
+    nonblocking_http = enabled != 0;
+    return nonblocking_http;
+}
+#ifdef __EMSCRIPTEN__
+/* Samsung's cURL port uses USE_BLOCKING_SOCKETS: its nonblock helper is a
+ * no-op, and fcntl cannot change a Tizen host socket. Set the supported flag
+ * when creating each outbound socket, so connect/TLS/read can yield to cURL's
+ * timeout and address fallback loop. DNS still has the outer worker watchdog. */
+static curl_socket_t open_http_socket(void *unused, curlsocktype purpose,
+                                     struct curl_sockaddr *address) {
+    (void)unused;
+    if (purpose != CURLSOCKTYPE_IPCXN) return CURL_SOCKET_BAD;
+    return socket(address->family, address->socktype | SOCK_NONBLOCK,
+                  address->protocol);
+}
+#endif
 /* Redirects are deliberately handled by the worker, which validates each destination. */
 static int get(const char *url, const char *origin, const char *referer,
                const char *post, const char *borth, const char *range, const char *controls, int limit) {
@@ -97,6 +116,9 @@ static int get(const char *url, const char *origin, const char *referer,
     curl_easy_setopt(http, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
     curl_easy_setopt(http, CURLOPT_FOLLOWLOCATION, 0L);
     curl_easy_setopt(http, CURLOPT_PROXY, "");
+#ifdef __EMSCRIPTEN__
+    if (nonblocking_http) curl_easy_setopt(http, CURLOPT_OPENSOCKETFUNCTION, open_http_socket);
+#endif
     curl_easy_setopt(http, CURLOPT_USERAGENT, user_agent);
     curl_easy_setopt(http, CURLOPT_CONNECTTIMEOUT, 8L);
     curl_easy_setopt(http, CURLOPT_TIMEOUT, 20L);
@@ -163,6 +185,7 @@ API void lab_close_client(void) {
 }
 API void lab_stop(void) {
     lab_close_client();
+    nonblocking_http = 0;
     if (listener >= 0) { close(listener); listener = -1; }
     free(body); body = NULL; body_size = 0;
     snprintf(user_agent, sizeof(user_agent), "%s", "Mozilla/5.0");

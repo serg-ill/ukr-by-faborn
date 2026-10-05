@@ -68,6 +68,9 @@ test('HTTP routes only accept GET/HEAD, exact private paths and a single byte ra
 
 function harness() {
     const state={prefs:{faborn_ukr_uakinogo_beta:'off',faborn_ukr_uakinogo_server:'http://192.168.88.191:8787'},workers:[],probes:[],autoProbe:true,timers:new Map(),menu:null,controller:'settings_component',played:null,closes:0,playerEvents:{},videoEvents:{},nextTimer:0,operations:[]};
+    // Native-Lampa cases model an explicit saved choice; default-mode cases
+    // remove it to verify the automatic Alloha/HLS route.
+    state.prefs.faborn_ukr_player='lampa';
     function listener(events) { return {follow(name,fn) { (events[name] ||= []).push(fn); }}; }
     function emit(events,name,data) { for(const fn of events[name] || []) fn(data); }
     function Worker(url) { this.url=url;this.messages=[];state.workers.push(this); }
@@ -273,9 +276,10 @@ test('card playback uses the card controller rather than an unopened settings co
     state.message('play',{url:'http://127.0.0.1:12345/'+key+'/0.m3u8'});
     assert.ok(toggles.includes('full_start'));assert.ok(!toggles.includes('settings_component'));
 });
-test('the selected beta player receives only the probed loopback and closes before its worker',()=>{
-    const {ui,state,L}=harness();L.Storage.field=()=> 'inner';state.prefs.faborn_ukr_uakinogo_beta='on';state.prefs.faborn_ukr_player='beta';let spec,live=false,backs=0;
-    const beta={available:()=>true,active:()=>live,play(value){spec=value;live=true;state.controller='faborn_player_beta';},close(restore){state.operations.push('beta:close');live=false;spec.onClose(restore);}};
+for(const mode of ['beta','auto','default'])test('the '+mode+' player receives only the probed loopback and closes before its worker',()=>{
+    const {ui,state,L}=harness();L.Storage.field=()=> 'inner';state.prefs.faborn_ukr_uakinogo_beta='on';state.prefs.faborn_ukr_player=mode;let spec,live=false,backs=0;
+    if(mode==='default')delete state.prefs.faborn_ukr_player;
+    const beta={available:option=>{assert.equal(option.engine,mode==='beta'?'avplay':'mse');return true;},active:()=>live,play(value){spec=value;live=true;state.controller='faborn_player_beta';},close(restore){state.operations.push('beta:close');live=false;spec.onClose(restore);}};
     ui.discover({title:'Film'},0,0,{controller:'full_start',betaPlayer:done=>done(null,beta),betaSpec:(stream,item)=>({url:item.url,loopback:stream.url,onClose(restore){if(restore){backs++;state.controller='faborn_ukr_view';}}})});
     state.message('resolved',{tracks:[],episodes:[]});ui.playChoice({quality:'2160p'});
     state.message('play',{url:'http://127.0.0.1:12345/'+key+'/0.m3u8',quality:'2160p',codecs:'av01'});
@@ -285,8 +289,9 @@ test('the selected beta player receives only the probed loopback and closes befo
     beta.close(true);assert.equal(backs,1);assert.equal(state.controller,'faborn_ukr_view');
     assert.ok(state.operations.indexOf('beta:close')<state.operations.indexOf('worker:stop'));assert.equal(state.closes,0);
 });
-test('Back while loading the selected beta player invalidates its late callback',()=>{
-    const {ui,state}=harness();state.prefs.faborn_ukr_uakinogo_beta='on';state.prefs.faborn_ukr_player='beta';let loaded,launches=0;
+for(const mode of ['beta','auto','default'])test('Back while loading the '+mode+' player invalidates its late callback',()=>{
+    const {ui,state}=harness();state.prefs.faborn_ukr_uakinogo_beta='on';state.prefs.faborn_ukr_player=mode;let loaded,launches=0;
+    if(mode==='default')delete state.prefs.faborn_ukr_player;
     ui.discover({title:'Film'},0,0,{controller:'full_start',betaPlayer:done=>{loaded=done;},betaSpec:()=>({})});
     state.message('resolved',{tracks:[],episodes:[]});ui.playChoice({quality:'2160p'});
     state.message('play',{url:'http://127.0.0.1:12345/'+key+'/0.m3u8'});state.menu.onBack();

@@ -18,7 +18,7 @@ function environment(options={}) {
  const avState={state:'NONE',time:0,duration:1000000,listeners:{},prepared:[],url:'',subtitle:false};
  const av={
   getState(){return avState.state;},getCurrentTime(){return avState.time;},getDuration(){return avState.duration;},
-  open(url){assert.equal(avState.state,'NONE');calls.push(['open',url]);avState.url=url;avState.time=0;avState.state='IDLE';},
+  open(url,options){assert.equal(avState.state,'NONE');calls.push(['open',url]);avState.openOptions=options;avState.url=url;avState.time=0;avState.state='IDLE';},
   setListener(l){avState.listeners=l;},setDisplayRect(...r){assert.equal(avState.state,'IDLE');calls.push(['rect',...r]);},setDisplayMethod(v){calls.push(['display',v]);},
   setSilentSubtitle(v){avState.subtitle=v;},setStreamingProperty(k,v){assert.equal(avState.state,'IDLE');calls.push(['property',k,v]);if(options.propertyError)throw {name:'NotSupportedError'};},
   prepareAsync(ok,fail){assert.equal(avState.state,'IDLE');calls.push(['prepare']);avState.prepared.push({ok,fail});},
@@ -106,13 +106,24 @@ test('only an explicitly owned tokenized loopback can use HTTP in the beta playe
  }
  const unowned=environment();unowned.api.play(unowned.spec({url}));assert.equal(unowned.calls.some(c=>c[0]==='open'),false);unowned.api.close();
 });
-test('native failure captures bounded codec details and Back closes the failed player in one action',()=>{
- const e=environment();e.api.play(e.spec());const listener=e.avState.listeners;
+test('Alloha failure captures bounded codec details and Back closes the failed player in one action',()=>{
+ const e=environment();e.api.play(e.spec({allohaDiagnostics:true}));const listener=e.avState.listeners;
  listener.onerror('PLAYER_ERROR_INVALID_OPERATION');
  listener.onerrormsg('PLAYER_ERROR_INVALID_OPERATION',JSON.stringify({error_code:42,codec:'AV1',demux:'HLS',resolution:'3840x2160',fps:24,hls_detail:'bufferAppendError',detail_info:'secret',url:'https://secret/token',headers:{Cookie:'private'}}));
  e.advance(0);assert.match(e.errors[0],/IDLE.*codec=AV1.*3840x2160/);assert.match(e.errors[0],/hls_detail=bufferAppendError/);assert.doesNotMatch(e.errors[0],/secret|private|https|Cookie/);
+ const visibleError=e.all().find(el=>el.textContent===e.errors[0]);
+ assert.ok(visibleError,'The retry dialog must expose the same safe cause as diagnostics');
+ assert.doesNotMatch(e.all().map(el=>el.textContent).join(' '),/secret|private|https|Cookie/);
  e.key('keydown',10009);assert.equal(e.closed,1);assert.equal(e.controller,'full_start');assert.equal(e.avState.state,'NONE');assert.equal(e.jobs.size,0);
  listener.onerrormsg('error','not JSON');listener.onerror('PLAYER_ERROR_INVALID_OPERATION');e.advance(0);assert.equal(e.errors.length,1);
+});
+test('ordinary player failures keep the existing compact error dialog',()=>{
+ const e=environment();e.api.play(e.spec());const listener=e.avState.listeners;
+ listener.onerrormsg('HLSMediaError',JSON.stringify({error_code:3,demux:'MSE',hls_detail:'bufferAppendError'}));
+ listener.onerror('HLSMediaError');e.advance(0);
+ assert.match(e.errors[0],/hls_detail=bufferAppendError/);
+ assert.ok(e.all().some(el=>el.textContent==='HLSMediaError'));
+ assert.equal(e.all().some(el=>el.textContent===e.errors[0]),false);e.api.close();
 });
 test('native InvalidAccessError identifies preparation and safe HTTP status',()=>{
  const e=environment();e.api.play(e.spec());e.avState.listeners.onevent('PLAYER_MSG_HTTP_ERROR_CODE','403');
@@ -174,6 +185,169 @@ test('decoder errors keep the failing state instead of the state after cleanup',
  e.avState.listeners.onerror('PLAYER_ERROR_NOT_SUPPORTED_FORMAT');e.advance(0);
  assert.match(e.statuses.at(-1),/Помилка відтворення.*AVPlay PLAYING/);
  assert.equal(e.avState.state,'NONE');e.api.close();
+});
+function browserPlayer(e) {
+ const transport={...e.root.webapis.avplay};
+ transport.surface=()=>e.doc.createElement('video');transport.available=()=>true;
+ e.root.FabornHlsTransport=()=>transport;e.root.FabornHls=function(){};
+ return factory(e.root,e.L);
+}
+test('UAFix late HLSMediaError refreshes automatically, resumes at 25 minutes and bounds repeated failures',()=>{
+ const e=environment(),api=browserPlayer(e),requests=[];e.avState.duration=3600000;
+ const fresh='https://video.test/new-session/1080.m3u8';
+ function spec(){return e.spec({engine:'mse',recoverInterrupted:true,quality:'1080p',voice:'uk-dub',request(action,done){requests.push(action);done(null,spec());},url:requests.length?fresh:'https://video.test/old-session/1080.m3u8'});}
+ api.play(spec());e.prepare();e.at(1500);
+ const old=e.avState.listeners;old.onerrormsg('HLSMediaError',JSON.stringify({error_code:3,demux:'MSE'}));old.onerror('HLSMediaError');e.advance(0);
+ assert.deepEqual(requests,[{type:'recover'}]);assert.equal(e.avState.url,fresh);
+ assert.equal(e.progress.at(-1).current,1500);assert.equal(e.progress.at(-1).force,true);
+ e.prepare();assert.equal(e.avState.time,1500000);e.at(1501);
+ old.onerror('HLSMediaError');e.advance(0);assert.equal(requests.length,1);
+ e.avState.listeners.onerror('HLSMediaError');e.advance(0);
+ assert.equal(requests.length,1);assert.ok(!e.all().some(n=>n.textContent==='Повторити запуск'));
+ e.advance(1500);assert.equal(requests.length,2);e.prepare();assert.equal(e.avState.time,1501000);e.at(1502);
+ e.avState.listeners.onerror('HLSMediaError');e.advance(4000);assert.equal(requests.length,3);e.prepare();e.at(1503);
+ e.avState.listeners.onerror('HLSMediaError');e.advance(0);assert.equal(requests.length,3);assert.ok(e.all().some(n=>n.textContent==='Відтворення перервано'));
+ e.click('Повторити запуск');assert.equal(requests.at(-1).type,'retry');e.prepare();assert.equal(e.avState.time,1503000);
+ api.close();assert.equal(e.jobs.size,0);
+});
+test('UAFix network recovery preserves the current native engine and pause',()=>{
+ const e=environment();let calls=0;
+ const spec=()=>e.spec({recoverInterrupted:true,request(action,done){calls++;assert.equal(action.type,'recover');done(null,spec());}});
+ e.api.play(spec());e.prepare();e.at(125);e.click('Пауза');e.avState.listeners.onerror('PLAYER_ERROR_CONNECTION_FAILED');e.advance(0);
+ assert.equal(calls,1);e.prepare();assert.equal(e.avState.state,'PAUSED');assert.equal(e.avState.time,125000);
+ e.api.close();assert.equal(e.jobs.size,0);
+});
+test('automatic recovery never retries initial media failures, unsupported codecs or other sources',()=>{
+ for(const entry of [{initial:true,error:'HLSMediaError',opt:true},{initial:false,error:'NotSupportedError',opt:true},{initial:false,error:'HLSMediaError',opt:false},{initial:false,error:'HLSNetworkError',opt:false}]){
+  const e=environment(),api=browserPlayer(e);let calls=0;
+  api.play(e.spec({engine:'mse',recoverInterrupted:entry.opt,request(){calls++;}}));
+  if(!entry.initial){e.prepare();e.at(125);}
+  e.avState.listeners.onerror(entry.error);e.advance(0);
+  assert.equal(calls,0,JSON.stringify(entry));assert.ok(e.all().some(n=>n.textContent==='Повторити запуск'));
+  api.close();assert.equal(e.jobs.size,0);
+ }
+});
+test('Back during UAFix recovery rejects a late fresh URL and frees the recovery timer',()=>{
+ const e=environment(),api=browserPlayer(e);let reply;
+ api.play(e.spec({engine:'mse',recoverInterrupted:true,request(action,done){reply=done;}}));e.prepare();e.at(125);
+ e.avState.listeners.onerror('HLSMediaError');e.advance(0);assert.ok(reply);
+ e.key('keydown',10009);assert.equal(e.closed,1);assert.equal(e.jobs.size,0);
+ reply(null,e.spec({engine:'mse',url:'https://video.test/new.m3u8'}));e.advance(45000);
+ assert.equal(e.calls.filter(c=>c[0]==='open').length,1);assert.equal(e.controller,'full_start');assert.equal(e.avState.state,'NONE');
+});
+test('stalled UAFix refreshes retry without an error menu, then cancel and reject all late callbacks',()=>{
+ const e=environment(),api=browserPlayer(e),replies=[];let cancelled=0;
+ api.play(e.spec({engine:'mse',recoverInterrupted:true,cancelRequest(){cancelled++;},request(action,done){replies.push(done);}}));e.prepare();e.at(125);
+ e.avState.listeners.onerror('HLSMediaError');e.advance(15000);
+ assert.equal(cancelled,1);assert.ok(!e.all().some(n=>n.textContent==='Повторити запуск'));
+ e.advance(1500);assert.equal(replies.length,2);replies[0](null,e.spec({engine:'mse'}));assert.equal(e.calls.filter(c=>c[0]==='open').length,1);
+ e.advance(40000);assert.equal(replies.length,3);assert.ok(cancelled>=3);assert.match(e.errors.at(-1),/Три спроби/);assert.match(e.statuses.at(-1),/MSE PLAYING/);
+ replies.forEach(reply=>{reply(null,e.spec({engine:'mse',url:'https://video.test/late.m3u8'}));reply(Error('late'));});
+ assert.equal(e.calls.filter(c=>c[0]==='open').length,1);e.key('keydown',10009);assert.equal(e.jobs.size,0);
+});
+test('transient UAFix refresh errors retry up to three times while retaining progress and safe diagnostics',()=>{
+ const e=environment(),api=browserPlayer(e);let calls=0;
+ api.play(e.spec({engine:'mse',recoverInterrupted:true,request(action,done){calls++;done(Error('HTTP 403 https://secret/token'));done(null,e.spec({engine:'mse'}));}}));e.prepare();e.at(125);
+ e.avState.listeners.onerror('HLSMediaError');e.advance(0);e.advance(30000);
+ assert.equal(calls,3);assert.equal(e.progress.at(-1).current,125);assert.equal(e.calls.filter(c=>c[0]==='open').length,1);
+ assert.match(e.errors.at(-1),/HTTP 403/);assert.doesNotMatch(e.errors.at(-1),/secret|token/);
+ e.key('keydown',10009);assert.equal(e.jobs.size,0);
+});
+test('a failed refresh followed by success recovers without ever opening an error menu',()=>{
+ const e=environment(),api=browserPlayer(e);let calls=0;
+ function request(action,done){calls++;if(calls===1)return done(Error('HTTP 503'));done(null,e.spec({engine:'mse',recoverInterrupted:true,request}));}
+ api.play(e.spec({engine:'mse',recoverInterrupted:true,request}));e.prepare();e.at(125);e.avState.listeners.onerror('HLSMediaError');e.advance(1500);
+ assert.equal(calls,2);e.prepare();assert.equal(e.avState.time,125000);e.at(126);
+ assert.ok(!e.all().some(n=>n.textContent==='Повторити запуск'));api.close();assert.equal(e.jobs.size,0);
+});
+test('a refresh that prepares but cannot play retries automatically and shares one total deadline',()=>{
+ const e=environment(),api=browserPlayer(e);let calls=0;
+ function request(action,done){calls++;done(null,e.spec({engine:'mse',recoverInterrupted:true,request}));}
+ api.play(e.spec({engine:'mse',recoverInterrupted:true,request}));e.prepare();e.at(125);e.avState.listeners.onerror('HLSMediaError');e.advance(0);
+ e.advance(15000);assert.ok(!e.all().some(n=>n.textContent==='Повторити запуск'));
+ e.advance(1500);assert.equal(calls,2);e.advance(19000);assert.equal(calls,3);e.advance(15000);
+ assert.ok(e.all().some(n=>n.textContent==='Повторити запуск'));assert.equal(e.progress.at(-1).current,125);api.close();assert.equal(e.jobs.size,0);
+});
+test('sixty seconds of advancing playback restores the automatic retry budget',()=>{
+ const e=environment(),api=browserPlayer(e);let calls=0;
+ function request(action,done){calls++;done(null,e.spec({engine:'mse',recoverInterrupted:true,request}));}
+ api.play(e.spec({engine:'mse',recoverInterrupted:true,request}));e.prepare();e.at(125);e.avState.listeners.onerror('HLSMediaError');e.advance(0);e.prepare();
+ for(let s=126;s<=186;s++)e.at(s);
+ e.avState.listeners.onerror('HLSMediaError');e.advance(0);assert.equal(calls,2,'A later outage gets an immediate first retry');
+ e.prepare();assert.equal(e.avState.time,186000);api.close();assert.equal(e.jobs.size,0);
+});
+test('slow refreshes and stalled preparation cannot extend recovery beyond sixty seconds',()=>{
+ const e=environment(),api=browserPlayer(e);let calls=0;
+ function request(action,done){calls++;e.root.setTimeout(()=>done(null,e.spec({engine:'mse',recoverInterrupted:true,request})),14000);}
+ api.play(e.spec({engine:'mse',recoverInterrupted:true,request}));e.prepare();e.at(125);
+ e.avState.listeners.onerror('HLSMediaError');e.advance(60000);
+ assert.equal(calls,2);assert.match(e.errors.at(-1),/60 с/);assert.ok(e.all().some(n=>n.textContent==='Повторити запуск'));
+ e.advance(20000);assert.equal(calls,2);api.close();assert.equal(e.jobs.size,0);
+});
+test('Back also cancels an automatic retry delay before its next network request',()=>{
+ const e=environment(),api=browserPlayer(e);let calls=0;
+ api.play(e.spec({engine:'mse',recoverInterrupted:true,request(action,done){calls++;done(Error('HTTP 503'));}}));e.prepare();e.at(125);
+ e.avState.listeners.onerror('HLSMediaError');e.advance(0);assert.equal(calls,1);e.key('keydown',10009);e.advance(60000);
+ assert.equal(calls,1);assert.equal(e.jobs.size,0);assert.equal(e.controller,'full_start');
+});
+test('UAFix AVPlay silently stuck in PLAYING starts refreshing after six seconds without progress',()=>{
+ const e=environment();e.avState.duration=3600000;let calls=0;
+ function request(action,done){calls++;assert.equal(action.type,'recover');done(null,e.spec({recoverInterrupted:true,request,url:'https://video.test/new-session.m3u8'}));}
+ e.api.play(e.spec({recoverInterrupted:true,request}));e.prepare();e.at(1500);
+ e.advance(5999);assert.equal(calls,0);assert.equal(e.avState.state,'PLAYING');
+ e.advance(1);assert.equal(calls,1);assert.match(e.errors[0],/PlaybackStallTimeout.*AVPlay PLAYING/);
+ assert.ok(!e.all().some(n=>n.textContent==='Повторити запуск'));e.prepare();assert.equal(e.avState.time,1500000);e.at(1501);
+ e.api.close();assert.equal(e.jobs.size,0);
+});
+test('UAFix HLS buffering callbacks cannot hide a frozen playback clock',()=>{
+ const e=environment(),api=browserPlayer(e);let calls=0;
+ api.play(e.spec({engine:'mse',recoverInterrupted:true,request(){calls++;}}));e.prepare();e.at(125);
+ for(let i=0;i<3;i++){e.avState.listeners.onbufferingstart();e.avState.listeners.onbufferingcomplete();e.advance(2000);}
+ assert.equal(calls,1);assert.match(e.errors[0],/PlaybackStallTimeout.*MSE PLAYING/);api.close();assert.equal(e.jobs.size,0);
+});
+test('pause, a pending seek, completion and other sources never trigger the UAFix stall watchdog',()=>{
+ for(const mode of ['pause','seek','completed','other-source']){
+  const e=environment({seekPending:mode==='seek'});let calls=0;
+  e.api.play(e.spec({recoverInterrupted:mode!=='other-source',request(){calls++;}}));e.prepare();e.at(125);
+  if(mode==='pause')e.click('Пауза');
+  if(mode==='seek'){e.click('+30 с');e.advance(350);}
+  if(mode==='completed'){e.at(999);e.avState.listeners.onstreamcompleted();}
+  e.advance(mode==='seek'?8000:25000);assert.equal(calls,0,mode);e.api.close();assert.equal(e.jobs.size,0);
+ }
+});
+test('current-time polling without native time events is sufficient to prevent a false stall',()=>{
+ const e=environment();let calls=0;e.api.play(e.spec({recoverInterrupted:true,request(){calls++;}}));e.prepare();e.at(125);
+ for(let i=0;i<30;i++){e.avState.time+=1000;e.advance(1000);}
+ assert.equal(calls,0);assert.equal(e.avState.state,'PLAYING');e.api.close();assert.equal(e.jobs.size,0);
+});
+test('an increasing buffer gets one four-second grace period, never an unbounded stall',()=>{
+ const e=environment();let calls=0;e.api.play(e.spec({recoverInterrupted:true,request(){calls++;}}));e.prepare();e.at(125);
+ e.advance(5000);e.avState.listeners.onbufferingprogress(25);e.advance(1000);assert.equal(calls,0);
+ e.advance(3000);e.avState.listeners.onbufferingprogress(75);e.advance(999);assert.equal(calls,0);
+ e.advance(1);assert.equal(calls,1);e.api.close();assert.equal(e.jobs.size,0);
+});
+test('normal buffering which resumes during its grace period does not reopen the stream',()=>{
+ const e=environment();let calls=0;e.api.play(e.spec({recoverInterrupted:true,request(){calls++;}}));e.prepare();e.at(125);
+ e.advance(5000);e.avState.listeners.onbufferingprogress(25);e.advance(3500);e.at(126);
+ for(let i=127;i<=145;i++){e.advance(1000);e.at(i);}
+ assert.equal(calls,0);assert.equal(e.calls.filter(c=>c[0]==='open').length,1);e.api.close();assert.equal(e.jobs.size,0);
+});
+test('recovery diagnostics preserve the cause and compare URLs without storing either address',()=>{
+ for(const changed of [false,true]){
+  const e=environment(),notes=[];let url='https://video.test/private-old/stream.m3u8';
+  function spec(){return e.spec({url,recoverInterrupted:true,onRecovery:message=>notes.push(message),request(action,done){if(changed)url='https://video.test/private-new/stream.m3u8';done(null,spec());}});}
+  e.api.play(spec());e.prepare();e.at(125);e.advance(6000);e.prepare();e.at(126);
+  assert.match(notes.at(-1),/Відновлено.*2:05.*PlaybackStallTimeout/);assert.match(notes.at(-1),changed?/URL змінено/:/URL той самий/);
+  assert.doesNotMatch(notes.join(' '),/https|private|m3u8/);e.api.close();assert.equal(e.jobs.size,0);
+ }
+});
+test('the early HLS access-error option is passed only to an opted-in browser transport',()=>{
+ for(const engine of ['mse','avplay'])for(const opted of [false,true]){
+  const e=environment(),api=engine==='mse'?browserPlayer(e):e.api;
+  api.play(e.spec({engine,recoverInterrupted:opted}));
+  assert.deepEqual(e.avState.openOptions,engine==='mse'?{recoverInterrupted:opted}:undefined);
+  api.close();assert.equal(e.jobs.size,0);
+ }
 });
 test('an accepted resume seek without an advancing playback clock still times out',()=>{
  const e=environment();e.api.play(e.spec({time:210}));e.prepare();e.advance(45000);

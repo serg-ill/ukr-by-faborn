@@ -50,7 +50,7 @@ def validate(root=ROOT):
                         assert variant['width'] >= 3840 or variant['height'] >= 2160, 'Unproven 4K label'
                 assert all(media_url(s['url']) for s in episode['subtitles'])
     plugin = (root / 'ukr-by-faborn.js').read_text(encoding='utf-8')
-    assert VERSION in plugin and 'ukr by Faborn' in plugin
+    assert VERSION in plugin and 'Faborn' in plugin
     assert 'eval(' not in plugin and 'new Function' not in plugin
     for path in ['index.html', 'assets/icon.svg', '.github/workflows/pages.yml', 'README.md', 'lib/faborn-ui.js', 'lib/faborn-player.js', 'lib/faborn-comments.js', 'lib/faborn-hub.js', 'lib/faborn-screensaver.js', 'lib/faborn-skip.js', 'lib/STARFIELD-LICENSE', 'lib/SAVER-WARP-LICENSE', 'lib/SAVER-MATRIX-LICENSE']:
         assert (root / path).is_file(), 'Missing ' + path

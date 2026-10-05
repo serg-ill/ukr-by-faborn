@@ -15,7 +15,7 @@ function harness(withSession=false){
     Socket.prototype.close=function(){this.closed=true;this.readyState=3;};
     Socket.prototype.open=function(){this.readyState=1;this.onopen();};
     Socket.prototype.token=function(value){if(this.onmessage)this.onmessage({data:JSON.stringify({type:'config_update',edge_hash:value})});};
-    const native={FS:{writeFile(){}},_lab_init:()=>1,_lab_listen:()=>12345,_lab_accept:()=>0,_lab_stop(){},_lab_close_client(){operations.push('client:close');},_lab_send:(ptr,amount)=>amount,_free(){},
+    const native={FS:{writeFile(){}},_lab_init:()=>1,_lab_set_nonblocking(enabled){native.nonblocking=enabled;},_lab_listen:()=>12345,_lab_accept:()=>0,_lab_stop(){},_lab_close_client(){operations.push('client:close');},_lab_send:(ptr,amount)=>amount,_free(){},
         UTF8ToString:p=>memory[p]||'',lengthBytesUTF8:s=>Buffer.byteLength(s),_malloc:()=>nextPtr++,stringToUTF8:(s,p)=>memory[p]=s,
         _lab_range:()=>alloc(''),_lab_body:()=>bodyPtr,_lab_size:()=>Buffer.byteLength(memory[bodyPtr]||''),
         ccall(name,type,types,args){if(name==='lab_set_agent'){native.agent=args[0];return 1;}assert.ok(['lab_get','lab_get_media'].includes(name));const [url,origin,referer]=args,range=name==='lab_get_media'?args[3]:args[5],controls=name==='lab_get_media'?args[4]:'';media.push({url,origin,referer,range,controls});lastUrl=url;
@@ -38,7 +38,7 @@ test('worker asks Ubuntu only for metadata, renews on play and supplies Origin t
     const fullMovie={id:872585,title:'Оппенгеймер',original_title:'Oppenheimer',release_date:'2023-07-19',original_language:'en',media_type:'movie',overview:'Опис фільму '.repeat(5000),credits:{cast:[{name:'Fixture actor',biography:'Bio'.repeat(5000)}]},progress:{time:100},url:'https://unused.test/private',user_key:'never-send-fixture'};
     assert.ok(Buffer.byteLength(JSON.stringify({movie:fullMovie}))>16384);
     ctx.onmessage({data:{type:'init',base:'https://serg-ill.github.io/ukr-by-faborn/lib/4klab/',version:'test',token:'0123456789abcdef0123456789abcdef',server:'http://192.168.88.191:8787',movie:fullMovie,season:0,episode:0}});
-    assert.equal(events.at(-1).type,'resolved');assert.equal(media.length,0);assert.equal(intervals.size,0);
+    assert.equal(events.at(-1).type,'resolved');assert.equal(ctx.Native.nonblocking,1);assert.equal(media.length,0);assert.equal(intervals.size,0);
     assert.equal(JSON.parse(http.at(-1).body).fresh,false);
     ctx.onmessage({data:{type:'play',season:0,episode:0,label:'English',language:'en',quality:'2160p'}});flush();
     assert.equal(JSON.parse(http.at(-1).body).fresh,true);assert.equal(http.filter(r=>r.method==='POST').length,2);

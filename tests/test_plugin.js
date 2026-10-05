@@ -103,6 +103,9 @@ function environment(options = {}) {
     if (options.settings) root.Lampa.Settings = options.settings;
     if (options.template) root.Lampa.Template = options.template;
     if (options.head) root.Lampa.Head = options.head;
+    // Existing native-Lampa cases use an explicit saved choice. Fresh-profile
+    // routing cases leave this key absent to exercise the production fallback.
+    if (!options.unsetPlayer) state.storage.faborn_ukr_player='lampa';
     if (options.storage) Object.assign(state.storage,options.storage);
     if (options.lampaSettings) root.lampa_settings=options.lampaSettings;
     const instance = factory(root); instance.boot();
@@ -402,19 +405,35 @@ function betaEnvironment(options={}) {
     const e=environment({...options,storage:{...options.storage,faborn_ukr_player:'beta'}});
     return mockBetaPlayer(e);
 }
-function mockBetaPlayer(e) {
-    e.state.storage.faborn_ukr_player='beta';
+function mockBetaPlayer(e,selectBeta=true) {
+    if(selectBeta)e.state.storage.faborn_ukr_player='beta';
     let spec,active=false;const choices=[];
     e.root.webapis={avplay:{getState(){return active?'PLAYING':'NONE';}}};
     e.root.FabornPlayer=()=>({available:()=>true,active:()=>active,apply(){},play(value){spec=value;active=true;},close(restore=true){active=false;spec.onClose(restore);},change(action){choices.push(action);spec.request(action,(error,value)=>{if(error)e.state.notices.push(error.message);else spec=value;});}});
     return Object.assign(e,{choices,getSpec:()=>spec,close(){active=false;spec.onClose(true);},active:()=>active});
 }
-test('online player setting explicitly offers an opt-in beta while Lampa remains default',()=>{
+test('online player setting defaults to automatic routing and preserves an explicit Lampa choice',()=>{
     const e=environment(),p=e.state.params.find(p=>p.param.name==='faborn_ukr_player');
-    assert.equal(p.param.default,'lampa');assert.deepEqual(p.param.values,{lampa:'Lampa',beta:'Faborn Player · бета'});
+    assert.equal(p.param.default,'auto');assert.deepEqual(p.param.values,{auto:'Автоматично за джерелом',lampa:'Lampa',beta:'Faborn Player · бета'});
     filmQualityMenu(e);e.state.play('1080p');assert.ok(e.state.played);assert.equal(e.state.requests.some(r=>r.url.includes('faborn-player.js')),false);
+    assert.equal(e.state.storage.faborn_ukr_player,'lampa');
 });
-test('browser engine is separately opt-in, and default Lampa never loads the HLS bundle',()=>{
+for(const mode of ['auto','default'])test(mode+' mode routes regular sources to AVPlay without changing manual player preferences',()=>{
+ const e=mockBetaPlayer(environment({unsetPlayer:true,storage:{faborn_ukr_beta_engine:'mse'}}),false);
+ if(mode==='auto')e.state.storage.faborn_ukr_player='auto';
+ filmQualityMenu(e);e.state.play('1080p');
+ assert.equal(e.getSpec().engine,'avplay');assert.equal(e.state.played,null);
+ assert.equal(e.state.storage.faborn_ukr_beta_engine,'mse');assert.equal(e.state.storage.faborn_ukr_player,mode==='auto'?'auto':undefined);
+ assert.equal(e.state.requests.some(r=>/faborn-hls|hls-1/.test(r.url)),false);
+ e.getSpec().onTime({current:125,duration:6000,force:true});e.close();e.state.play('1080p');
+ assert.equal(e.getSpec().engine,'avplay');assert.equal(e.getSpec().time,125);e.close();
+});
+test('automatic mode routes KinoBase to AVPlay even when the manual engine is HLS',()=>{
+ const e=mockBetaPlayer(kinoEnvironment());e.state.storage.faborn_ukr_player='auto';e.state.storage.faborn_ukr_beta_engine='mse';
+ e.instance.open(kinoMovie);e.state.play('2160p');assert.equal(e.getSpec().engine,'avplay');
+ assert.match(e.getSpec().detail,/KinoBase/);assert.equal(e.state.storage.faborn_ukr_beta_engine,'mse');e.close();
+});
+test('manual browser engine remains opt-in, and an explicit Lampa choice never loads the HLS bundle',()=>{
  const e=environment(),p=e.state.params.find(p=>p.param.name==='faborn_ukr_beta_engine');
  assert.equal(p.param.default,'avplay');assert.equal(p.param.values.mse,'Браузерний HLS · бета');
  filmQualityMenu(e);e.state.play('1080p');assert.equal(e.state.requests.some(r=>/faborn-hls|hls-1/.test(r.url)),false);
@@ -1528,6 +1547,7 @@ function uafixRefererEnvironment(options={}) {
  const playerHtml='new Playerjs({file:"'+master+'"})';
  const movie={title:'Оппенгеймер',original_title:'Oppenheimer',release_date:'2023-07-19'};
  const env=environment({storage:{faborn_ukr_uakinogo_beta:'on',faborn_ukr_uakinogo_server:'http://192.168.88.191:8789',...options.storage},respond(req){
+  if(options.intercept && options.intercept(req))return;
   req.status=200;
   if(req.url.includes('catalog.json'))req.responseText=JSON.stringify(catalog);
   else if(req.url==='https://uafix.net/search.html')req.responseText='<h1>Пошук</h1><a class="sres-wrap" href="'+page+'"><h2>Оппенгеймер / Oppenheimer</h2></a>';
@@ -1545,6 +1565,101 @@ function uafixRefererEnvironment(options={}) {
  env.root.btoa=value=>Buffer.from(value,'binary').toString('base64');
  return {...env,movie,master,page,embed};
 }
+function refreshableUafix() {
+ let refresh=false,pending=false,quality='1080';
+ const fresh='https://zetvideo.net/vid/new-session/hls/index.m3u8';
+ const e=mockBetaPlayer(uafixRefererEnvironment({direct:true,storage:{faborn_ukr_uakinogo_beta:'off'},intercept(req){
+  if(refresh && req.url==='https://zetvideo.net/vod/19767'){
+   if(pending)return true;
+   req.status=200;req.responseText='new Playerjs({file:"'+fresh+'"})';req.onload();return true;
+  }
+  if(req.url===fresh){req.status=200;req.responseText='#EXTM3U\n#EXT-X-STREAM-INF:RESOLUTION='+ (quality==='1080'?'1920x1080':'1280x720')+'\n'+quality+'.m3u8';req.onload();return true;}
+  if(req.url===fresh.replace('index',quality)){req.status=200;req.responseText='#EXTM3U\n#EXTINF:6,\na.ts';req.onload();return true;}
+ }}));
+ e.movie.id=872585;
+ return Object.assign(e,{fresh,refresh(value=true){refresh=value;},pending(value){pending=value;},quality(value){quality=value;}});
+}
+function continueHeader(e,rows) {
+ const nodes={};
+ const empty={length:0,first(){return this;},after(){}};
+ e.root.Lampa.Head={render:()=>({find:selector=>nodes[selector.replace('.open--faborn-','')] || empty}),addIcon(svg,action){
+  const node={length:1,first(){return this;},after(){},action,addClass(classes){nodes[classes.split('open--faborn-')[1]]=this;return this;},attr(){return this;}};return node;
+ }};
+ e.root.document.querySelector=()=>null;
+ e.root.FabornHub=()=>({install(){},continueItems:()=>rows,profile:()=>e.root.Lampa.Timeline.filename?e.root.Lampa.Timeline.filename():''});
+ e.state.follows.app({type:'ready'});e.state.controller='head';nodes.continue.action();
+ return e.state.menu;
+}
+test('UAFix interrupted recovery refetches its player even with a warm cache, retaining exact quality and voice',()=>{
+ const e=refreshableUafix();e.instance.open(e.movie);e.state.play('1080p',r=>r.release.source==='uafix');
+ const old=e.getSpec();assert.equal(old.recoverInterrupted,true);old.onTime({current:1500,duration:3600,force:true});
+ const reads=e.state.requests.filter(r=>r.url===e.embed).length;e.refresh();let error,next;
+ old.request({type:'recover'},(err,value)=>{error=err;next=value;});
+ assert.equal(error,null);assert.equal(next.url,e.fresh.replace('index','1080'));assert.equal(next.quality,old.quality);assert.equal(next.voice,old.voice);assert.equal(next.time,1500);
+ assert.equal(e.state.requests.filter(r=>r.url===e.embed).length,reads+1);e.close();
+});
+test('UAFix recovery rejects a disappeared quality without playing a lower resolution',()=>{
+ const e=refreshableUafix();e.instance.open(e.movie);e.state.play('1080p',r=>r.release.source==='uafix');
+ const spec=e.getSpec();spec.onTime({current:1500,duration:3600,force:true});e.refresh();e.quality('720');let error,next;
+ spec.request({type:'recover'},(err,value)=>{error=err;next=value;});
+ assert.match(error.message,/якість більше не доступна/);assert.equal(next,undefined);assert.equal(e.getSpec(),spec);
+ assert.equal(e.state.timelines['faborn|tmdb-movie-872585|0|0'].time,1500);e.close();
+});
+test('cancelling a UAFix recovery aborts the request, releases its busy flag and ignores its late reply',()=>{
+ const e=refreshableUafix();e.instance.open(e.movie);e.state.play('1080p',r=>r.release.source==='uafix');
+ const spec=e.getSpec();e.refresh();e.pending(true);let called=0;
+ spec.request({type:'recover'},()=>called++);const req=e.state.requests.at(-1);assert.equal(req.url,e.embed);
+ spec.cancelRequest();assert.equal(req.aborted,true);req.status=200;req.responseText='new Playerjs({file:"'+e.fresh+'"})';req.onload();assert.equal(called,0);
+ e.pending(false);spec.request({type:'retry'},(error,next)=>{assert.ifError(error);assert.ok(next);called++;});assert.equal(called,1);e.close();
+});
+test('automatic interrupted recovery is enabled only for UAFix',()=>{
+ const e=betaEnvironment();filmQualityMenu(e);e.state.play('1080p');assert.equal(e.getSpec().recoverInterrupted,false);e.close();
+ const k=mockBetaPlayer(kinoEnvironment());k.instance.open(kinoMovie);k.state.play('2160p');assert.equal(k.getSpec().recoverInterrupted,false);k.close();
+});
+test('recovery evidence remains in diagnostics after successful resumed playback',()=>{
+ const e=refreshableUafix();e.instance.open(e.movie);e.state.play('1080p',r=>r.release.source==='uafix');const spec=e.getSpec();
+ spec.onRecovery('Відновлено · 25:00 · HLSNetworkError · HTTP 403 · URL змінено');spec.onStarted();
+ assert.match(e.state.storage.faborn_ukr_beta_recovery_status,/UAFix.*25:00.*HTTP 403.*URL змінено/);assert.equal(e.state.storage.faborn_ukr_last_error,'');
+ e.close();spec.onRecovery('Late recovery');assert.doesNotMatch(e.state.storage.faborn_ukr_beta_recovery_status,/Late/);
+});
+test('header Continue resolves a fresh saved UAFix stream and restores progress instead of opening a card',()=>{
+ const e=refreshableUafix();e.instance.open(e.movie);e.state.play('1080p',r=>r.release.source==='uafix');
+ const spec=e.getSpec();spec.onTime({current:1500,duration:3600,force:true});e.close();e.refresh();
+ const position=e.state.storage['faborn_ukr_position_tmdb-movie-872585'];
+ assert.deepEqual(position.resume,{owner:'',source:'uafix',voice:'Українська',language:'uk',quality:'1080p'});
+ assert.doesNotMatch(JSON.stringify(position),/https?:|zetvideo|m3u8|new-session/);
+ let cards=0;e.root.Lampa.Activity={push(){cards++;}};
+ const menu=continueHeader(e,[{movie:e.movie,season:0,episode:0,progress:position}]);
+ assert.equal(menu.title,'Продовжити перегляд');menu.onSelect(menu.items[0]);
+ assert.equal(e.active(),true);assert.equal(e.getSpec().url,e.fresh.replace('index','1080'));assert.equal(e.getSpec().time,1500);
+ assert.equal(e.getSpec().voice,spec.voice);assert.equal(e.getSpec().quality,'1080p');assert.equal(cards,0);e.close();
+});
+test('header Continue with older history opens fresh sources and does not guess an old voice or lose progress',()=>{
+ const e=refreshableUafix();e.state.timelines['faborn|tmdb-movie-872585|0|0']={time:1500,duration:3600,percent:42};
+ const menu=continueHeader(e,[{movie:e.movie,season:0,episode:0,progress:{time:1500,percent:42}}]);menu.onSelect(menu.items[0]);
+ assert.equal(e.active(),false);assert.match(e.state.notices.at(-1),/Обери джерело/);
+ e.state.play('1080p',r=>r.release.source==='uafix');assert.equal(e.getSpec().time,1500);e.close();
+});
+test('header Continue never substitutes a missing saved quality or voice',()=>{
+ for(const missing of ['quality','voice']){
+  const e=refreshableUafix();e.instance.open(e.movie);e.state.play('1080p',r=>r.release.source==='uafix');e.getSpec().onTime({current:1500,duration:3600,force:true});e.close();e.refresh();
+  const p=e.state.storage['faborn_ukr_position_tmdb-movie-872585'];if(missing==='quality')e.quality('720');else p.resume.voice='Unavailable voice';
+  const menu=continueHeader(e,[{movie:e.movie,season:0,episode:0,progress:p}]);menu.onSelect(menu.items[0]);
+  assert.equal(e.active(),false);assert.match(e.state.notices.at(-1),/Попередній потік недоступний/);
+  assert.equal(e.state.timelines['faborn|tmdb-movie-872585|0|0'].time,1500);e.state.menu.onBack();
+ }
+});
+test('header Continue cancels with Back or a changed profile and never plays a late response',()=>{
+ for(const mode of ['back','profile']){
+  const e=refreshableUafix();let profile='one';e.root.Lampa.Timeline.filename=()=>profile;
+  e.instance.open(e.movie);e.state.play('1080p',r=>r.release.source==='uafix');e.getSpec().onTime({current:1500,duration:3600,force:true});e.close();e.refresh();e.pending(true);
+  const menu=continueHeader(e,[{movie:e.movie,season:0,episode:0,progress:{time:1500,percent:42}}]);menu.onSelect(menu.items[0]);
+  const req=e.state.requests.filter(r=>r.url===e.embed).at(-1);assert.ok(req);
+  if(mode==='back'){e.state.menu.onBack();assert.equal(req.aborted,true);}else profile='two';
+  e.pending(false);req.status=200;req.responseText='new Playerjs({file:"'+e.fresh+'"})';req.onload();
+  assert.equal(e.active(),false);assert.equal(e.state.controller,'head');
+ }
+});
 test('UAFix soft 404 uses the opted-in metadata server, then obtains and plays HLS directly',()=>{
  const e=uafixRefererEnvironment({storage:{faborn_ukr_uakinogo_login:'friend',faborn_ukr_uakinogo_password:'пароль:fixture'}});
  e.instance.open(e.movie);
@@ -1957,8 +2072,11 @@ test('Alloha preflight failure replaces stale playback diagnostics and Back keep
  assert.match(e.state.storage.faborn_ukr_last_error,/UAKinogo \/ Alloha.*2160p.*HTTP 403/);
  cb.back();assert.ok(e.state.menu.items.some(i=>i.group&&i.group.entries.some(r=>r.release.source==='uakinogo')));
 });
-test('UAKinogo beta uses the selected custom player, refreshes quality and voice, and preserves shared progress',()=>{
- const e=betaEnvironment({storage:{faborn_ukr_uakinogo_beta:'on',faborn_ukr_uakinogo_server:'http://192.168.88.191:8787'}});let cb;const changes=[];
+for(const mode of ['avplay','mse','auto','default'])test('UAKinogo '+mode+' keeps the selected player across quality, voice and shared progress',()=>{
+ const e=betaEnvironment({storage:{faborn_ukr_uakinogo_beta:'on',faborn_ukr_uakinogo_server:'http://192.168.88.191:8787',faborn_ukr_beta_engine:mode==='mse'?'mse':'avplay'}});let cb;const changes=[];
+ if(mode==='auto')e.state.storage.faborn_ukr_player='auto';
+ if(mode==='default')delete e.state.storage.faborn_ukr_player;
+ e.root.FabornHls=function(){};e.root.FabornHlsTransport=function(){};
  const url='http://127.0.0.1:12345/0123456789abcdef0123456789abcdef/0.m3u8';
  e.root.document.createElement=()=>({});e.root.document.head={appendChild(script){script.onload();}};
  e.root.Faborn4KLab=()=>({discover(m,s,n,c){cb=c;},cancel(){},playChoice(){
@@ -1967,9 +2085,9 @@ test('UAKinogo beta uses the selected custom player, refreshes quality and voice
  },switchChoice(selected,done){changes.push(selected);done(null,{url,quality:selected.quality});}});
  e.instance.open(kinoMovie);assert.equal(cb.controller,'full_start');
  cb.result({season:0,episode:0,episodes:[{season:0,episode:0}],tracks:[{label:'UA',language:'uk',qualities:['2160p','1080p']},{label:'English',language:'en',qualities:['2160p','1080p']}]});
- e.state.play('2160p');const spec=e.getSpec();assert.equal(e.state.played,null);assert.equal(spec.loopback,url);assert.deepEqual(spec.urls,[url]);assert.equal(spec.voices.length,2);assert.equal(e.state.playerCallback,undefined);
+ e.state.play('2160p');const spec=e.getSpec();assert.equal(e.state.played,null);assert.equal(spec.loopback,url);assert.deepEqual(spec.urls,[url]);assert.equal(spec.engine,mode==='avplay'?'avplay':'mse');assert.equal(spec.voices.length,2);assert.equal(e.state.playerCallback,undefined);
  spec.onTime({current:312,duration:6000,force:true});assert.equal(e.state.timelines['faborn|tmdb-movie-'+kinoMovie.id+'|0|0'].time,312);
- let next;spec.request({type:'quality',quality:'1080p'},(err,value)=>{assert.equal(err,null);next=value;});assert.equal(next.quality,'1080p');assert.equal(next.time,312);
+ let next;spec.request({type:'quality',quality:'1080p'},(err,value)=>{assert.equal(err,null);next=value;});assert.equal(next.quality,'1080p');assert.equal(next.time,312);assert.equal(next.engine,spec.engine);
  const english=next.voices.find(v=>v.title==='English');next.request({type:'voice',id:english.id},(err,value)=>{assert.equal(err,null);next=value;});assert.equal(changes.at(-1).language,'en');assert.equal(changes.at(-1).quality,'1080p');
  const before=e.state.requests.length;e.close();assert.equal(e.state.requests.length,before);assert.ok(e.state.menu.items.some(i=>i.group && i.group.entries.some(r=>r.release.source==='uakinogo')));
 });

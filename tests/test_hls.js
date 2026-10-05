@@ -77,3 +77,28 @@ test('fatal HLS details distinguish append and parsing failures even without an 
   assert.equal(received.hls_detail,details.startsWith('https')?undefined:details);assert.doesNotMatch(JSON.stringify(received),/secret|token/);e.api.close();
  }
 });
+
+test('opted-in playback immediately reports a media access rejection before HLS retry exhaustion',()=>{
+ for(const code of [401,403,410]){
+  const e=environment(),received=[];e.Hls.ErrorDetails.FRAG_LOAD_ERROR='fragLoadError';e.video.readyState=2;e.video.networkState=2;e.video.currentTime=125;
+  e.video.buffered={length:1,start:()=>120,end:()=>128.5};
+  e.api.open('https://video.test/private.m3u8',{recoverInterrupted:true});e.api.setListener({onerror:value=>received.push(value),onerrormsg:(name,detail)=>received.push(JSON.parse(detail))});e.api.prepareAsync(()=>{});e.ready();e.api.play();e.event('playing');
+  e.instances[0].handlers.error('error',{fatal:false,type:'networkError',details:'fragLoadError',response:{code,url:'https://video.test/private.ts',text:'secret'}});
+  assert.equal(received[1],'HLSNetworkError');assert.deepEqual(received[0],{error_code:code,demux:'MSE',hls_detail:'fragLoadError',resolution:'3840x2160',ready_state:2,network_state:2,buffer_seconds:3.5});
+  assert.doesNotMatch(JSON.stringify(received),/private|secret|https/);e.api.close();
+ }
+});
+test('early access recovery excludes other sources, initial loading, pause, subtitles and transient failures',()=>{
+ for(const sample of [{opt:false},{initial:true},{preparedOnly:true},{paused:true},{details:'subtitleTrackLoadError'},{code:503},{code:0}]){
+  const e=environment();let failed=0;e.api.open('https://video.test/stream.m3u8',{recoverInterrupted:sample.opt!==false});
+  e.api.setListener({onerror:()=>failed++});e.api.prepareAsync(()=>{},()=>failed++);if(!sample.initial){e.ready();e.api.play();if(!sample.preparedOnly)e.event('playing');if(sample.paused)e.api.pause();}
+  e.instances[0].handlers.error('error',{fatal:false,type:'networkError',details:sample.details||'fragLoadError',response:{code:sample.code===undefined?403:sample.code}});
+  assert.equal(failed,0,JSON.stringify(sample));e.api.close();
+ }
+});
+test('a later unopted stream cannot inherit early recovery from a previous UAFix stream',()=>{
+ const e=environment();e.api.open('https://video.test/old.m3u8',{recoverInterrupted:true});e.api.prepareAsync(()=>{});e.ready();e.api.play();e.event('playing');const old=e.instances[0];e.api.close();
+ let failed=0;e.api.open('https://video.test/new.m3u8');e.api.setListener({onerror:()=>failed++});e.api.prepareAsync(()=>{});e.ready();e.api.play();e.event('playing');
+ const error={fatal:false,type:'networkError',details:'fragLoadError',response:{code:403}};old.handlers.error('error',error);e.instances[1].handlers.error('error',error);
+ assert.equal(failed,0);e.api.close();
+});
