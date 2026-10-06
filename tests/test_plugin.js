@@ -1680,12 +1680,44 @@ test('UAFix direct success, missing server or explicit beta opt-out never contac
  }
 });
 test('UAFix server errors are explicit; invalid responses never become a playable source',()=>{
- for(const options of [{status:404},{status:401},{response:{embed:'https://zetvideo.net/vod/99'}},{response:{schema:2}}]){
+ for(const options of [{status:404},{status:401},{status:403},{response:{embed:'https://zetvideo.net/vod/99'}},{response:{schema:2}}]){
   const e=uafixRefererEnvironment(options);e.instance.open(e.movie);
   assert.ok(!e.state.requests.some(r=>r.url===e.master));
   const status=e.state.storage.faborn_ukr_source_status.join(';');
-  assert.match(status,options.status===404?/онови обробник Ubuntu/:options.status===401?/логін і пароль/:/некоректна відповідь/);
+  assert.match(status,options.status===404?/онови обробник Ubuntu/:options.status===401||options.status===403?/логін і пароль/:/некоректна відповідь/);
  }
+});
+for(const status of [401,403])test('UAFix authorization denial '+status+' stops background repeats and manual refresh can retry',()=>{
+ const e=uafixRefererEnvironment({status});let inputs=0;e.root.Lampa.Input={edit(){inputs++;}};
+ const count=()=>e.state.requests.filter(r=>r.url.endsWith('/v1/uafix/player')).length;
+ e.instance.open(e.movie);assert.equal(count(),1);
+ e.instance.open(e.movie);assert.equal(count(),1);assert.equal(inputs,0);
+ e.state.choose(r=>r.action==='retry');assert.equal(count(),2);
+ e.state.storage.faborn_ukr_uakinogo_password='changed-fixture';e.state.storage.faborn_ukr_uakinogo_login='friend';
+ e.instance.open(e.movie);assert.equal(count(),3);assert.equal(inputs,0);
+});
+test('ordinary sources remain playable after an Alloha login failure and no credential editor opens',()=>{
+ const e=environment({storage:{faborn_ukr_uakinogo_beta:'on',faborn_ukr_uakinogo_server:'http://192.168.88.191:8789'}});
+ let cb,discoveries=0,inputs=0;e.root.Lampa.Input={edit(){inputs++;}};
+ e.root.document.createElement=()=>({});e.root.document.head={appendChild(script){script.onload();}};
+ e.root.Faborn4KLab=()=>({discover(m,s,n,callbacks){cb=callbacks;discoveries++;},cancel(){}});
+ const movie={title:'Профі',original_title:'A Working Man',release_date:'2025-03-26'};
+ e.instance.open(movie);cb.error('SERVER: HTTP 403 — перевір логін і пароль');
+ e.instance.open(movie);assert.equal(discoveries,1);e.state.play('2160p');
+ assert.ok(e.state.played.url.includes('/hls/2160/'));assert.equal(inputs,0);
+ e.root.Lampa.Player.close();e.instance.open(movie);assert.equal(discoveries,1);
+ e.state.choose(r=>r.action==='retry');assert.equal(discoveries,2);
+ cb.error('SERVER: HTTP 401 — перевір логін і пароль');
+ e.state.storage.faborn_ukr_uakinogo_server='http://192.168.88.192:8789';
+ e.instance.open(movie);assert.equal(discoveries,3);
+});
+test('late Alloha authorization failure cannot block new credentials, and network failures can retry',()=>{
+ const e=environment({storage:{faborn_ukr_uakinogo_beta:'on',faborn_ukr_uakinogo_server:'http://192.168.88.191:8789'}});
+ let cb,discoveries=0;e.root.document.createElement=()=>({});e.root.document.head={appendChild(script){script.onload();}};
+ e.root.Faborn4KLab=()=>({discover(m,s,n,callbacks){cb=callbacks;discoveries++;},cancel(){}});
+ e.instance.open(kinoMovie);e.state.storage.faborn_ukr_uakinogo_password='new-fixture';
+ cb.error('SERVER: HTTP 403 — old credentials');e.instance.open(kinoMovie);assert.equal(discoveries,2);
+ cb.error('SERVER: HTTP 502 — upstream failure');e.instance.open(kinoMovie);assert.equal(discoveries,3);
 });
 test('Back aborts a pending UAFix metadata request and a late reply cannot reopen sources',()=>{
  const e=uafixRefererEnvironment({pending:true});e.instance.open(e.movie);

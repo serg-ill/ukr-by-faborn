@@ -80,12 +80,12 @@ test('create, block, reset, unblock and delete take effect without restarting or
     async function edit(action,name='new_friend') { return s.api('api/users',{method:'POST',body:{action,username:name}}); }
     const created=await (await edit('add')).json();assert.match(created.password,/^[\w-]{24}$/);
     const first=created.password;assert.equal((await s.post(basic('new_friend',first))).status,200);
-    assert.equal((await edit('block')).status,200);assert.equal((await s.post(basic('new_friend',first))).status,401);
+    assert.equal((await edit('block')).status,200);assert.equal((await s.post(basic('new_friend',first))).status,403);
     const reset=await (await edit('reset')).json();assert.notEqual(reset.password,first);
-    assert.equal((await s.post(basic('new_friend',reset.password))).status,401,'reset must not unblock an account');
+    assert.equal((await s.post(basic('new_friend',reset.password))).status,403,'reset must not unblock an account');
     assert.equal((await edit('unblock')).status,200);
-    assert.equal((await s.post(basic('new_friend',first))).status,401);assert.equal((await s.post(basic('new_friend',reset.password))).status,200);
-    assert.equal((await edit('delete')).status,200);assert.equal((await s.post(basic('new_friend',reset.password))).status,401);
+    assert.equal((await s.post(basic('new_friend',first))).status,403);assert.equal((await s.post(basic('new_friend',reset.password))).status,200);
+    assert.equal((await edit('delete')).status,200);assert.equal((await s.post(basic('new_friend',reset.password))).status,403);
     const viewers=await createUserStore(s.file).read();assert.equal(viewers.enabled,true);assert.deepEqual(viewers.users.map(u=>u.username),['friend']);
     const raw=await fs.readFile(s.file,'utf8');assert.equal(raw.includes(first),false);assert.equal(raw.includes(reset.password),false);
     const metrics=JSON.stringify((await (await s.api('api/overview')).json()).metrics);
@@ -95,7 +95,7 @@ test('create, block, reset, unblock and delete take effect without restarting or
 test('deleting the last viewer leaves authentication enabled; administrative account is unchanged',async t=>{
     const s=await fixture(t);const before=await fs.readFile(s.adminFile,'utf8');await s.login();
     assert.equal((await s.api('api/users',{method:'POST',body:{action:'delete',username:'friend'}})).status,200);
-    assert.equal((await s.post('')).status,401);assert.equal((await fs.readFile(s.adminFile,'utf8')),before);
+    assert.equal((await s.post('')).status,403);assert.equal((await fs.readFile(s.adminFile,'utf8')),before);
 });
 test('logout, administrator password change, expiry and a missing file revoke sessions',async t=>{
     let time=Date.now();const s=await fixture(t,{clock:()=>time});await s.login();
@@ -114,7 +114,7 @@ test('failed admin attempts have their own bounded budget and do not block a vie
 });
 test('metrics count UTF-8 JSON bytes, cache hits, auth failures and actual identities without recording credentials',async t=>{
     const s=await fixture(t);const first=await s.post(),body=await first.text();
-    assert.equal(first.status,200);assert.equal((await s.post()).status,200);assert.equal((await s.post(basic('friend','wrong'))).status,401);
+    assert.equal(first.status,200);assert.equal((await s.post()).status,200);assert.equal((await s.post(basic('friend','wrong'))).status,403);
     await s.metrics.flush();const m=s.metrics.snapshot();
     assert.equal(m.total.requests,3);assert.equal(m.total.success,2);assert.equal(m.total.authFailures,1);assert.equal(m.total.cacheHits,1);
     const p=m.people.find(p=>p.name==='friend');assert.equal(p.requests,2);assert.equal(p.outputBytes,Buffer.byteLength(body)*2);
@@ -157,7 +157,7 @@ test('local traffic is counted by TCP peer, including authenticated requests, wi
     assert.equal((await s.post('')).status,200);
     assert.equal((await s.post()).status,200);
     peer='::ffff:192.168.88.21';assert.equal((await s.post('')).status,200);
-    assert.equal((await s.post(basic('friend','wrong'))).status,401);
+    assert.equal((await s.post(basic('friend','wrong'))).status,403);
     peer='203.0.113.50';
     assert.equal((await fetch(s.base+'/v1/resolve',{method:'POST',headers:{Authorization:basic('friend','viewer-fixture'),'X-Forwarded-For':'192.168.88.20'},body:JSON.stringify({movie:{title:'Fixture title'}})})).status,200);
     const m=s.metrics.snapshot();
@@ -175,7 +175,7 @@ test('local traffic is counted by TCP peer, including authenticated requests, wi
 });
 test('local classification never grants access and also works when the resolver is in open mode',async t=>{
     const s=await fixture(t,{peer:'192.168.88.20'});
-    assert.equal((await s.post('')).status,401);
+    assert.equal((await s.post('')).status,403);
     assert.equal((await s.post()).status,200);
     await change(s.file,d=>{d.users=[];d.enabled=false;});
     assert.equal((await s.post('')).status,200);
@@ -254,8 +254,8 @@ test('viewer accounts accept chosen passwords; reset preserves a block and old c
     const r=await edit('add',{password:first,passwordConfirmation:first});assert.equal(r.status,200);assert.equal((await r.json()).password,first);
     assert.equal((await s.post(basic('chosen',first))).status,200);
     await edit('block');assert.equal((await edit('reset',{password:next,passwordConfirmation:next})).status,200);
-    assert.equal((await s.post(basic('chosen',next))).status,401);await edit('unblock');
-    assert.equal((await s.post(basic('chosen',first))).status,401);assert.equal((await s.post(basic('chosen',next))).status,200);
+    assert.equal((await s.post(basic('chosen',next))).status,403);await edit('unblock');
+    assert.equal((await s.post(basic('chosen',first))).status,403);assert.equal((await s.post(basic('chosen',next))).status,200);
     const raw=await fs.readFile(s.file,'utf8'),metrics=JSON.stringify(s.metrics.snapshot());
     for(const secret of [first,next]){assert.equal(raw.includes(secret),false);assert.equal(metrics.includes(secret),false);}
 });

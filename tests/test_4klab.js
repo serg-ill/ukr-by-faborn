@@ -105,6 +105,16 @@ test('a missing Ubuntu address fails before allocating a worker',()=>{
     let error;ui.discover({title:'Film'},0,0,{error:e=>error=e});
     assert.match(error,/адресу/);assert.equal(state.workers.length,0);assert.equal(state.timers.size,0);
 });
+for(const status of [401,403])for(const selected of [false,true])test('resolver HTTP '+status+' stays in source status during '+(selected?'launch':'background discovery'),()=>{
+    const {ui,state}=harness();state.prefs.faborn_ukr_uakinogo_beta='on';
+    let failure,returned=0;
+    ui.discover({title:'Film'},0,0,{error(message){failure=message;},back(){returned++;state.menu=null;}});
+    if(selected){state.message('resolved',{tracks:[]});ui.playChoice({season:0,episode:0,label:'English',language:'en',quality:'2160p'});}
+    state.message('error',{message:'SERVER: HTTP '+status+' — перевір логін і пароль'});
+    assert.match(failure,/перевір логін і пароль/);
+    assert.equal(returned,selected?1:0);assert.equal(state.menu,null);
+    assert.equal(state.played,null);assert.equal(state.workers.at(-1).messages.at(-1).type,'stop');
+});
 test('only the new beta flag can send the configured server to a worker',()=>{
     const {ui,state}=harness();state.prefs.faborn_ukr_lab4k='on';ui.open();assert.equal(state.workers.length,0);
     state.enable();assert.equal(state.workers[0].messages[0].server,'http://192.168.88.191:8787');assert.equal(state.workers[0].messages[0].key,'');

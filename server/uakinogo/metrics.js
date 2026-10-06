@@ -36,7 +36,7 @@ function createMetrics({file='',now=Date.now,flushMs=30000}={}) {
         const status=Math.floor(number(input.status));
         const event={time,kind,name,ip:address(input.ip),local:input.local===true||kind==='lan',title:clean(input.title),season:number(input.season),episode:number(input.episode),
             status,...eventDetails({...input,status}),cacheHit:input.cacheHit===true,inputBytes:number(input.inputBytes),outputBytes:number(input.outputBytes),durationMs:Math.round(number(input.durationMs))};
-        const counts={requests:1,success:status>=200&&status<300?1:0,errors:status>=400?1:0,authFailures:status===401?1:0,
+        const counts={requests:1,success:status>=200&&status<300?1:0,errors:status>=400?1:0,authFailures:status===401||status===403&&input.errorCode==='auth_failed'?1:0,
             cacheHits:event.cacheHit?1:0,inputBytes:event.inputBytes,outputBytes:event.outputBytes,durationMs:event.durationMs};
         trim(); const row=day(); add(row.total,counts);
         let person=row.people.find(p=>p.kind===kind && p.name===name);

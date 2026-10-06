@@ -24,7 +24,7 @@ test('journal identifies the actual endpoint for metadata, cached replies and fa
     assert.equal(await s.post({provider:'uafix',errorCode:'title_not_found'}),200);
     assert.equal(await s.post(),200);
     assert.equal(await s.post({sourcePage:'https://uafix.net/films/fixture/',embed:'https://zetvideo.net/vod/42/',provider:'uakinogo'},'/v1/uafix/player'),200);
-    assert.equal(await s.post({},'/v1/uafix/player','wrong-key-fixture'),401);
+    assert.equal(await s.post({},'/v1/uafix/player','wrong-key-fixture'),403);
     const events=s.metrics.snapshot().events;
     assert.deepEqual(events.map(e=>e.provider),['uafix','uafix','uakinogo','uakinogo']);
     assert.equal(events[0].errorCode,'auth_failed');assert.match(events[0].reason,/логін, пароль/);

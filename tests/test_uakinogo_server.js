@@ -37,10 +37,29 @@ test('metadata is cached briefly and fresh playback explicitly renews the source
 });
 test('optional future keys reject missing and wrong keys but do not change the public beta default',async t=>{
     const s=await service(t,{keys:['fixture-key'],resolve:async()=>result()});
-    assert.equal((await s.post()).status,401);
-    assert.equal((await s.post({movie},{Authorization:'Bearer wrong'})).status,401);
+    assert.equal((await s.post()).status,403);
+    assert.equal((await s.post({movie},{Authorization:'Bearer wrong'})).status,403);
     assert.equal((await s.post({movie},{Authorization:'Bearer fixture-key'})).status,200);
     assert.equal((await (await fetch(s.base+'/health')).json()).auth,'key');
+});
+test('both metadata APIs deny invalid access without a browser authentication challenge',async t=>{
+    let calls=0;
+    const s=await service(t,{keys:['fixture-key'],resolve:async()=>{calls++;return result();},resolveUafix:async()=>{calls++;return {};}});
+    for(const route of ['/v1/resolve','/v1/uafix/player']) {
+        for(const authorization of ['', 'Basic ZmFrZTpiYWQ=', 'Bearer wrong']) {
+            const response=await fetch(s.base+route,{method:'POST',headers:{'Content-Type':'application/json',...(authorization?{Authorization:authorization}:{})},body:JSON.stringify({movie})});
+            assert.equal(response.status,403);
+            assert.equal(response.headers.get('www-authenticate'),null);
+            assert.equal(response.headers.get('proxy-authenticate'),null);
+            assert.equal(response.headers.get('access-control-allow-origin'),'*');
+            assert.equal((await response.json()).code,'auth_failed');
+        }
+    }
+    assert.equal(calls,0);
+    assert.equal((await s.post({movie},{Authorization:'Bearer fixture-key'})).status,200);
+    assert.equal(calls,1);
+    const denied=s.server.metrics.snapshot().events.filter(e=>e.status===403);
+    assert.equal(denied.length,6);assert.ok(denied.every(e=>e.errorCode==='auth_failed'));
 });
 test('bad and oversized requests cannot reach the provider',async t=>{
     let calls=0;const s=await service(t,{resolve:async()=>{calls++;return result();}});
@@ -172,13 +191,13 @@ test('UAFix route shares authentication, cache revocation, metrics and cancellat
  const s=await service(t,{users,resolveUafix:async(input,sig)=>{calls++;if(input.embed.endsWith('/2')){signal=sig;started();await new Promise((r,j)=>sig.addEventListener('abort',()=>j(Error('cancelled'))));}return {schema:1,provider:'uafix',...input,playerHtml:fixHtml};}});
  const body={movie,sourcePage:fixPage,embed:fixEmbed};
  const post=(data=body,authorization='Basic Zml4dHVyZTpwYXNz',abort)=>fetch(s.base+'/v1/uafix/player',{method:'POST',headers:{Authorization:authorization},body:JSON.stringify(data),signal:abort});
- assert.equal((await post(body,'')).status,401);assert.equal(calls,0);
+ assert.equal((await post(body,'')).status,403);assert.equal(calls,0);
  assert.equal((await post()).status,200);assert.equal((await post()).status,200);assert.equal(calls,1);
- valid=false;assert.equal((await post()).status,401);assert.equal(calls,1);valid=true;
+ valid=false;assert.equal((await post()).status,403);assert.equal(calls,1);valid=true;
  assert.equal((await post({...body,embed:'https://127.0.0.1/vod/1'})).status,400);assert.equal(calls,1);
  const controller=new AbortController(),pending=post({...body,embed:'https://zetvideo.net/vod/2'},undefined,controller.signal).catch(()=>{});
  await begun;const aborted=new Promise(r=>signal.addEventListener('abort',r));controller.abort();await pending;await aborted;assert.equal(signal.aborted,true);
  const history=s.server.metrics.snapshot();assert.ok(history.total.requests>=5);
- assert.ok(history.events.some(e=>e.status===200&&e.cacheHit&&e.title===movie.title));assert.ok(history.events.some(e=>e.status===401));
+ assert.ok(history.events.some(e=>e.status===200&&e.cacheHit&&e.title===movie.title));assert.ok(history.events.some(e=>e.status===403));
  assert.equal((await (await fetch(s.base+'/health')).json()).videoProxy,false);
 });

@@ -6,14 +6,14 @@ const {lanPolicy,loopback}=require('./network');
 const {createMetrics}=require('./metrics');
 const {failure,statusCode}=require('./diagnostics');
 const {createAdmin}=require('./admin');
-const VERSION='0.1.0-beta.52';
+const VERSION='0.1.0-beta.55';
 function createService({resolve=createResolver(),resolveUafix=createUafixResolver(),keys=[],users=null,allowLan='',maxActive=3,maxAuth=3,metrics=createMetrics(),admin=null}={}){
  const fromTrustedLan=lanPolicy(allowLan);
  const fromAdminLan=lanPolicy(admin?.allowLan||'');
  const cache=new Map(),rates=new Map(),contexts=new WeakMap();let active=0,authenticating=0;
  const adminHandler=admin?createAdmin({...admin,users,metrics,version:VERSION,state:()=>({activeRequests:active,cacheEntries:cache.size,authenticating,anonymousLan:allowLan,keysConfigured:keys.length>0})}):null;
  function authorized(key){return keys.some(k=>{const a=Buffer.from(k),b=Buffer.from(String(key||''));return a.length===b.length&&crypto.timingSafeEqual(a,b);});}
- function send(res,status,data){if(res.destroyed)return;const body=JSON.stringify(data),context=contexts.get(res);if(context){context.outputBytes=Buffer.byteLength(body);if(status>=400&&!context.errorCode)context.errorCode=statusCode(status);}res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Access-Control-Allow-Origin':'*','Cache-Control':'no-store',...(status===401?{'WWW-Authenticate':'Basic realm="Faborn", charset="UTF-8"'}:{})});res.end(body);}
+ function send(res,status,data){if(res.destroyed)return;const body=JSON.stringify(data),context=contexts.get(res);if(context){context.outputBytes=Buffer.byteLength(body);if(status>=400&&!context.errorCode)context.errorCode=statusCode(status);}res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Access-Control-Allow-Origin':'*','Cache-Control':'no-store'});res.end(body);}
  function mode(data){return data&&data.enabled?(keys.length?'basic+key':'basic'):keys.length?'key':'none';}
  const server=http.createServer(async(req,res)=>{
   if(req.url==='/admin'||req.url.startsWith('/admin/')){
@@ -52,7 +52,10 @@ function createService({resolve=createResolver(),resolveUafix=createUafixResolve
     if(authenticating>=maxAuth)return send(res,429,{error:'Зачекайте й повторіть запит'});
     authenticating++;try{access=await users.verify(header,accounts);if(access){context.kind='user';context.name=basic(header)?.username||'';}}finally{authenticating--;}
    }
-   if(!access)return send(res,401,{error:'Потрібен правильний логін і пароль або ключ доступу'});
+   // This API receives explicit credentials from plugin settings. A Basic
+   // challenge can open a native login dialog over unrelated source playback.
+   // Deny access without inviting the browser to collect credentials itself.
+   if(!access)return send(res,403,{code:'auth_failed',error:'Потрібен правильний логін і пароль або ключ доступу'});
    if(res.destroyed)return;
    if(active>=maxActive)return send(res,429,{error:'Зачекайте й повторіть запит'});
    const season=data.season===undefined?0:data.season,episode=data.episode===undefined?0:data.episode;

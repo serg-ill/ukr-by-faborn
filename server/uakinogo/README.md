@@ -1,6 +1,6 @@
-# UAKinogo · серверна бета 0.1.0-beta.52
+# UAKinogo · серверна бета 0.1.0-beta.55
 
-**beta.52:** виправлення підготовки та тайм-аутів Alloha міститься у плагіні. Сервер beta.50 / beta.51 залишається сумісним; встановлювати нову версію Ubuntu-обробника для цього виправлення не потрібно.
+**beta.55:** при відмові доступу API повертає HTTP 403 і JSON `code: auth_failed` без заголовка `WWW-Authenticate`. Це усуває системний запит логіна й пароля над Lampa. Для цього виправлення потрібно оновити Ubuntu; користувачі, паролі, порт, статистика та політика локального доступу зберігаються. Авторизація й адмінпанель залишаються захищеними.
 
 **beta.51:** виправлення Alloha розміщене у плагіні. Наявний сервер beta.50 сумісний; оновлювати Ubuntu для усунення `Illegal invocation` не потрібно.
 
@@ -30,10 +30,10 @@
 ssh USERNAME@192.168.88.191
 ```
 
-У вже відкритій SSH-сесії завантажте [інсталятор beta.50](https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.52/server/uakinogo/install.sh) та запустіть. Він містить виправлення конфлікту портів і встановлює серверний пакет beta.50:
+У вже відкритій SSH-сесії завантажте [інсталятор beta.55](https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.55/server/uakinogo/install.sh) та запустіть. Він містить виправлення конфлікту портів і встановлює серверний пакет beta.55:
 
 ```sh
-curl -fL https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.52/server/uakinogo/install.sh -o /tmp/faborn-install.sh
+curl -fL https://raw.githubusercontent.com/serg-ill/ukr-by-faborn/v0.1.0-beta.55/server/uakinogo/install.sh -o /tmp/faborn-install.sh
 sudo bash /tmp/faborn-install.sh --test-users
 ```
 
@@ -55,7 +55,7 @@ sudo bash /tmp/faborn-install.sh --port 8788
 curl http://192.168.88.191:8787/health
 ```
 
-Очікувана відповідь містить `"ok":true`, `"version":"0.1.0-beta.52"`, `"auth":"basic"` (із тестовими користувачами), `"videoProxy":false`.
+Очікувана відповідь містить `"ok":true`, `"version":"0.1.0-beta.55"`, `"auth":"basic"` (із тестовими користувачами), `"videoProxy":false`.
 
 ## Налаштування телевізора
 

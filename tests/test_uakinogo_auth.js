@@ -38,27 +38,27 @@ test('Basic guards cached metadata, and deletion revokes access without a servic
  const one=f.cli('reset','test1','--generate').stdout.trim().split(':')[1],two=f.cli('reset','test2','--generate').stdout.trim().split(':')[1];
  const s=await service(t,f.file);
  assert.equal((await s.health()).status,200);assert.equal((await (await s.health()).json()).auth,'basic');
- const denied=await s.post();assert.equal(denied.status,401);assert.match(denied.headers.get('www-authenticate'),/Basic/);
- assert.equal((await s.post(header('test1','wrong'))).status,401);assert.equal(s.calls,0);
+ const denied=await s.post();assert.equal(denied.status,403);assert.equal(denied.headers.get('www-authenticate'),null);
+ assert.equal((await s.post(header('test1','wrong'))).status,403);assert.equal(s.calls,0);
  assert.equal((await s.post(header('test1',one))).status,200);assert.equal((await s.post(header('test2',two))).status,200);assert.equal(s.calls,1);
  assert.equal(f.cli('delete','test1').status,0);
- assert.equal((await s.post(header('test1',one))).status,401);assert.equal((await s.post(header('test2',two))).status,200);
+ assert.equal((await s.post(header('test1',one))).status,403);assert.equal((await s.post(header('test2',two))).status,200);
  assert.equal(f.cli('delete','test2').status,0);
- assert.equal((await (await s.health()).json()).auth,'basic');assert.equal((await s.post()).status,401);
+ assert.equal((await (await s.health()).json()).auth,'basic');assert.equal((await s.post()).status,403);
 });
 test('password reset changes access, retains other accounts and never writes a plaintext password',async t=>{
  const f=fixture(t),first=f.cli('add','friend','--generate');assert.equal(first.status,0);
  const old=first.stdout.trim().split(':')[1],r=f.cli('reset','friend','--generate'),next=r.stdout.trim().split(':')[1];
  assert.equal(r.status,0);assert.notEqual(next,old);
- const s=await service(t,f.file);assert.equal((await s.post(header('friend',old))).status,401);assert.equal((await s.post(header('friend',next))).status,200);
+ const s=await service(t,f.file);assert.equal((await s.post(header('friend',old))).status,403);assert.equal((await s.post(header('friend',next))).status,200);
  assert.ok(!fs.readFileSync(f.file,'utf8').includes(next));assert.equal(f.cli('add','friend','--generate').status,1);
 });
 test('CLI block/unblock interoperates with admin schema and password reset preserves a block',async t=>{
  const f=fixture(t),created=f.cli('add','friend','--generate');assert.equal(created.status,0);
  const first=created.stdout.trim().split(':')[1],s=await service(t,f.file);
- assert.equal(f.cli('block','friend').status,0);assert.equal((await s.post(header('friend',first))).status,401);
+ assert.equal(f.cli('block','friend').status,0);assert.equal((await s.post(header('friend',first))).status,403);
  const reset=f.cli('reset','friend','--generate'),next=reset.stdout.trim().split(':')[1];assert.equal(reset.status,0);
- assert.equal((await s.post(header('friend',next))).status,401);assert.match(f.cli('list').stdout,/friend \[blocked\]/);
+ assert.equal((await s.post(header('friend',next))).status,403);assert.match(f.cli('list').stdout,/friend \[blocked\]/);
  assert.equal(f.cli('unblock','friend').status,0);assert.equal((await s.post(header('friend',next))).status,200);
 });
 test('configured but unreadable, missing or malformed account files fail closed',async t=>{
@@ -73,16 +73,16 @@ test('password derivations are bounded before a provider is called',async t=>{
  const users={read:async()=>({enabled:true}),verify:async()=>{start();return new Promise(r=>release=r);}};
  const f=fixture(t),s=await service(t,f.file,{users,maxAuth:1});
  const pending=s.post(header('test1','pass'));await started;assert.equal((await s.post(header('test2','pass'))).status,429);
- release(false);assert.equal((await pending).status,401);assert.equal(s.calls,0);
+ release(false);assert.equal((await pending).status,403);assert.equal(s.calls,0);
 });
 test('failed Basic logins consume the request budget, not an unbounded CPU queue',async t=>{
  const f=fixture(t);f.cli('test-users');const s=await service(t,f.file);
- for(let i=0;i<30;i++)assert.equal((await s.post('Basic not-valid')).status,401);
+ for(let i=0;i<30;i++)assert.equal((await s.post('Basic not-valid')).status,403);
  assert.equal((await s.post('Basic not-valid')).status,429);assert.equal(s.calls,0);
 });
 test('existing bearer keys coexist with user accounts and public health contains no account data',async t=>{
  const f=fixture(t);f.cli('test-users');const s=await service(t,f.file,{keys:['fixture-key']});
- assert.equal((await s.post('Bearer fixture-key')).status,200);assert.equal((await s.post('Bearer wrong')).status,401);
+ assert.equal((await s.post('Bearer fixture-key')).status,200);assert.equal((await s.post('Bearer wrong')).status,403);
  const h=await (await s.health()).json();assert.equal(h.auth,'basic+key');assert.equal(h.videoProxy,false);assert.ok(!JSON.stringify(h).includes('test1'));
 });
 test('UTF-8 and colons in passwords work; malformed or oversized Basic values are rejected',async t=>{
@@ -111,14 +111,14 @@ test('trusted LAN can resolve anonymously; explicit wrong credentials still fail
  const f=fixture(t);f.cli('test-users');
  const s=await service(t,f.file,{allowLan:'192.168.88.0/24'},'::ffff:192.168.88.20');
  assert.equal((await s.post()).status,200);assert.equal(s.calls,1);
- assert.equal((await s.post(header('test1','wrong'))).status,401);
+ assert.equal((await s.post(header('test1','wrong'))).status,403);
  const h=await (await s.health()).json();assert.equal(h.auth,'basic');assert.equal(h.localAccess,'allowed');
  fs.writeFileSync(f.file,'broken');assert.equal((await s.post()).status,503);
 });
 test('WAN peers cannot claim LAN access via HTTP headers and still need the account password',async t=>{
  const f=fixture(t),created=f.cli('test-users'),pass=created.stdout.split('\n').find(line=>line.startsWith('test1:')).split(':')[1];
  const s=await service(t,f.file,{allowLan:'192.168.88.0/24'},'203.0.113.20');
- assert.equal((await s.post(undefined,{'X-Forwarded-For':'192.168.88.20','X-Real-IP':'192.168.88.20',Forwarded:'for=192.168.88.20'})).status,401);
+ assert.equal((await s.post(undefined,{'X-Forwarded-For':'192.168.88.20','X-Real-IP':'192.168.88.20',Forwarded:'for=192.168.88.20'})).status,403);
  assert.equal(s.calls,0);assert.equal((await s.post(header('test1',pass))).status,200);
- assert.equal((await s.post()).status,401);assert.equal(s.calls,1);
+ assert.equal((await s.post()).status,403);assert.equal(s.calls,1);
 });

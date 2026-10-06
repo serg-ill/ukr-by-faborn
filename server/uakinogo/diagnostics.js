@@ -27,7 +27,7 @@ const labels={
     client_closed:'Клієнт закрив запит до отримання відповіді',
     resolver_error:'Помилка обробки відповіді джерела'
 };
-const statusCodes={400:'invalid_request',401:'auth_failed',413:'request_too_large',429:'busy',499:'client_closed',503:'accounts_unavailable'};
+const statusCodes={400:'invalid_request',401:'auth_failed',403:'auth_failed',413:'request_too_large',429:'busy',499:'client_closed',503:'accounts_unavailable'};
 function statusCode(status) { return statusCodes[status]||''; }
 function failure(error,{timedOut=false}={}) {
     if(timedOut)return {errorCode:'timeout'};

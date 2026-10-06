@@ -1,4 +1,4 @@
-/* Faborn 0.1.0-beta.54 — GitHub Pages edition. */
+/* Faborn 0.1.0-beta.55 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,8 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.54';
+    var VERSION = '0.1.0-beta.55';
+    var metadataDenied = '';
     var NAME = 'Faborn';
     var DEFAULT_PAGES = 'https://serg-ill.github.io/ukr-by-faborn/';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
@@ -614,7 +615,7 @@
             if (session.status.uakinogo && view.sources.indexOf('uakinogo') < 0) content += btn('labstatus','UAKinogo · бета<span class="fbr-small">'+escapeHTML(session.status.uakinogo)+'</span>','fbr-last',false,function () { cardLabDetails(session); });
             var issue = kinoIssue(session,view);
             if (issue) content += btn('kinostatus',escapeHTML(issue.title)+'<span class="fbr-small">'+escapeHTML(issue.message)+'</span>','fbr-last',false,function () { kinoDetails(session); });
-            content += btn('refresh','Оновити джерела','fbr-refresh',false,function () { startDiscovery(session.movie); });
+            content += btn('refresh','Оновити джерела','fbr-refresh',false,function () { retryDiscovery(session.movie); });
         }
         var play = '', resume = canResume(progress);
         if (!busy && selected) play = btn('play','&#9654; '+(resume ? 'Продовжити з '+clockLabel(progress.time) : 'Дивитися')+' · '+qualityLabel(selected.entries[0].value),'fbr-play',false,function () { session.focusVoice = selected.key; selectStream(session,selected.entries[0]); });
@@ -1394,6 +1395,19 @@
         },12000,post,ajax);
         if (!completed) requests.push(req);
     }
+    function metadataAuthKey() {
+        return JSON.stringify(['uakinogo_server','uakinogo_login','uakinogo_password','uakinogo_key'].map(function (name) { return text(storage(name,'')); }));
+    }
+    function metadataAuthError() {
+        if (metadataDenied && metadataDenied === metadataAuthKey()) return 'Доступ до сервера не надано. Перевір логін і пароль у налаштуваннях Faborn або натисни «Оновити джерела». Інші джерела доступні.';
+        metadataDenied = ''; return '';
+    }
+    function denyMetadata(key) {
+        if (key === metadataAuthKey()) metadataDenied = key;
+    }
+    function retryDiscovery(movie) {
+        metadataDenied = ''; startDiscovery(movie);
+    }
     function metadataConnection() {
         try {
             var value=text(storage('uakinogo_server','')).trim(), Parser=typeof root.URL==='function'?root.URL:typeof URL==='function'?URL:null;
@@ -1411,11 +1425,13 @@
         publicRequest(serial,stage,embed,function(error,html) {
             var denied=error ? /^HTTP 404$/.test(error.message) : /<title>\s*404 Not Found\s*<\/title>/i.test(text(html));
             if(provider!=='uafix' || !denied || !/^https:\/\/zetvideo\.net\/(?:vod|serial)\/\d+\/?$/.test(embed) || storage('uakinogo_beta','off')!=='on' || !text(storage('uakinogo_server','')).trim())return done(error,html);
+            var accessError=metadataAuthError();
+            if(accessError)return done(new Error('UAFix · сервер: '+accessError));
             var connection=metadataConnection();
             if(!connection)return done(new Error('UAFix: перевір адресу та облікові дані сервера Faborn.'));
             // A source-page Referer is required by this iframe. Ask the opted-in
             // metadata server for its public config; HLS and video stay direct.
-            var request=new root.XMLHttpRequest(),finished=false;
+            var request=new root.XMLHttpRequest(),finished=false,authKey=metadataAuthKey();
             function finish(problem,body) {
                 if(finished)return;finished=true;
                 var index=requests.indexOf(request);if(index>=0)requests.splice(index,1);
@@ -1424,7 +1440,11 @@
                 done(problem,body);
             }
             request.onload=function() {
-                if(request.status!==200)return finish(new Error('UAFix · сервер: HTTP '+request.status+(request.status===404?' — онови обробник Ubuntu.':request.status===401?' — перевір логін і пароль.':'')));
+                if(request.status!==200) {
+                    var authFailed=request.status===401 || request.status===403;
+                    if(authFailed && serial===requestSerial)denyMetadata(authKey);
+                    return finish(new Error('UAFix · сервер: HTTP '+request.status+(request.status===404?' — онови обробник Ubuntu.':authFailed?' — перевір логін і пароль у налаштуваннях Faborn.':'')));
+                }
                 try {
                     if(request.responseText.length>2*1024*1024)throw new Error();
                     var data=JSON.parse(request.responseText);
@@ -1958,7 +1978,7 @@
             if (row.action === 'quality') return chooseQuality(session,view);
             if (row.action === 'episode') return chooseSeason(session);
             if (row.action === 'last') return returnToLast(session);
-            if (row.action === 'retry') return startDiscovery(session.movie);
+            if (row.action === 'retry') return retryDiscovery(session.movie);
             if (row.action === 'restart') return selectStream(session,row.entry,true);
             session.focusVoice = row.group.key;
             if (row.action === 'sources') return chooseSource(session,row.group);
@@ -1983,7 +2003,7 @@
         session.screen = 'kinostatus';
         var issue = kinoIssue(session,sourceGroups(session));
         select('KinoBase',[{title:issue ? issue.message : 'Джерело доступне',action:'back'},{title:'Оновити джерела',action:'retry'},{title:'До озвучень',action:'back'}],function (row) {
-            if (row.action === 'retry') startDiscovery(session.movie);
+            if (row.action === 'retry') retryDiscovery(session.movie);
             else renderSources(session);
         },function () { renderSources(session); });
     }
@@ -3252,7 +3272,7 @@
             {title:'Повторити пошук цього джерела',action:'retry'},
             {title:'Повернутися до озвучень',action:'back'}
         ],function (row) {
-            if (row.action === 'retry') { startCardLab(session); renderSources(session); }
+            if (row.action === 'retry') { metadataDenied = ''; startCardLab(session); renderSources(session); }
             else if (row.action === 'back') renderSources(session);
         },function () { renderSources(session); });
     }
@@ -3261,7 +3281,7 @@
         session.labStarted = true; session.labLaunching = false;
         session.labPending = session.season+':'+session.episode;
         session.status.uakinogo = 'Завантаження адаптера…';
-        var run = (session.labRun || 0)+1; session.labRun = run;
+        var run = (session.labRun || 0)+1, authKey=metadataAuthKey(); session.labRun = run;
         function current() { return activeSession === session && session.labRun === run && storage('uakinogo_beta','off') === 'on'; }
         function refresh() {
             if (current()) {
@@ -3271,6 +3291,7 @@
         }
         function failure(message,playbackFailure) {
             if (!current()) return;
+            if (/^SERVER: HTTP (401|403)\b/.test(message)) denyMetadata(authKey);
             if (betaContext && betaContext.lab && betaContext.catalog.session === session && (!betaPlayer || !betaPlayer.active())) {
                 betaContext.closed = true; betaContext = null; historyPlayback = null;
             }
@@ -3282,6 +3303,8 @@
             save('lab4k_status',message); refresh();
         }
         if (!text(storage('uakinogo_server','')).trim()) { failure('Вкажи адресу бета-обробника в налаштуваннях Faborn'); return; }
+        var accessError=metadataAuthError();
+        if (accessError) { failure(accessError); return; }
         refresh();
         ensureLab(function (error,adapter) {
             if (!current()) return;
@@ -3340,6 +3363,7 @@
         });
     }
     function labChanged() {
+        metadataDenied = '';
         if (storage('uakinogo_beta','off') !== 'on') {
             cancelLabLoad();
             if (lab4k) lab4k.disable();
@@ -3473,6 +3497,7 @@
         }catch(ignore){save('uakinogo_server','');return false;}
     }
     function serverChanged(value) {
+        metadataDenied = '';
         if(!serverSetting(value===undefined?storage('uakinogo_server',''):value))notify('Некоректна адреса або облікові дані сервера.');
         cancelCardLab();
         if(L.Settings && L.Settings.update)L.Settings.update();
@@ -3486,7 +3511,7 @@
         L.Input.edit({title:'Пароль сервера UAKinogo',value:storage('uakinogo_password',''),password:true,free:true,nosave:true},function(value){
             value=text(value);
             if(/[\x00-\x1f\x7f]/.test(value) || unescape(encodeURIComponent(value)).length>256)return notify('Пароль має містити не більше 256 байтів.');
-            save('uakinogo_password',value);cancelCardLab();
+            save('uakinogo_password',value);metadataDenied = '';cancelCardLab();
             if(L.Settings && L.Settings.update)L.Settings.update();
         });
     }
@@ -3495,12 +3520,12 @@
         L.Input.edit({title:'Логін сервера UAKinogo',value:storage('uakinogo_login',''),free:true,nosave:true},function(value){
             value=text(value).trim();
             if(value && !/^[A-Za-z0-9_.-]{1,64}$/.test(value))return notify('Логін: латинські літери, цифри, крапка, дефіс або підкреслення.');
-            save('uakinogo_login',value);cancelCardLab();
+            save('uakinogo_login',value);metadataDenied = '';cancelCardLab();
             if(L.Settings && L.Settings.update)L.Settings.update();
         });
     }
     function clearServerCredentials() {
-        save('uakinogo_login','');save('uakinogo_password','');cancelCardLab();
+        save('uakinogo_login','');save('uakinogo_password','');metadataDenied = '';cancelCardLab();
         if(L.Settings && L.Settings.update)L.Settings.update();
         notify('Логін і пароль очищені. Адреса сервера збережена.');
     }
