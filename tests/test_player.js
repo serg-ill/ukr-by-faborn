@@ -320,6 +320,31 @@ test('current-time polling without native time events is sufficient to prevent a
  for(let i=0;i<30;i++){e.avState.time+=1000;e.advance(1000);}
  assert.equal(calls,0);assert.equal(e.avState.state,'PLAYING');e.api.close();assert.equal(e.jobs.size,0);
 });
+test('a frozen native clock oscillating between callbacks and polling still triggers recovery',()=>{
+ const e=environment();let calls=0;
+ e.api.play(e.spec({recoverInterrupted:true,request(){calls++;}}));e.prepare();e.at(125);
+ for(let i=0;i<6;i++){
+  e.at(124.999);e.advance(500);e.at(125);e.advance(500);
+ }
+ assert.equal(calls,1,'Repeated old positions are not advancing playback');
+ assert.match(e.errors[0],/PlaybackStallTimeout/);e.api.close();assert.equal(e.jobs.size,0);
+});
+test('rewinding resets the progress clock and keeps ordinary playback running below its previous position',()=>{
+ const e=environment();let calls=0;
+ e.api.play(e.spec({recoverInterrupted:true,request(){calls++;}}));e.prepare();e.at(125);
+ e.click('−10 с');e.advance(350);assert.equal(e.avState.time,115000);
+ for(let second=116;second<=145;second++){e.at(second);e.advance(1000);}
+ assert.equal(calls,0);assert.equal(e.avState.state,'PLAYING');
+ e.advance(5000);assert.equal(calls,1,'Recovery still detects a later real freeze');
+ e.api.close();assert.equal(e.jobs.size,0);
+});
+test('pausing a jittering clock suspends the watchdog and resuming arms it again',()=>{
+ const e=environment();let calls=0;
+ e.api.play(e.spec({recoverInterrupted:true,request(){calls++;}}));e.prepare();e.at(125);
+ e.at(124.999);e.click('Пауза');e.advance(30000);assert.equal(calls,0);
+ e.click('Продовжити');e.at(125);e.advance(5999);assert.equal(calls,0);
+ e.advance(1);assert.equal(calls,1);e.api.close();assert.equal(e.jobs.size,0);
+});
 test('an increasing buffer gets one four-second grace period, never an unbounded stall',()=>{
  const e=environment();let calls=0;e.api.play(e.spec({recoverInterrupted:true,request(){calls++;}}));e.prepare();e.at(125);
  e.advance(5000);e.avState.listeners.onbufferingprogress(25);e.advance(1000);assert.equal(calls,0);

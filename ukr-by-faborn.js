@@ -1,4 +1,4 @@
-/* Faborn 0.1.0-beta.55 — GitHub Pages edition. */
+/* Faborn 0.1.0-beta.56 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.55';
+    var VERSION = '0.1.0-beta.56';
     var metadataDenied = '';
     var NAME = 'Faborn';
     var DEFAULT_PAGES = 'https://serg-ill.github.io/ukr-by-faborn/';
