@@ -2036,6 +2036,13 @@ test('UAKinogo server beta is explicitly off, needs an address and does not load
  e.state.storage.faborn_ukr_uakinogo_beta='on';e.instance.open(kinoMovie);
  assert.equal(loaded,0);assert.match(e.state.menu.items.find(r=>r.action==='labstatus').subtitle,/адресу/);
 });
+test('Alloha protected DNS registers as a separate default-off setting without changing player or credentials',()=>{
+ const e=environment({storage:{faborn_ukr_player:'auto',faborn_ukr_uakinogo_login:'kept',faborn_ukr_uakinogo_server:'http://192.168.88.191:8789'}});
+ const setting=e.state.params.find(p=>p.param.name==='faborn_ukr_uakinogo_doh');
+ assert.equal(setting.param.default,'off');assert.deepEqual(Object.keys(setting.param.values),['off','on']);assert.match(setting.field.name,/Захищений DNS для Alloha/);
+ assert.equal(e.state.storage.faborn_ukr_player,'auto');assert.equal(e.state.storage.faborn_ukr_uakinogo_login,'kept');
+ assert.equal(e.state.storage.faborn_ukr_uakinogo_server,'http://192.168.88.191:8789');assert.equal(e.state.storage.faborn_ukr_uakinogo_doh,undefined);
+});
 test('server beta results update the current source menu and Back invalidates every late reply',()=>{
  const e=environment({storage:{faborn_ukr_uakinogo_beta:'on',faborn_ukr_uakinogo_server:'http://192.168.88.191:8787'}});let callbacks,cancels=0;
  e.root.document.createElement=()=>({});e.root.document.head={appendChild(script){script.onload();}};

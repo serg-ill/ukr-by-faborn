@@ -412,6 +412,38 @@ function playingCard(){
  state.message('play',{url:'http://127.0.0.1:12345/'+key+'/0.m3u8',label:'UA',quality:'2160p',codecs:'av01'});
  state.emitVideo('timeupdate',{current:5});return env;
 }
+test('protected DNS is explicitly off for new users and sent only when enabled',()=>{
+ for(const setting of [undefined,'off','on']){
+  const e=harness();if(setting!==undefined)e.state.prefs.faborn_ukr_uakinogo_doh=setting;e.state.enable();
+  assert.equal(e.state.workers[0].messages[0].secureDns,setting==='on');
+  assert.match(e.state.prefs.faborn_ukr_lab4k_dns,setting==='on'?/Cloudflare/:/системний DNS/);
+ }
+});
+test('changing DNS between discovery and play restarts just the Alloha worker with the same choice',()=>{
+ for(const setting of ['on','off']){
+  const {ui,state}=harness();state.prefs.faborn_ukr_uakinogo_beta='on';state.prefs.faborn_ukr_uakinogo_doh=setting==='on'?'off':'on';
+  ui.discover({title:'Film'},0,0,{});state.message('resolved',{tracks:[],episodes:[],season:0,episode:0});
+  const old=state.workers[0];state.prefs.faborn_ukr_uakinogo_doh=setting;
+  const selected={season:0,episode:0,label:'English',language:'en',quality:'2160p'};ui.playChoice(selected);
+  assert.equal(old.messages.at(-1).type,'stop');assert.equal(state.workers.length,1);
+  old.onmessage({data:{type:'stopped'}});assert.equal(state.workers.length,2);
+  assert.equal(state.workers[1].messages[0].secureDns,setting==='on');assert.deepEqual(state.workers[1].messages[0].choice,selected);
+  assert.equal(state.closes,0);
+ }
+});
+test('DNS diagnostics during playback never open a menu, arm a timeout or reveal a stream URL',()=>{
+ const {state}=playingCard(),playing=state.played;assert.equal(state.timers.size,0);
+ state.message('dns',{state:'query',host:'edge.vkvideo.cloud'});state.message('dns',{state:'resolved',host:'edge.vkvideo.cloud',count:1,url:'https://private.invalid/token'});
+ assert.equal(state.timers.size,0);assert.equal(state.menu,null);assert.equal(state.played,playing);assert.equal(state.closes,0);
+ assert.match(state.prefs.faborn_ukr_lab4k_dns,/Адресу отримано · edge.vkvideo.cloud/);assert.ok(!state.prefs.faborn_ukr_lab4k_dns.includes('token'));
+});
+test('DNS startup gets a short bounded deadline and cancel discards late DNS callbacks',()=>{
+ const {ui,state}=harness();state.enable();const callback=state.workers[0].onmessage;
+ state.message('dns',{state:'query',host:'edge.vkvideo.cloud'});assert.equal([...state.timers.values()][0].ms,6000);
+ state.message('dns',{state:'resolved',host:'edge.vkvideo.cloud'});assert.equal([...state.timers.values()][0].ms,23000);
+ ui.cancel();const stored=state.prefs.faborn_ukr_lab4k_dns;
+ callback({data:{type:'dns',data:{state:'error',host:'late.vkvideo.cloud'}}});assert.equal(state.prefs.faborn_ukr_lab4k_dns,stored);
+});
 test('in-player translation reuses the worker and returns a fresh URL without reopening Lampa.Player',()=>{
  const {ui,state}=playingCard(),data=state.played;let result;
  ui.switchChoice({season:0,episode:0,label:'EN',language:'en',quality:'2160p'},(err,value)=>result={err,value});

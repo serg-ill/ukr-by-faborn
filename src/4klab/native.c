@@ -30,6 +30,7 @@ static char request_buffer[8193];
 static char user_agent[1024] = "Mozilla/5.0";
 static int listener = -1, client = -1;
 static int nonblocking_http;
+static struct curl_slist *dns_override;
 
 /* Samsung's fcntl(F_SETFL) changes Emscripten bookkeeping only. Use the
  * supported native poll + socket timeouts instead of relying on O_NONBLOCK. */
@@ -102,6 +103,83 @@ static curl_socket_t open_http_socket(void *unused, curlsocktype purpose,
                   address->protocol);
 }
 #endif
+static int dns_hostname(const char *host) {
+    if (!host || !*host || strlen(host) > 253) return 0;
+    size_t label = 0;
+    for (const char *p = host; *p; p++) {
+        if (*p == '.') {
+            if (!label || p[-1] == '-') return 0;
+            label = 0;
+        } else {
+            if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || (*p == '-' && label))) return 0;
+            if (++label > 63) return 0;
+        }
+    }
+    return label && host[strlen(host)-1] != '-';
+}
+/* An isolated, short-lived request: only a hostname goes to the resolver.
+ * Bootstrap its address locally; system DNS and stream cookies are not used. */
+API int lab_dns_query(const char *host) {
+    if (!http || !dns_hostname(host)) return -1;
+    free(body); body = NULL; body_size = 0; body_limit = 32768;
+    error_text[0] = location[0] = content_range[0] = 0;
+    CURL *dns = curl_easy_init();
+    if (!dns) return -2;
+    char url[384];
+    snprintf(url, sizeof(url), "https://cloudflare-dns.com/dns-query?name=%s&type=A", host);
+    struct curl_slist *bootstrap = curl_slist_append(NULL, "cloudflare-dns.com:443:1.1.1.1,1.0.0.1");
+    struct curl_slist *headers = curl_slist_append(NULL, "Accept: application/dns-json");
+    if (!bootstrap || !headers) { curl_slist_free_all(bootstrap); curl_slist_free_all(headers); curl_easy_cleanup(dns); return -2; }
+    curl_easy_setopt(dns, CURLOPT_URL, url);
+    curl_easy_setopt(dns, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+    curl_easy_setopt(dns, CURLOPT_FOLLOWLOCATION, 0L);
+    curl_easy_setopt(dns, CURLOPT_PROXY, "");
+    curl_easy_setopt(dns, CURLOPT_RESOLVE, bootstrap);
+    curl_easy_setopt(dns, CURLOPT_HTTPHEADER, headers);
+#ifdef __EMSCRIPTEN__
+    if (nonblocking_http) curl_easy_setopt(dns, CURLOPT_OPENSOCKETFUNCTION, open_http_socket);
+#endif
+    curl_easy_setopt(dns, CURLOPT_CONNECTTIMEOUT_MS, 2000L);
+    curl_easy_setopt(dns, CURLOPT_TIMEOUT_MS, 4000L);
+    curl_easy_setopt(dns, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(dns, CURLOPT_CAINFO, FABORN_CA_PATH);
+    curl_easy_setopt(dns, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(dns, CURLOPT_SSL_VERIFYHOST, 2L);
+    curl_easy_setopt(dns, CURLOPT_ERRORBUFFER, error_text);
+    curl_easy_setopt(dns, CURLOPT_WRITEFUNCTION, receive_body);
+    CURLcode result = curl_easy_perform(dns);
+    long status = 0;
+    curl_easy_getinfo(dns, CURLINFO_RESPONSE_CODE, &status);
+    curl_easy_cleanup(dns);
+    curl_slist_free_all(bootstrap); curl_slist_free_all(headers);
+    if (result != CURLE_OK) {
+        if (!*error_text) snprintf(error_text, sizeof(error_text), "cURL %d", result);
+        return -(int)result;
+    }
+    return (int)status;
+}
+/* Keep the original HTTPS hostname, Host header and TLS/SNI verification.
+ * Only this worker's cURL connection uses the supplied IPv4 addresses. */
+API int lab_set_resolve(const char *host, const char *addresses) {
+    if (!http || !dns_hostname(host) || !addresses || !*addresses || strlen(addresses) > 63 || strspn(addresses, "0123456789.,") != strlen(addresses)) return 0;
+    char copy[64], rule[336];
+    snprintf(copy, sizeof(copy), "%s", addresses);
+    char *next = copy, *end; int count = 0;
+    do {
+        end = strchr(next, ','); if (end) *end = 0;
+        struct in_addr address;
+        if (++count > 4 || inet_pton(AF_INET, next, &address) != 1) return 0;
+        char canonical[INET_ADDRSTRLEN];
+        if (!inet_ntop(AF_INET, &address, canonical, sizeof(canonical)) || strcmp(next, canonical)) return 0;
+        next = end ? end + 1 : NULL;
+    } while (next);
+    snprintf(rule, sizeof(rule), "%s:443:%s", host, addresses);
+    struct curl_slist *entry = curl_slist_append(NULL, rule);
+    if (!entry) return 0;
+    curl_easy_setopt(http, CURLOPT_RESOLVE, NULL);
+    curl_slist_free_all(dns_override); dns_override = entry;
+    return 1;
+}
 /* Redirects are deliberately handled by the worker, which validates each destination. */
 static int get(const char *url, const char *origin, const char *referer,
                const char *post, const char *borth, const char *range, const char *controls, int limit) {
@@ -116,6 +194,7 @@ static int get(const char *url, const char *origin, const char *referer,
     curl_easy_setopt(http, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
     curl_easy_setopt(http, CURLOPT_FOLLOWLOCATION, 0L);
     curl_easy_setopt(http, CURLOPT_PROXY, "");
+    if (dns_override) curl_easy_setopt(http, CURLOPT_RESOLVE, dns_override);
 #ifdef __EMSCRIPTEN__
     if (nonblocking_http) curl_easy_setopt(http, CURLOPT_OPENSOCKETFUNCTION, open_http_socket);
 #endif
@@ -190,6 +269,7 @@ API void lab_stop(void) {
     free(body); body = NULL; body_size = 0;
     snprintf(user_agent, sizeof(user_agent), "%s", "Mozilla/5.0");
     if (http) { curl_easy_cleanup(http); http = NULL; curl_global_cleanup(); }
+    curl_slist_free_all(dns_override); dns_override = NULL;
 }
 API int lab_listen(void) {
     if (listener >= 0) return -1;

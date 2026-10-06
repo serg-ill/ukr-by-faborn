@@ -1,4 +1,4 @@
-/* Faborn 0.1.0-beta.53 — GitHub Pages edition. */
+/* Faborn 0.1.0-beta.54 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.53';
+    var VERSION = '0.1.0-beta.54';
     var NAME = 'Faborn';
     var DEFAULT_PAGES = 'https://serg-ill.github.io/ukr-by-faborn/';
     var interfaceUI = null, interfaceScript = null, lastFullEvent = null, saverUI = null, saverScript = null, hubUI = null, hubScript = null;
@@ -3191,6 +3191,8 @@
             if (storage('kino_playback','')) lines.push('Потік KinoBase: '+storage('kino_playback',''));
             if (storage('stream_format','')) lines.push('Формат потоку: '+storage('stream_format',''));
             if (storage('lab4k_status','')) lines.push('UAKinogo · стан: '+storage('lab4k_status',''));
+            lines.push('UAKinogo · захищений DNS: '+(storage('uakinogo_doh','off') === 'on' ? 'Увімкнено' : 'Вимкнено'));
+            if (storage('lab4k_dns','')) lines.push('UAKinogo · DNS останнього запуску: '+storage('lab4k_dns',''));
             if (storage('lab4k_probe','')) lines.push('UAKinogo · локальна перевірка: '+storage('lab4k_probe',''));
             if (storage('lab4k_bridge','')) lines.push('UAKinogo · локальний канал: '+storage('lab4k_bridge',''));
             if (interfaceUI && interfaceUI.ratingStatus && interfaceUI.ratingStatus()) lines.push('Рейтинги: '+interfaceUI.ratingStatus());
@@ -3580,6 +3582,7 @@
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_audio_language',type:'select',values:SOURCE_LANGUAGES,default:'uk'},field:{name:'Мова озвучення',description:'Типово українська. Можна змінити перед переглядом; інша мова не вмикається автоматично.'},onChange:function(){save('quality','best');if(L.Settings&&L.Settings.update)L.Settings.update();}});
         api.addParam({component: 'faborn_ukr', param: {name: 'faborn_ukr_quality', type: 'select', values: {best: 'Найкраща', auto: 'Авто', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}, default: 'best'}, field: {name: 'Бажана якість', description: '«Найкраща» — максимальна якість кожного озвучення вибраною мовою. Збережений ручний вибір також діє для наступних карток.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_beta',type:'select',values:{off:'Вимкнено',on:'Увімкнено'},default:'off'},field:{name:'UAKinogo · серверна бета',description:'Обробник знаходить посилання UAKinogo та відновлює конфігурацію UAFix після 404. Відео надходить прямо на телевізор. Для Alloha потрібні Tizen Sockets, WebAssembly і сумісний кодек.'},onChange:labChanged});
+        api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_doh',type:'select',values:{off:'Вимкнено',on:'Увімкнено · Cloudflare'},default:'off'},field:{name:'Захищений DNS для Alloha',description:'Альтернативний пошук адрес відеосерверів через Cloudflare. Відео надходить напряму. Допомагає при проблемах DNS, але не обходить блокування IP. Діє з наступного запуску Alloha.'}});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_server',type:'button'},field:{name:'Сервер UAKinogo',description:'Можна вставити user:password@server:port. Логін і пароль будуть збережені окремо; тут залишиться лише адреса. HTTPS шифрує облікові дані.'},onRender:function(item){item.append($('<div class="settings-param__value"></div>').text(storage('uakinogo_server','')||'Задати адресу'));},onChange:serverAddress});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_login',type:'button'},field:{name:'Логін сервера',description:'Потрібен, якщо сервер вимагає авторизацію. Локальний доступ без пароля дозволяється окремо на Ubuntu.'},onRender:function(item){item.append($('<div class="settings-param__value"></div>').text(storage('uakinogo_login','')||'Не задано'));},onChange:serverLogin});
         api.addParam({component:'faborn_ukr',param:{name:'faborn_ukr_uakinogo_password',type:'button'},field:{name:'Пароль сервера',description:'Редагування із прихованими символами; пароль не додається до історії клавіатури.'},onRender:function(item){item.append('<div class=\"settings-param__value\">'+(storage('uakinogo_password','')?'Задано · змінити':'Задати пароль')+'</div>');},onChange:serverPassword});

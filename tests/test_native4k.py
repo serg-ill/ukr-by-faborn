@@ -28,6 +28,8 @@ class NativeLoopbackTests(unittest.TestCase):
         cls.lib.lab_get.argtypes = [ctypes.c_char_p] * 6 + [ctypes.c_int]
         cls.lib.lab_get_media.argtypes = [ctypes.c_char_p] * 5 + [ctypes.c_int]
         cls.lib.lab_set_agent.argtypes = [ctypes.c_char_p]
+        cls.lib.lab_dns_query.argtypes = [ctypes.c_char_p]
+        cls.lib.lab_set_resolve.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
 
     @classmethod
     def tearDownClass(cls):
@@ -35,6 +37,15 @@ class NativeLoopbackTests(unittest.TestCase):
 
     def tearDown(self):
         self.lib.lab_stop()
+
+    def test_dns_inputs_cannot_inject_another_query_or_resolve_rule(self):
+        self.assertEqual(self.lib.lab_init(), 1)
+        for host in [b'', b'edge.vkvideo.cloud?token=secret', b'edge.vkvideo.cloud\r\nHeader:x', b'-bad.example', b'bad..example']:
+            self.assertEqual(self.lib.lab_dns_query(host), -1)
+            self.assertEqual(self.lib.lab_set_resolve(host, b'93.184.216.34'), 0)
+        for address in [b'', b'93.184.216.34:443', b'1.2.3.999', b'1.2.3.4,', b'01.2.3.4', b'1.2.3.4\r\nOther:yes']:
+            self.assertEqual(self.lib.lab_set_resolve(b'edge.vkvideo.cloud', address), 0)
+        self.assertEqual(self.lib.lab_set_resolve(b'edge.vkvideo.cloud', b'93.184.216.34,8.8.8.8'), 1)
 
     def connection(self):
         port = self.lib.lab_listen()

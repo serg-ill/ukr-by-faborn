@@ -2,7 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const Core=require('../lib/4klab/core');
 function harness(withSession=false){
-    const events=[],http=[],media=[],memory={},intervals=new Map(),timeouts=new Map(),sockets=[],failures=[],operations=[];let nextPtr=1,lastUrl='',bodyPtr=0,nextTimer=1;
+    const events=[],http=[],media=[],memory={},intervals=new Map(),timeouts=new Map(),sockets=[],failures=[],operations=[],dnsQueries=[],dnsOverrides=[],imports=[];let nextPtr=1,lastUrl='',bodyPtr=0,nextTimer=1;
     function alloc(s){const ptr=nextPtr++;memory[ptr]=s;return ptr;}
     const source='https://edge.vkvideo.cloud/film/master.m3u8';
     const answer={schema:1,sourcePage:'https://uakinogo.is/42-fixture.html',referer:Core.origin+'/?token=public&token_movie=42',origin:Core.origin,season:0,episode:0,episodes:[{season:0,episode:0}],tracks:[{label:'English',language:'en',qualities:{'2160p':[source]}}]};
@@ -15,23 +15,26 @@ function harness(withSession=false){
     Socket.prototype.close=function(){this.closed=true;this.readyState=3;};
     Socket.prototype.open=function(){this.readyState=1;this.onopen();};
     Socket.prototype.token=function(value){if(this.onmessage)this.onmessage({data:JSON.stringify({type:'config_update',edge_hash:value})});};
-    const native={FS:{writeFile(){}},_lab_init:()=>1,_lab_set_nonblocking(enabled){native.nonblocking=enabled;},_lab_listen:()=>12345,_lab_accept:()=>0,_lab_stop(){},_lab_close_client(){operations.push('client:close');},_lab_send:(ptr,amount)=>amount,_free(){},
+    const native={FS:{writeFile(){}},_lab_dns_query(){},_lab_set_resolve(){},_lab_init:()=>1,_lab_set_nonblocking(enabled){native.nonblocking=enabled;},_lab_listen:()=>12345,_lab_accept:()=>0,_lab_stop(){},_lab_close_client(){operations.push('client:close');},_lab_send:(ptr,amount)=>amount,_free(){},
         UTF8ToString:p=>memory[p]||'',lengthBytesUTF8:s=>Buffer.byteLength(s),_malloc:()=>nextPtr++,stringToUTF8:(s,p)=>memory[p]=s,
         _lab_range:()=>alloc(''),_lab_body:()=>bodyPtr,_lab_size:()=>Buffer.byteLength(memory[bodyPtr]||''),
-        ccall(name,type,types,args){if(name==='lab_set_agent'){native.agent=args[0];return 1;}assert.ok(['lab_get','lab_get_media'].includes(name));const [url,origin,referer]=args,range=name==='lab_get_media'?args[3]:args[5],controls=name==='lab_get_media'?args[4]:'';media.push({url,origin,referer,range,controls});lastUrl=url;
+        ccall(name,type,types,args){if(name==='lab_set_agent'){native.agent=args[0];return 1;}
+            if(name==='lab_dns_query'){dnsQueries.push(args[0]);bodyPtr=alloc(JSON.stringify({Status:0,Question:[{name:args[0],type:1}],Answer:[{name:args[0],type:1,TTL:300,data:'93.184.216.34'}]}));return native.dnsStatus||200;}
+            if(name==='lab_set_resolve'){dnsOverrides.push(args);return 1;}
+            assert.ok(['lab_get','lab_get_media'].includes(name));const [url,origin,referer]=args,range=name==='lab_get_media'?args[3]:args[5],controls=name==='lab_get_media'?args[4]:'';media.push({url,origin,referer,range,controls});lastUrl=url;
             const raw={hlsSource:[{label:'English',audioId:'7',quality:{2160:answer.tracks[0].qualities['2160p'].join(' or ')}}],...(withSession?{pnr:'wss://rarity-as.stravers.live/ws/',pnk:'public-session-fixture-1234'}:{})};
             const content=url.startsWith(Core.origin+'/?')?'<meta name="viewporti" content="fixture"><script>fileList=JSON.parse(\'{"type":"movie","all":{"theatrical":{"t154":{"0":{"id":42}}}}}\')</script>':url.includes('/bnsi/movies/')?JSON.stringify(raw):url.includes('/master.m3u8')?'#EXTM3U\n#EXT-X-STREAM-INF:RESOLUTION=3840x2160,CODECS="av01,aac"\nvideo.m3u8':url.includes('/video.m3u8')?'#EXTM3U\n#EXT-X-MAP:URI="init.mp4"\n#EXTINF:6,\nseg.m4s\n#EXT-X-ENDLIST':'fixture media bytes';
             bodyPtr=alloc(content);return range?206:200;
         }};
     function timerReceiver(value){if(value && value.self!==value)throw new TypeError('Illegal invocation');}
-    const ctx={Faborn4KCore:Core,WebSocket:Socket,close(){},navigator:{userAgent:'Mozilla/5.0 (SMART-TV; Tizen 6.5)'},postMessage:m=>events.push(m),importScripts(){},XMLHttpRequest:XHR,
+    const ctx={Faborn4KCore:Core,FabornAllohaDNS:require('../lib/4klab/dns'),WebSocket:Socket,close(){},navigator:{userAgent:'Mozilla/5.0 (SMART-TV; Tizen 6.5)'},postMessage:m=>events.push(m),importScripts(...urls){imports.push(...urls);},XMLHttpRequest:XHR,
         tizentvwasm:{SocketsManager:{}},FabornNative:()=>({then:fn=>fn(native)}),URL,setTimeout(fn,ms){timerReceiver(this);const id=nextTimer++;timeouts.set(id,{fn,ms});return id;},clearTimeout(id){timerReceiver(this);timeouts.delete(id);},setInterval(fn,ms){timerReceiver(this);const id=nextTimer++;intervals.set(id,{fn,ms});return id;},clearInterval(id){timerReceiver(this);intervals.delete(id);}};
     ctx.self=ctx;
     vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../lib/4klab/worker'),'utf8'),ctx);
     const get=native.ccall;native.ccall=function(name,type,types,args){if(failures.some(part=>args[0].includes(part)))return 403;return get(name,type,types,args);};
     function step(){for(const [id,t] of timeouts){if(t.ms===0){timeouts.delete(id);t.fn();return true;}}return false;}
     function flush(){let remaining=50;while(step())assert.ok(--remaining>0,'Startup must finish within a bounded number of steps');}
-    return {ctx,events,http,media,intervals,timeouts,sockets,native,failures,operations,answer,step,flush};
+    return {ctx,events,http,media,intervals,timeouts,sockets,native,failures,operations,answer,step,flush,dnsQueries,dnsOverrides,imports};
 }
 test('worker asks Ubuntu only for metadata, renews on play and supplies Origin to every CDN request',()=>{
     const {ctx,events,http,media,intervals,answer,flush}=harness();
@@ -63,10 +66,29 @@ test('worker asks Ubuntu only for metadata, renews on play and supplies Origin t
     ctx.onmessage({data:{type:'stop'}});assert.equal(intervals.size,0);assert.equal(events.at(-1).type,'stopped');
 });
 function prepare(e){start(e);e.flush();}
-function start(e){
-    e.ctx.onmessage({data:{type:'init',base:'https://serg-ill.github.io/ukr-by-faborn/lib/4klab/',version:'test',token:'0123456789abcdef0123456789abcdef',server:'http://192.168.88.191:8787',movie:{title:'Film'}}});
+function start(e,secureDns=false){
+    e.ctx.onmessage({data:{type:'init',base:'https://serg-ill.github.io/ukr-by-faborn/lib/4klab/',version:'test',token:'0123456789abcdef0123456789abcdef',server:'http://192.168.88.191:8787',movie:{title:'Film'},secureDns}});
     e.ctx.onmessage({data:{type:'play',season:0,episode:0,label:'English',language:'en',quality:'2160p'}});
 }
+test('default-off DNS performs no lookups or address overrides and loads no optional script',()=>{
+ const e=harness();prepare(e);assert.equal(e.events.at(-1).type,'play');
+ assert.deepEqual(e.dnsQueries,[]);assert.deepEqual(e.dnsOverrides,[]);assert.ok(!e.imports.some(url=>url.includes('/dns.js')));
+});
+test('protected DNS affects Alloha HTTPS but keeps metadata, session, URL and authentication intact',()=>{
+ const e=harness(true);start(e,true);e.flush();
+ assert.deepEqual(e.dnsQueries,['rarity-as.stravers.live']);
+ e.sockets[0].open();e.sockets[0].token('a'.repeat(32));e.flush();
+ assert.equal(e.events.at(-1).type,'play');assert.deepEqual(e.dnsQueries,['rarity-as.stravers.live','edge.vkvideo.cloud']);
+ assert.equal(e.dnsOverrides.length,e.media.length);assert.ok(e.http.filter(r=>r.method==='POST').every(r=>r.url.endsWith('/v1/resolve')));
+ assert.equal(e.sockets[0].url.startsWith('wss://rarity-as.stravers.live/ws/'),true);
+ assert.ok(e.media.filter(r=>Core.allowed(r.url,true)).every(r=>r.controls==='a'.repeat(32)&&r.origin===Core.origin));
+ assert.ok(!JSON.stringify(e.dnsQueries).includes('token'));assert.ok(e.imports.some(url=>url.includes('/dns.js')));
+});
+test('a DoH timeout ends Alloha preparation promptly without starting media or system-DNS fallback',()=>{
+ const e=harness();e.native.dnsStatus=-28;start(e,true);e.flush();
+ assert.equal(e.events.at(-1).type,'error');assert.match(e.events.at(-1).data.message,/DNS: Cloudflare не відповів за 4 с/);
+ assert.equal(e.media.length,0);assert.equal(e.dnsOverrides.length,0);assert.equal(e.intervals.size,0);assert.equal(e.timeouts.size,0);
+});
 test('Basic is sent only to the clean metadata endpoint, never to CDN or local media URLs',()=>{
  const e=harness(),password='пароль:fixture';
  e.ctx.onmessage({data:{type:'init',base:'https://serg-ill.github.io/ukr-by-faborn/lib/4klab/',version:'test',token:'0123456789abcdef0123456789abcdef',server:'test1:'+encodeURIComponent(password)+'@203.0.113.10:8099',movie:{title:'Film'}}});
