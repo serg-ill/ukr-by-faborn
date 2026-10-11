@@ -52,3 +52,69 @@ test('navigation refresh retains cached native episode scans until that series r
  e.ui.rememberEpisode('tmdb-tv-1668',{season:10,episode:7});const before=e.reads();other.hooks.onFocus();assert.equal(e.reads(),before);
  card.hooks.onFocus();assert.ok(e.reads()>before);const after=e.reads();e.ui.refreshPosters();assert.equal(e.reads(),after);
 });
+
+// Exercise the public full-card lifecycle with only the DOM needed for badges.
+function detailSetup(){
+ const values={faborn_ukr_ratings:'off',faborn_ukr_torrent_quality:'search'},timers=new Map(),hooks={};let serial=0;
+ function element(){
+  const attrs={},classes=new Set(),node={children:[],parentNode:null,style:{},textContent:''};
+  node.classList={add:c=>classes.add(c),remove:c=>classes.delete(c),contains:c=>classes.has(c),toggle(c,on){if(on)classes.add(c);else classes.delete(c);}};
+  Object.defineProperty(node,'className',{get:()=>[...classes].join(' '),set(v){classes.clear();v.split(/\s+/).filter(Boolean).forEach(c=>classes.add(c));}});
+  node.setAttribute=(k,v)=>attrs[k]=String(v);node.getAttribute=k=>attrs[k]??null;
+  node.removeChild=c=>{node.children.splice(node.children.indexOf(c),1);c.parentNode=null;return c;};
+  node.appendChild=c=>{if(c.parentNode)c.parentNode.removeChild(c);node.children.push(c);c.parentNode=node;return c;};
+  node.contains=c=>node===c||node.children.some(child=>child.contains(c));
+  node.querySelectorAll=selector=>{
+   const names=selector.split(',').filter(s=>/^\.[\w-]+$/.test(s)).map(s=>s.slice(1)),found=[];
+   function visit(n){n.children.forEach(c=>{if(names.some(name=>c.classList.contains(name)))found.push(c);visit(c);});}
+   visit(node);return found;
+  };
+  node.querySelector=s=>node.querySelectorAll(s)[0]||null;
+  Object.defineProperty(node,'innerHTML',{set(html){
+   node.children.slice().forEach(c=>node.removeChild(c));
+   if(html.includes('fbr-detail-top')){const top=element();top.className='fbr-detail-top';node.appendChild(top);}
+   for(const _ of html.matchAll(/<img class="fbr-release-logo"[^>]*>/g)){
+    const badge=element(),img=element();badge.className='fbr-release-studio';img.className='fbr-release-logo';
+    img.complete=false;img.naturalWidth=0;node.appendChild(badge);badge.appendChild(img);
+   }
+  }});
+  return node;
+ }
+ const container=element(),node=element();container.appendChild(node);
+ const root={document:{createElement:element,documentElement:container},setTimeout(fn){timers.set(++serial,fn);return serial;},clearTimeout(id){timers.delete(id);}};
+ const L={Storage:{get:(k,f)=>values[k]??f,set:(k,v)=>values[k]=v},TMDB:{image:p=>'https://image.test/'+p}};
+ const ui=factory(root,L,null),movie={...film,production_companies:[{name:'Studio',logo_path:'/studio.png'}]};
+ const event={type:'complite',data:{movie},object:{activity:{render:()=>node}},link:{use:h=>Object.assign(hooks,h)}};
+ ui.full(event);
+ return {ui,movie,node,hooks,timers,logo:()=>node.querySelector('.fbr-release-logo')};
+}
+test('a queued studio logo load after removal and card destruction cannot throw',()=>{
+ const e=detailSetup(),img=e.logo(),loaded=img.onload;img.naturalWidth=92;
+ img.parentNode.removeChild(img);e.hooks.onDestroy();
+ assert.doesNotThrow(()=>loaded());assert.equal(img.onload,null);assert.equal(img.onerror,null);assert.equal(e.timers.size,0);
+});
+test('a queued studio logo error after removal and card destruction cannot throw',()=>{
+ const e=detailSetup(),img=e.logo(),failed=img.onerror;
+ img.parentNode.removeChild(img);e.hooks.onDestroy();
+ assert.doesNotThrow(()=>failed());assert.equal(img.onload,null);assert.equal(img.onerror,null);
+});
+test('detached studio images are safe before Lampa delivers its delayed destroy event',()=>{
+ const e=detailSetup(),img=e.logo(),badge=img.parentNode;
+ img.naturalWidth=92;badge.removeChild(img);
+ assert.doesNotThrow(()=>img.onload());assert.doesNotThrow(()=>img.onerror());
+ assert.equal(badge.classList.contains('fbr-release-studio--logo'),false);e.hooks.onDestroy();
+});
+test('pausing detaches logo handlers and resuming displays a cached successful logo',()=>{
+ const e=detailSetup(),img=e.logo(),badge=img.parentNode,loaded=img.onload;
+ e.hooks.onPause();img.complete=true;img.naturalWidth=92;loaded();
+ assert.equal(img.onload,null);assert.equal(img.onerror,null);assert.equal(badge.classList.contains('fbr-release-studio--logo'),false);
+ e.hooks.onStart();assert.equal(e.logo(),img);assert.equal(badge.classList.contains('fbr-release-studio--logo'),true);
+ img.onerror();assert.equal(badge.classList.contains('fbr-release-studio--logo'),false);e.hooks.onDestroy();
+});
+test('refreshing card badges cancels old logo events without affecting replacement logos',()=>{
+ const e=detailSetup(),old=e.logo(),badge=old.parentNode,loaded=old.onload,failed=old.onerror;
+ e.ui.learn(e.movie,{qualities:['2160p'],languages:['uk']});const current=e.logo();assert.notEqual(current,old);
+ old.naturalWidth=92;loaded();failed();assert.equal(badge.classList.contains('fbr-release-studio--logo'),false);
+ assert.equal(old.onload,null);assert.equal(old.onerror,null);assert.equal(current.parentNode.classList.contains('fbr-release-studio--logo'),false);
+ current.naturalWidth=92;current.onload();assert.equal(current.parentNode.classList.contains('fbr-release-studio--logo'),true);e.hooks.onDestroy();
+});
