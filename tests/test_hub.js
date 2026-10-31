@@ -336,3 +336,38 @@ test('movie catalogue native switch is independent and does not intercept other 
  const invalid=e.api.catalogRequest({sort:'bad',votes:-1,country:'US|bad'},9000,'2026-99-99','movie');
  assert.equal(invalid.page,1);assert.equal(invalid.sort_by,'popularity.desc');assert.equal(invalid.filter['vote_count.gte'],100);assert.ok(!invalid.filter.with_origin_country);
 });
+
+const studios=[['netflix','213','8'],['apple','2552','350'],['prime','1024','9'],['disney','2739','337'],['hbo','49|3186|6783','1899'],['paramount','1709|4330','2303|2616'],['hulu','453','15']];
+for(const [id,network,provider] of studios)for(const kind of ['movie','tv'])test(id+' '+kind+' keeps its platform on every sort and next page',()=>{
+ const e=env(),first=e.api.studioRequest(id,kind);
+ assert.equal(first.fabornStudio,id);assert.equal(first.fabornCatalog.sort,'new');assert.equal(first.page,1);
+ assert.equal(first.filter['vote_count.gte'],100);assert.ok(first.filter[kind==='movie'?'primary_release_date.lte':'first_air_date.lte']);
+ for(const sort of ['popular','rating','new']){
+  const request=e.api.catalogRequest({sort,votes:500,country:'GB'},2,'2026-11-01',kind,id);
+  assert.equal(request.page,2);assert.equal(request.fabornStudio,id);assert.equal(request.filter.with_origin_country,'GB');assert.equal(request.filter['vote_count.gte'],500);
+  assert.equal(request.sort_by,sort==='popular'?'popularity.desc':sort==='rating'?'vote_average.desc':kind==='movie'?'primary_release_date.desc':'first_air_date.desc');
+  if(kind==='tv'){assert.equal(request.filter.with_networks,network);assert.equal(request.filter.with_type,'2|4');assert.ok(!request.filter.with_watch_providers);}
+  else {assert.equal(request.filter.with_watch_providers,provider);assert.equal(request.filter.watch_region,'US');assert.equal(request.filter.with_watch_monetization_types,'flatrate');assert.ok(!request.filter.with_networks);}
+  assert.equal(request.filter[kind==='movie'?'primary_release_date.lte':'first_air_date.lte'],'2026-11-01');
+ }
+});
+test('studio settings are independent of other studios, media types and the main catalogs',()=>{
+ const e=env();e.storage.faborn_ukr_catalog_movie={sort:'popular',votes:1000,country:'US'};
+ e.storage.faborn_ukr_catalog_studio_netflix_movie={sort:'rating',votes:500,country:'GB'};
+ e.storage.faborn_ukr_catalog_studio_netflix_tv={sort:'popular',votes:20,country:'KR',format:'all'};
+ const api=factory(e.root,e.L,null),film=api.studioRequest('netflix','movie'),tv=api.studioRequest('netflix','tv'),other=api.studioRequest('apple','movie');
+ assert.equal(film.sort_by,'vote_average.desc');assert.equal(film.filter['vote_count.gte'],500);assert.equal(film.filter.with_origin_country,'GB');
+ assert.equal(tv.sort_by,'popularity.desc');assert.equal(tv.filter['vote_count.gte'],20);assert.ok(!tv.filter.with_type);
+ assert.equal(other.fabornCatalog.sort,'new');assert.equal(other.filter['vote_count.gte'],100);assert.ok(!other.filter.with_origin_country);
+ film.page=7;film.filter.with_watch_providers='999';assert.equal(api.studioRequest('netflix','movie').filter.with_watch_providers,'8');assert.equal(api.studioRequest('netflix','movie').page,1);
+ assert.deepEqual(e.storage.faborn_ukr_catalog_movie,{sort:'popular',votes:1000,country:'US'});
+ for(const id of ['__proto__','netflix&x=y','Netflix',null])assert.equal(api.studioRequest(id,'movie'),null);
+ for(const kind of ['person','movie?x=y',null])assert.equal(api.studioRequest('netflix',kind),null);
+});
+test('a restored studio activity rebuilds the platform filter instead of trusting stale query fields',()=>{
+ const e=env();e.L.Component={get:()=>function(object){this.use=()=>{};this.object=object;}};
+ const object={component:'faborn_catalog',fabornStudio:'hbo',fabornCatalogType:'tv',page:3,fabornCatalog:{sort:'rating',votes:100,country:'all',format:'all'},filter:{with_networks:'999'},title:'Wrong title'};
+ const comp=e.api.catalogPage(object);
+ assert.equal(comp.object.fabornStudio,'hbo');assert.equal(comp.object.filter.with_networks,'49|3186|6783');assert.equal(comp.object.page,3);assert.equal(comp.object.sort_by,'vote_average.desc');assert.equal(comp.object.title,'HBO Max · Серіали · За рейтингом');
+ assert.ok(!comp.object.filter.with_type);
+});

@@ -1,16 +1,17 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
-const factory=require('../lib/faborn-ui');
+const factory=require('../lib/faborn-ui'),hubFactory=require('../lib/faborn-hub');
 const ids=['netflix','apple','prime','disney','hbo','paramount','hulu'];
-const ui=factory({}, {Storage:{get:(k,f)=>f}},null);
-test('studio collections open native Lampa catalogs, not external players',()=>{
+const shared={Storage:{get:(k,f)=>f}},hub=hubFactory({},shared,null);
+const ui=factory({},shared,null,{studioRequest:hub.studioRequest});
+test('all studio collections open the shared sortable catalog, not external players',()=>{
  for(const id of ids)for(const kind of ['movie','tv']){
-  const r=ui.studioRequest(id,kind);assert.equal(r.component,'category_full');assert.equal(r.source,'tmdb');assert.equal(r.url,'discover/'+kind);assert.equal(r.page,1);assert.equal(r.filter.include_adult,'false');assert.equal(r.sort_by,'popularity.desc');
+  const r=ui.studioRequest(id,kind);assert.equal(r.component,'faborn_catalog');assert.equal(r.fabornStudio,id);assert.equal(r.fabornCatalogType,kind);assert.equal(r.source,'tmdb');assert.equal(r.url,'discover/'+kind);assert.equal(r.page,1);assert.equal(r.filter.include_adult,'false');assert.equal(r.sort_by,kind==='movie'?'primary_release_date.desc':'first_air_date.desc');assert.equal(r.filter['vote_count.gte'],100);
  }
 });
 test('series match the platform network, while films use an explicitly regional provider catalog',()=>{
- assert.deepEqual(ui.studioRequest('apple','tv').filter,{include_adult:'false',with_networks:'2552'});
- assert.deepEqual(ui.studioRequest('apple','movie').filter,{include_adult:'false',with_watch_providers:'350',watch_region:'US',with_watch_monetization_types:'flatrate'});
+ assert.equal(ui.studioRequest('apple','tv').filter.with_networks,'2552');assert.equal(ui.studioRequest('apple','tv').filter.with_type,'2|4');
+ const movie=ui.studioRequest('apple','movie').filter;assert.equal(movie.with_watch_providers,'350');assert.equal(movie.watch_region,'US');assert.equal(movie.with_watch_monetization_types,'flatrate');
  assert.ok(!('with_companies' in ui.studioRequest('netflix','movie').filter));
 });
 test('renamed networks are combined with OR and Paramount uses current US packages',()=>{
@@ -43,7 +44,8 @@ function environment(){
  const first={render:()=>firstNode,toggle:()=>states.push('first')},second={render:()=>secondNode},firstNode=new Node(),secondNode=new Node();parent.appendChild(firstNode);parent.appendChild(secondNode);
  const component={items:[first,second],active:1,scroll:{update:n=>states.push(n)},emit(event,data){assert.equal(event,'createAndAppend');const row=data.params.createInstance();row.use({onActive(){component.active=component.items.indexOf(row);},onUp:()=>states.push('up'),onDown:()=>states.push('down'),onBack:()=>states.push('back')});row.create();component.items.push(row);parent.appendChild(row.render(true));}};
  const home={component,firstLine:first,node:new Node(),scroll:{clientHeight:700},queue:{pause:()=>states.push('pause')}};
- const api=factory(root,L,$,{studioAssets:'https://pages.test/assets/studios/'});
+ const catalogs=hubFactory(root,L,$);
+ const api=factory(root,L,$,{studioAssets:'https://pages.test/assets/studios/',studioRequest:catalogs.studioRequest});
  return {api,values,component,home,parent,first,second,menus,pushes,scrolls,states,get hidden(){return hidden;},button:i=>home.studioRow.render(true).children[1].children[i],controller:()=>controllers.fbr_studios};
 }
 test('studio row inserts immediately after the first movie line without losing active item',()=>{

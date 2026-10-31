@@ -1,4 +1,4 @@
-/* Faborn 0.1.0-beta.57 — GitHub Pages edition. */
+/* Faborn 0.1.0-beta.58 — GitHub Pages edition. */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -8,7 +8,7 @@
     }
 }(typeof window !== 'undefined' ? window : this, function (root) {
     'use strict';
-    var VERSION = '0.1.0-beta.57';
+    var VERSION = '0.1.0-beta.58';
     var metadataDenied = '';
     var NAME = 'Faborn';
     var DEFAULT_PAGES = 'https://serg-ill.github.io/ukr-by-faborn/';
@@ -3384,7 +3384,11 @@
         if (!root.document || !root.document.querySelector || interfaceUI || interfaceScript || !baseURL()) return;
         function ready() {
             if (typeof root.FabornInterface !== 'function') return;
-            interfaceUI = root.FabornInterface(root,L,$,{torrentRequest:torrentRequest,studioAssets:baseURL()+'assets/studios/'}); interfaceUI.install();
+            interfaceUI = root.FabornInterface(root,L,$,{torrentRequest:torrentRequest,studioAssets:baseURL()+'assets/studios/',studioRequest:function(id,kind){
+                if(!hubUI)loadHub();
+                if(hubUI && hubUI.studioRequest)return hubUI.studioRequest(id,kind);
+                notify('Каталоги ще завантажуються. Спробуй за мить.');return null;
+            }}); interfaceUI.install();
             if (lastFullEvent) interfaceUI.full(lastFullEvent);
         }
         if (typeof root.FabornInterface === 'function') return ready();
