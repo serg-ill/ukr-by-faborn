@@ -30,7 +30,7 @@ function environment(options={}) {
   setSelectTrack(type,index){assert.equal(avState.state,'PLAYING');calls.push(['track',type,index]);}
  };
  const requests=[];
- const root={document:doc,webapis:{avplay:av},addEventListener(n,fn){(events[n] ||= []).push(fn);},
+ const root={document:doc,webapis:{avplay:av},performance:{now:()=>now},addEventListener(n,fn){(events[n] ||= []).push(fn);},
   setTimeout(fn,ms){jobs.set(++serial,{fn,at:now+ms});return serial;},clearTimeout(id){jobs.delete(id);},
   setInterval(fn,ms){jobs.set(++serial,{fn,at:now+ms,interval:ms});return serial;},clearInterval(id){jobs.delete(id);},
   XMLHttpRequest:function(){requests.push(this);this.open=(_,url)=>{this.url=url;};this.send=()=>{};this.abort=()=>{this.aborted=true;};}
@@ -391,6 +391,93 @@ test('resume, pause, coalesced seeking and visibility preserve the current posit
 test('seek failure keeps the old position; closing a pending seek cannot restart playback',()=>{
  const e=environment({seekError:true});e.api.play(e.spec());e.prepare();e.at(55);e.click('+30 с');e.advance(350);assert.equal(e.progress.at(-1).current,55);assert.match(e.notices.at(-1),/перемотати/);e.api.close();
  const pending=environment({seekPending:true});pending.api.play(pending.spec({time:120}));pending.prepare();const seek=pending.avState.seek;pending.api.close();seek.ok();pending.advance(9000);assert.equal(pending.avState.state,'NONE');assert.equal(pending.progress.length,0);
+});
+
+function seekPreview(e){return +e.all().find(n=>n.attrs.role==='slider').attrs['aria-valuenow'];}
+function startSeekTest(options={}){
+ const e=environment(options);
+ if(options.engine==='mse'){
+  const transport={...e.root.webapis.avplay,surface:()=>e.doc.createElement('video'),available:()=>true};
+  e.root.FabornHlsTransport=()=>transport;e.root.FabornHls=function(){};
+ }
+ e.avState.duration=36000000;e.api.play(e.spec({engine:options.engine || 'avplay',request:options.request}));e.prepare();e.at(3600);
+ e.key('keydown',38);e.key('keyup',38);return e;
+}
+function holdSeek(e,code,ms){e.key('keydown',code);for(let at=250;at<=ms;at+=250){e.advance(250);e.key('keydown',code,true);}}
+
+test('separate taps keep exact arrow and media-key steps without building acceleration',()=>{
+ for(const [code,step] of [[37,-10],[39,10],[412,-30],[417,30]]){
+  const e=startSeekTest();
+  for(let i=0;i<40;i++){e.key('keydown',code);e.key('keyup',code);e.advance(100);}
+  assert.equal(seekPreview(e),3600+40*step);e.advance(350);
+  assert.deepEqual(e.calls.filter(c=>c[0]==='seek'),[['seek',(3600+40*step)*1000]]);
+  e.api.close();assert.equal(e.jobs.size,0);
+ }
+});
+test('holding arrows accelerates at three seconds, grows each second, caps and commits once on AVPlay and MSE',()=>{
+ for(const engine of ['avplay','mse'])for(const code of [37,39]){
+  const e=startSeekTest({engine}),sign=code===37?-1:1,steps={};let prior=seekPreview(e);
+  e.key('keydown',code);steps[0]=(seekPreview(e)-prior)*sign;
+  for(let at=250;at<=8000;at+=250){prior=seekPreview(e);e.advance(250);e.key('keydown',code,true);steps[at]=(seekPreview(e)-prior)*sign;}
+  assert.deepEqual([steps[0],steps[2750],steps[3000],steps[4000],steps[5000],steps[6000],steps[7000],steps[8000]],[10,10,20,30,40,50,60,60]);
+  assert.equal(e.calls.filter(c=>c[0]==='seek').length,0);
+  const target=seekPreview(e);e.key('keyup',code);e.advance(350);
+  assert.deepEqual(e.calls.filter(c=>c[0]==='seek'),[['seek',target*1000]]);assert.equal(e.avState.state,'PLAYING');
+  e.api.close();assert.equal(e.jobs.size,0);
+ }
+});
+test('dedicated rewind and forward buttons also accelerate after three seconds',()=>{
+ for(const code of [412,417]){
+  const e=startSeekTest(),sign=code===412?-1:1;holdSeek(e,code,2750);let old=seekPreview(e);
+  e.advance(250);e.key('keydown',code,true);assert.equal((seekPreview(e)-old)*sign,40);
+  for(let i=0;i<3;i++){e.advance(250);e.key('keydown',code,true);}old=seekPreview(e);
+  e.advance(250);e.key('keydown',code,true);assert.equal((seekPreview(e)-old)*sign,50);
+  e.key('keyup',code);e.advance(350);assert.equal(e.calls.filter(c=>c[0]==='seek').length,1);e.api.close();
+ }
+});
+test('very dense keyboard repeats are bounded and do not cause decoder seek storms',()=>{
+ const e=startSeekTest();e.key('keydown',39);
+ for(let i=0;i<100;i++){e.advance(10);e.key('keydown',39,true);}
+ assert.equal(seekPreview(e),3650);assert.equal(e.calls.filter(c=>c[0]==='seek').length,0);
+ e.key('keyup',39);e.advance(350);assert.deepEqual(e.calls.filter(c=>c[0]==='seek'),[['seek',3650000]]);e.api.close();
+});
+test('release and direction reversal reset acceleration even before the preview is committed',()=>{
+ const e=startSeekTest();holdSeek(e,39,4000);let old=seekPreview(e);
+ e.key('keydown',37);assert.equal(old-seekPreview(e),10);e.key('keyup',39);
+ e.key('keyup',37);old=seekPreview(e);e.key('keydown',39);assert.equal(seekPreview(e)-old,10);
+ e.key('keyup',39);e.advance(350);assert.equal(e.calls.filter(c=>c[0]==='seek').length,1);e.api.close();
+});
+test('missing keyup commits one bounded preview then starts the next gesture without acceleration',()=>{
+ const e=startSeekTest();holdSeek(e,39,4000);const target=seekPreview(e);e.advance(1200);
+ assert.deepEqual(e.calls.filter(c=>c[0]==='seek'),[['seek',target*1000]]);
+ e.key('keydown',39);assert.equal(seekPreview(e)-target,10);e.advance(1200);
+ assert.equal(e.calls.filter(c=>c[0]==='seek').length,2);e.api.close();assert.equal(e.jobs.size,0);
+});
+test('slow initial remote repeats keep previewing without issuing a seek before release',()=>{
+ const e=startSeekTest();e.key('keydown',39);e.advance(800);e.key('keydown',39,true);
+ for(let at=1000;at<=3200;at+=200){e.advance(200);e.key('keydown',39,true);}
+ assert.equal(e.calls.filter(c=>c[0]==='seek').length,0);assert.match(e.all().find(n=>n.className==='fbp-status').textContent,/\+20 с$/);
+ e.key('keyup',39);e.advance(350);assert.equal(e.calls.filter(c=>c[0]==='seek').length,1);e.api.close();
+});
+test('menus, blur, hidden page, changing stream, completion and Back cancel pending held seeks',()=>{
+ for(const action of ['menu','blur','hidden','change','ended','back']){
+  const e=startSeekTest({request(){}});holdSeek(e,39,4000);
+  if(action==='menu'){e.click('Якість');e.key('keydown',417);e.key('keyup',417);}
+  if(action==='blur')e.events.blur[0]();
+  if(action==='hidden'){e.doc.hidden=true;e.events.visibilitychange[0]();}
+  if(action==='change')e.api.change({type:'quality',quality:'1080p'});
+  if(action==='ended'){e.at(35999);e.avState.listeners.onstreamcompleted();}
+  if(action==='back')e.key('keydown',10009);
+  e.advance(2000);assert.equal(e.calls.filter(c=>c[0]==='seek').length,0,action);
+  e.api.close();assert.equal(e.jobs.size,0,action);
+ }
+});
+test('held seeking respects duration bounds and preserves pause',()=>{
+ for(const [code,position,target] of [[37,5,1],[39,35995,35999]]){
+  const e=startSeekTest();e.at(position);e.click('Пауза');e.controllers.faborn_player_beta.up();holdSeek(e,code,8000);
+  assert.equal(seekPreview(e),target);e.key('keyup',code);e.advance(350);
+  assert.deepEqual(e.calls.filter(c=>c[0]==='seek'),[['seek',target*1000]]);assert.equal(e.avState.state,'PAUSED');e.api.close();
+ }
 });
 test('quality switch preserves position and pause without opening the native Lampa player',()=>{
  const e=environment();let request;e.api.play(e.spec({request:(a,done)=>{request={a,done};}}));e.prepare();e.at(230);e.click('Пауза');e.click('Якість');e.click('1080p');
