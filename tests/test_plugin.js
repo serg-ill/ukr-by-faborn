@@ -299,7 +299,8 @@ test('canceling a pending catalog read does not open a stale modal', () => {
 test('failed catalog fetch reports error and does not launch video', () => {
     const {instance, state} = environment({failure: true});
     instance.open({title: 'Профі'});
-    assert.ok(state.menu.items.some(i=>i.title.includes('Немає озвучення')));
+    assert.ok(state.menu.items.some(i=>i.title.includes('Не вдалося перевірити')));
+    assert.equal(state.menu.items.filter(i=>i.action==='sourcestatus').length,3);
     assert.equal(state.played, null);
 });
 test('install is idempotent and does not modify another plugin playback', () => {
@@ -836,6 +837,34 @@ test('Hail Mary: card to actual UASerials source/quality to player, without inte
     env.state.play('1080p'); assert.equal(env.state.played.card.id,hailCard.id);
     assert.ok(env.state.played.url.includes('hdvbua.pro')); assert.equal(env.state.playerReturn,'full_start');
 });
+test('MSX-style CORS failures recover POST search, title, iframe and HLS metadata without a server or login',()=>{
+ const e=multiSourceEnvironment(false,req=>{
+  if(!req.native && /https:\/\/(?:[a-z0-9-]+\.)*(uaserials\.my|hdvbua\.pro)\//.test(req.url)){req.status=0;req.onerror();return true;}
+ });
+ const native=[],send=e.root.XMLHttpRequest.prototype.send;
+ e.root.FabornKinoSession=()=>({request(url,done,options){
+  const req={url,native:true,options,headers:{},onload(){done(this.status===200?null:new Error('HTTP '+this.status),this.responseText,this.status);},abort(){this.aborted=true;}};
+  native.push(req);send.call(req,options.post);return req;
+ },cancel(){}});
+ e.instance.open(hailCard);assert.ok(e.state.menu.items.some(i=>i.group));
+ assert.ok(native.length>=4);assert.equal(native[0].url,uaserials.origin+'/');
+ assert.match(native[0].body,/^do=search&subaction=search&from_page=1&story=/);
+ assert.ok(native.every(req=>req.options.metadata===true));
+ assert.equal(e.state.requests.filter(req=>req.url===hailSource).length,0,'Next page uses the established native source context');
+ assert.ok(!e.state.requests.some(req=>req.url.includes('/v1/')));
+ e.state.play('1080p');assert.ok(e.state.played.url.startsWith('https://'));
+ assert.ok(e.state.played.url.includes('hdvbua.pro'));assert.equal(e.state.notices.length,0);
+ assert.ok(Object.keys(e.state.storage.faborn_ukr_source_transport).length>=2);
+});
+test('a native source HTTP denial does not loop or hide an unrelated working source',()=>{
+ const e=multiSourceEnvironment(false,req=>{
+  if(req.url.startsWith('https://uafix.net/')){req.status=0;req.onerror();return true;}
+ });let calls=0;
+ e.root.FabornKinoSession=()=>({request(url,done){calls++;done(new Error('HTTP 403'),'Denied',403);return {abort(){}};},cancel(){}});
+ e.instance.open(hailCard);assert.equal(calls,1);assert.ok(e.state.menu.items.some(i=>i.group));
+ assert.match(e.state.storage.faborn_ukr_source_status.find(s=>s.startsWith('UAFix:')),/Мережа.*Samsung: HTTP 403/);
+ e.state.play('1080p');assert.ok(e.state.played.url.includes('hdvbua.pro'));
+});
 test('From: changing season/episode selects the matching stream and voice',()=>{
     const env=multiSourceEnvironment(true);env.instance.open(fromCard);
     env.state.choose(i=>i.action==='episode');env.state.choose(i=>i.value===2);env.state.choose(i=>i.value===3);
@@ -997,6 +1026,9 @@ function kinoEnvironment(options={}) {
     const file=(s=0,e=0)=>['720','1080','2160'].map(q=>'['+q+'p]'+['Paramount (Русский)','1+1 (Украинский)'].concat(options.english?['Оригинал']:[]).filter(v=>!stateData.missingEN||v!=='Оригинал').filter(v=>!stateData.missingUA||!v.includes('1+1')).map((voice,i)=>'{'+voice+'}https://primary.redcdn.org/'+q+'/s'+s+'e'+e+'/v'+stateData.version+'/master-v1-a'+(i+1)+'.m3u8 or https://mirror.threnet.xyz/'+q+'/s'+s+'e'+e+'/v'+stateData.version+'/master-v1-a'+(i+1)+'.m3u8').join(';')).join(',');
     function respond(req){
         req.status=200;
+        if(options.networkEndpoint && !req.native && req.url.startsWith('https://kinobase.org'+options.networkEndpoint)) {
+            req.status=0;if(options.networkTimeout)req.ontimeout();else req.onerror();return;
+        }
         if(options.failEndpoint && (!req.native || options.native404) && req.url.startsWith('https://kinobase.org'+options.failEndpoint)) {
             req.status=404;req.responseText='';req.onload();return;
         }
@@ -1065,6 +1097,59 @@ test('working direct KinoBase never starts a native session',()=>{
  const env=kinoEnvironment({native:true});env.instance.open(kinoMovie);
  assert.equal(env.kino.clients,0);assert.equal(env.kino.nativeRequests.length,0);
  assert.ok(env.state.menu.items.some(i=>i.group));
+});
+for(const endpoint of ['/search?','/film/','/static/','/user_data?','/vod/'])test('MSX-style network failure at '+endpoint+' recovers with a complete Samsung cookie session',()=>{
+ const e=kinoEnvironment({networkEndpoint:endpoint,native:true});e.instance.open(kinoMovie);
+ assert.equal(e.kino.clients,1);assert.ok(e.state.menu.items.some(i=>i.group));
+ assert.ok(e.kino.nativeRequests[0].url.includes(endpoint==='/search?'?'/search?':'/film/'));
+ assert.ok(e.kino.nativeRequests.some(r=>r.url.includes('/user_data?')));
+ assert.ok(e.kino.nativeRequests.some(r=>r.url.includes('/vod/')));
+ assert.ok(!e.kino.nativeRequests.some(r=>r.url.includes('.m3u8')),'Working CDN requests stay in the original transport');
+ e.state.play('2160p');assert.match(e.state.played.url,/^https:\/\/primary.redcdn.org\/2160\//);
+ assert.equal(e.state.requests.filter(r=>r.url.includes(endpoint)&&r.url.startsWith('https://kinobase.org')).length,1);
+});
+test('a search timeout gets one native attempt and ignores a late browser response',()=>{
+ const e=kinoEnvironment({networkEndpoint:'/search?',networkTimeout:true,native:true});e.instance.open(kinoMovie);
+ const n=e.kino.nativeRequests.length,request=e.state.requests.find(r=>r.url.includes('/search?'));
+ request.status=200;request.responseText=fixture('kinobase-search.html');request.onload();
+ assert.equal(e.kino.nativeRequests.length,n);assert.ok(e.state.menu.items.some(i=>i.group));
+});
+test('failed network fallback preserves both causes without retrying or prompting for credentials',()=>{
+ const e=kinoEnvironment({networkEndpoint:'/search?',native:true,nativeError:'SOCKETS: API недоступний'});e.instance.open(kinoMovie);
+ const issue=e.state.menu.items.find(i=>i.action==='kinostatus');assert.match(issue.subtitle,/Мережа.*Samsung: SOCKETS/);
+ assert.equal(e.kino.nativeRequests.length,1);assert.equal(e.state.played,null);assert.equal(e.state.notices.length,0);
+ e.state.menu.onBack();assert.equal(e.state.menu,null);assert.equal(e.state.controller,'full_start');
+});
+test('network fallback respects direct-only setting and does not start on non-Samsung or incapable runtimes',()=>{
+ for(const mode of ['direct','browser','incapable']){
+  const e=kinoEnvironment({networkEndpoint:'/search?',native:true});
+  if(mode==='direct')e.state.storage.faborn_ukr_kino_session='direct';
+  if(mode==='browser')e.root.Lampa.Platform.is=()=>false;
+  if(mode==='incapable')delete e.root.FabornKinoSession;
+  e.instance.open(kinoMovie);assert.equal(e.kino.nativeRequests.length,0);assert.ok(e.state.menu.items.some(i=>i.action==='kinostatus'));
+ }
+});
+test('Back during a synchronous browser failure aborts the pending native search and rejects its late reply',()=>{
+ const e=kinoEnvironment({networkEndpoint:'/search?',native:true,delayNative:true});e.instance.open(kinoMovie);
+ const request=e.kino.nativeRequests[0];assert.ok(request);
+ e.state.menu.onBack();assert.equal(request.aborted,true);e.kino.respond(request);
+ assert.equal(e.state.menu,null);assert.equal(e.state.controller,'full_start');assert.equal(e.kino.nativeRequests.length,1);
+ assert.equal(Object.keys(e.state.timers).length,0);
+});
+test('late network fallback from another card cannot inject streams or replace its view',()=>{
+ const e=kinoEnvironment({networkEndpoint:'/search?',native:true,delayNative:true});e.instance.open(kinoMovie);
+ const request=e.kino.nativeRequests[0];e.instance.open(kinoSeries);const menu=e.state.menu;
+ assert.equal(request.aborted,true);e.kino.respond(request);assert.equal(e.state.menu,menu);
+ assert.equal(e.kino.nativeRequests.length,2);
+});
+test('other source outages are visible in the empty list and their details return safely',()=>{
+ const e=environment({respond(req){req.status=0;req.onerror();}});e.instance.open(kinoMovie);
+ const rows=e.state.menu.items.filter(i=>i.action==='sourcestatus');assert.deepEqual(rows.map(i=>i.source),['uakino','uaserials','uafix']);
+ assert.ok(rows.every(i=>i.subtitle.includes('HTTP-статус недоступний')));
+ assert.ok(e.state.menu.items.some(i=>i.title==='Не вдалося перевірити всі джерела'));
+ e.state.choose(i=>i.source==='uafix');assert.equal(e.state.menu.title,'UAFix');e.state.menu.onBack();
+ assert.equal(e.state.menu.items.filter(i=>i.action==='sourcestatus').length,3);
+ e.state.menu.onBack();assert.equal(e.state.controller,'full_start');
 });
 test('non-session 404 and explicit direct setting never start native fallback',()=>{
  for(const endpoint of ['/film/208161-','/vod/208161?','/user_data?']){
@@ -1565,6 +1650,29 @@ function uafixRefererEnvironment(options={}) {
  env.root.btoa=value=>Buffer.from(value,'binary').toString('base64');
  return {...env,movie,master,page,embed};
 }
+test('UAFix native fallback carries the original title Referer and plays without enabling server beta',()=>{
+ const e=uafixRefererEnvironment({storage:{faborn_ukr_uakinogo_beta:'off',faborn_ukr_uakinogo_server:''},intercept(req){
+  if(!req.native && /^https:\/\/(uafix\.net|zetvideo\.net)\//.test(req.url)){req.status=0;req.onerror();return true;}
+  if(req.native && req.url==='https://zetvideo.net/vod/19767'){
+   assert.equal(req.options.referer,'https://uafix.net/films/oppengejmer/');req.status=200;
+   req.responseText='new Playerjs({file:"https://zetvideo.net/vid/fixture/hls/index.m3u8"})';req.onload();return true;
+  }
+ }});
+ const requests=[],send=e.root.XMLHttpRequest.prototype.send;
+ e.root.FabornKinoSession=()=>({request(url,done,options){
+  const req={url,native:true,options,onload(){done(this.status===200?null:new Error('HTTP '+this.status),this.responseText,this.status);},abort(){this.aborted=true;}};
+  requests.push(req);send.call(req,options.post);return req;
+ },cancel(){}});
+ e.instance.open(e.movie);e.state.play('1080p');assert.match(e.state.played.url,/zetvideo\.net/);
+ assert.ok(requests.some(req=>req.options.referer===e.page));
+ assert.ok(!e.state.requests.some(req=>req.url.includes('/v1/')));
+});
+test('native iframe 404 still reaches an explicitly configured UAFix metadata fallback',()=>{
+ const e=uafixRefererEnvironment({intercept(req){if(req.url==='https://zetvideo.net/vod/19767'){req.status=0;req.onerror();return true;}}});
+ e.root.FabornKinoSession=()=>({request(url,done){done(new Error('HTTP 404'),'Not found',404);return {abort(){}};},cancel(){}});
+ e.instance.open(e.movie);assert.ok(e.state.requests.some(req=>req.url.endsWith('/v1/uafix/player')));
+ e.state.play('1080p');assert.match(e.state.played.url,/zetvideo\.net/);
+});
 function refreshableUafix() {
  let refresh=false,pending=false,quality='1080';
  const fresh='https://zetvideo.net/vid/new-session/hls/index.m3u8';
